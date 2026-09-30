@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <title>HALCYON FRONT</title>
+    <meta name="description" content="HALCYON FRONT — a retro-futurist online multiplayer first-person shooter. Play instantly in your browser." />
+    <meta name="theme-color" content="#1b1618" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="HALCYON" />
+    <meta name="format-detection" content="telephone=no" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="apple-touch-icon" href="./icon-maskable.svg" />
+    <style>
+      /* Critical boot splash — paints before any JavaScript or font loads. */
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #1b1618;
+        overflow: hidden;
+      }
+      #boot {
+        position: fixed;
+        inset: 0;
+        z-index: 2000;
+        display: grid;
+        place-items: center;
+        background:
+          radial-gradient(120% 80% at 50% 118%, rgba(233, 140, 90, 0.55), rgba(233, 140, 90, 0) 60%),
+          radial-gradient(90% 60% at 50% 100%, rgba(255, 200, 140, 0.18), rgba(255, 200, 140, 0) 70%),
+          linear-gradient(180deg, #1a1824 0%, #2a2230 48%, #43303a 100%);
+        color: #f3ece0;
+        font-family: 'Space Grotesk', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        transition: opacity 600ms cubic-bezier(0.2, 0.8, 0.2, 1), visibility 600ms;
+      }
+      #boot.is-done {
+        opacity: 0;
+        visibility: hidden;
+      }
+      .boot__inner {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 14px;
+        animation: boot-in 700ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+      }
+      .boot__mark {
+        width: 72px;
+        height: 72px;
+        filter: drop-shadow(0 8px 30px rgba(240, 140, 60, 0.45));
+      }
+      .boot__word {
+        font-size: clamp(26px, 5vw, 52px);
+        font-weight: 700;
+        letter-spacing: 0.3em;
+        margin-right: -0.3em;
+        background: linear-gradient(180deg, #fff6e6, #f0c98f 60%, #e9a868);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+      .boot__sub {
+        font-size: clamp(10px, 1.4vw, 14px);
+        letter-spacing: 1.2em;
+        margin-right: -1.2em;
+        color: #f0b35b;
+      }
+      .boot__line {
+        position: relative;
+        width: min(240px, 50vw);
+        height: 1px;
+        margin-top: 22px;
+        background: rgba(243, 236, 224, 0.18);
+        overflow: hidden;
+      }
+      .boot__line i {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(90deg, #f0b35b, #fff0d0);
+        transform-origin: left center;
+        transform: scaleX(0.06);
+        transition: transform 400ms cubic-bezier(0.2, 0.8, 0.2, 1);
+        box-shadow: 0 0 10px rgba(240, 179, 91, 0.9);
+      }
+      .boot__line::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 30%;
+        background: linear-gradient(90deg, transparent, rgba(255, 240, 210, 0.7), transparent);
+        animation: boot-sweep 1.4s linear infinite;
+      }
+      @keyframes boot-sweep {
+        from {
+          transform: translateX(-100%);
+        }
+        to {
+          transform: translateX(400%);
+        }
+      }
+      @keyframes boot-in {
+        from {
+          opacity: 0;
+          transform: translateY(8px);
+        }
+      }
+      noscript .boot__note,
+      .boot__note {
+        margin-top: 10px;
+        max-width: 26em;
+        text-align: center;
+        font-size: 14px;
+        line-height: 1.5;
+        color: rgba(243, 236, 224, 0.72);
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .boot__line::after,
+        .boot__inner {
+          animation: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="boot" aria-label="HALCYON FRONT" role="status">
+      <div class="boot__inner">
+        <svg class="boot__mark" viewBox="0 0 64 64" aria-hidden="true">
+          <defs>
+            <linearGradient id="bs" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe6b0" /><stop offset=".55" stop-color="#f6ad5e" /><stop offset="1" stop-color="#df6f45" /></linearGradient>
+            <mask id="bm"><rect width="64" height="64" fill="#fff" /><rect y="30" width="64" height="1.6" fill="#000" /><rect y="34.4" width="64" height="2.2" fill="#000" /><rect y="39.2" width="64" height="2.8" fill="#000" /><rect y="44.6" width="64" height="30" fill="#000" /></mask>
+          </defs>
+          <circle cx="32" cy="44" r="22" fill="url(#bs)" mask="url(#bm)" />
+          <path d="M6 45.6h52" stroke="#f3ece0" stroke-opacity=".55" stroke-width="1.2" stroke-linecap="round" />
+          <path d="M28.6 45.6 30.9 10h2.2l2.3 35.6h-2.2L32 20.6l-1.2 25z" fill="#f3ece0" />
+          <path d="M40.5 45.6V27.5c0-2.6 1-4.8 2.4-6.2 1.4 1.4 2.4 3.6 2.4 6.2v18.1z" fill="#f3ece0" opacity=".92" />
+        </svg>
+        <div class="boot__word">HALCYON</div>
+        <div class="boot__sub">FRONT</div>
+        <div class="boot__line"><i id="boot-bar"></i></div>
+        <noscript><p class="boot__note">HALCYON FRONT needs JavaScript to run. Please enable it in your browser settings and reload.</p></noscript>
+      </div>
+    </div>
+    <script>
+      // Boot progress hook used by main.ts (0..1).
+      window.__hfBoot = function (k) {
+        var bar = document.getElementById('boot-bar');
+        if (bar) bar.style.transform = 'scaleX(' + Math.max(0.06, Math.min(1, k)) + ')';
+      };
+    </script>
+
+    <canvas id="game" tabindex="-1" aria-label="HALCYON FRONT"></canvas>
+    <div id="ui"></div>
+
+    <div class="rotate-prompt" role="alert" aria-live="polite">
+      <div>
+        <div class="rotate-prompt__phone"></div>
+        <h2 data-i18n="common.rotate.title">Rotate your device</h2>
+        <p data-i18n="common.rotate.body">HALCYON FRONT plays in landscape.</p>
+      </div>
+    </div>
+
+    <script type="module" src="/src/client/main.ts"></script>
+  </body>
+</html>

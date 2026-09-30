@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1f1c2a"/><stop offset=".6" stop-color="#3a2a36"/><stop offset="1" stop-color="#5a3a3c"/></linearGradient>
+    <linearGradient id="sun" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe6b0"/><stop offset=".55" stop-color="#f6ad5e"/><stop offset="1" stop-color="#df6f45"/></linearGradient>
+    <mask id="cut"><rect width="512" height="512" fill="#fff"/><rect y="250" width="512" height="11" fill="#000"/><rect y="276" width="512" height="15" fill="#000"/><rect y="305" width="512" height="19" fill="#000"/><rect y="340" width="512" height="200" fill="#000"/></mask>
+  </defs>
+  <rect width="512" height="512" fill="url(#sky)"/>
+  <circle cx="256" cy="340" r="132" fill="url(#sun)" mask="url(#cut)"/>
+  <path d="M104 342h304" stroke="#f3ece0" stroke-opacity=".6" stroke-width="7" stroke-linecap="round"/>
+  <path d="M234 342 249 118h14l15 224h-14l-8-138-8 138z" fill="#f3ece0"/>
+  <path d="M312 342V226c0-16 6-30 15-39 9 9 15 23 15 39v116z" fill="#f3ece0"/>
+</svg>

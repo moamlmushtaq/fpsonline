@@ -69,7 +69,7 @@ export function proceduralTexture(name: TexName, size = 512, anisotropy = 1): TH
     return t;
   }
   const canvas = makeCanvas(size, size);
-  const ctx = canvas.getContext('2d') as Ctx;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true }) as Ctx;
   RECIPES[name](ctx, size, mulberry32(hashName(name)));
   t = new THREE.CanvasTexture(canvas);
   t.name = `tex.${name}`;
@@ -149,7 +149,7 @@ function fbm(u: number, v: number, base: number, octaves: number, seed: number):
 function lowFreq(ctx: Ctx, size: number, res: number, fn: (u: number, v: number) => [number, number, number]): void {
   const pad = res + 2;
   const c = makeCanvas(pad, pad);
-  const cx = c.getContext('2d') as Ctx;
+  const cx = c.getContext('2d', { willReadFrequently: true }) as Ctx;
   const img = cx.createImageData(pad, pad);
   for (let y = 0; y < pad; y++) {
     for (let x = 0; x < pad; x++) {
@@ -642,7 +642,7 @@ const RECIPES: Record<TexName, Recipe> = {
 /** Blends a low-frequency mottled layer over the canvas at `alpha`. */
 function lowFreqOverlay(ctx: Ctx, size: number, res: number, seed: number, alpha: number, col: [number, number, number]): void {
   const c = makeCanvas(size, size);
-  const cx = c.getContext('2d') as Ctx;
+  const cx = c.getContext('2d', { willReadFrequently: true }) as Ctx;
   lowFreq(cx, size, res, (u, v) => {
     const n = fbm(u, v, 2, 3, seed);
     const f = 0.7 + n * 0.6;

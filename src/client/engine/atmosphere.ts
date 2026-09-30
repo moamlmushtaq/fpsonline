@@ -22,6 +22,9 @@ import type { Vec3 } from '../../shared/types';
 import { ENV } from './palette';
 
 const SHADOW_HALF = 35;
+/** Renderer-side light calibration (map data stays in artist units). */
+const SUN_BOOST = 1.4;
+const HEMI_BOOST = 1.15;
 
 // ── Sky shader ──────────────────────────────────────────────────────────────
 
@@ -260,7 +263,9 @@ class AtmosphereImpl implements Atmosphere {
     scene.background = new THREE.Color(l.fogColor);
 
     // Sun.
-    this.sun = new THREE.DirectionalLight(new THREE.Color(l.sunColor), l.sunIntensity);
+    // Stylized balance: a strong warm key and a cooler, dimmer sky fill give the
+    // warm-light / cool-shadow split of a painted golden-hour frame.
+    this.sun = new THREE.DirectionalLight(new THREE.Color(l.sunColor), l.sunIntensity * SUN_BOOST);
     this.sun.name = 'sun';
     const sc = this.sun.shadow.camera;
     sc.left = -SHADOW_HALF;
@@ -276,7 +281,13 @@ class AtmosphereImpl implements Atmosphere {
 
     // Hemisphere fill (sky/ground bounce). Slightly boosted: painterly shadows
     // are luminous, never black (the grading pass tints them cool-violet).
-    this.hemi = new THREE.HemisphereLight(new THREE.Color(l.hemiSky), new THREE.Color(l.hemiGround), l.hemiIntensity * 1.55);
+    // Sky fill leans toward the zenith color and gets a little extra chroma so
+    // shadows read as luminous cool color rather than grey.
+    const skyFill = new THREE.Color(l.hemiSky).lerp(new THREE.Color(l.skyZenith), 0.45);
+    const hsl = { h: 0, s: 0, l: 0 };
+    skyFill.getHSL(hsl);
+    skyFill.setHSL(hsl.h, Math.min(1, hsl.s * 1.35), hsl.l);
+    this.hemi = new THREE.HemisphereLight(skyFill, new THREE.Color(l.hemiGround), l.hemiIntensity * HEMI_BOOST);
     scene.add(this.hemi);
 
     this.fill = new THREE.DirectionalLight(new THREE.Color(l.hemiGround).lerp(new THREE.Color(l.sunColor), 0.35), l.sunIntensity * 0.16);

@@ -45,4 +45,8 @@ export default {
   'hud.pause.leaveBody': 'A bot will take your place. Progress from this match will not be counted.',
   'hud.pause.leaveOk': 'Leave',
   'hud.pause.stay': 'Stay',
+  'hud.compass.N': 'N',
+  'hud.compass.E': 'E',
+  'hud.compass.S': 'S',
+  'hud.compass.W': 'W',
 } satisfies Record<string, string>;

@@ -376,7 +376,7 @@ export function statBar(label: string, value01: number, display: string): HTMLEl
 
 // ── Dial decoration (analog instrument) ─────────────────────────────────────
 
-export function dialSvg(o: { size?: number; value?: number; ticks?: number; spin?: boolean; cls?: string } = {}): string {
+export function dialSvg(o: { size?: number; value?: number; ticks?: number; spin?: boolean; cls?: string; needle?: boolean } = {}): string {
   const ticks = o.ticks ?? 36;
   const v = o.value ?? 0;
   let marks = '';
@@ -395,7 +395,7 @@ export function dialSvg(o: { size?: number; value?: number; ticks?: number; spin
     <circle cx="50" cy="50" r="48" stroke-opacity=".25"/>
     <g>${marks}</g>
     <circle cx="50" cy="50" r="30" stroke-opacity=".2"/>
-    <g class="dial__needle" style="transform:rotate(${deg}deg)"><line x1="50" y1="50" x2="50" y2="14" stroke-width="2"/><circle cx="50" cy="50" r="3.5" fill="currentColor"/></g>
+    ${o.needle === false ? '' : `<g class="dial__needle" style="transform:rotate(${deg}deg)"><line x1="50" y1="50" x2="50" y2="14" stroke-width="2"/><circle cx="50" cy="50" r="3.5" fill="currentColor"/></g>`}
   </svg>`;
 }
 
@@ -475,7 +475,14 @@ export function namecardSvg(id: string): string {
   // Unique gradient ids per instance: duplicated ids break when the first copy is hidden.
   const u = `nc${++svgUid}`;
   const motif = (MOTIFS[nc.motif] ?? '').replace(/url\(#m\)/g, `url(#${u}m)`);
-  return `<svg viewBox="0 0 320 120" preserveAspectRatio="xMaxYMid slice" aria-hidden="true"><defs><linearGradient id="${u}g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${nc.from}"/><stop offset="1" stop-color="${nc.to}"/></linearGradient><radialGradient id="${u}m" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#fff6dc" stop-opacity=".95"/><stop offset="1" stop-color="#ffb46b" stop-opacity=".7"/></radialGradient></defs><rect width="320" height="120" fill="url(#${u}g)"/>${motif}</svg>`;
+  // Motif only (the gradient is the element's CSS background) so wide banners never crop it.
+  return `<svg viewBox="140 0 180 120" preserveAspectRatio="xMaxYMid meet" aria-hidden="true"><defs><radialGradient id="${u}m" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#fff6dc" stop-opacity=".95"/><stop offset="1" stop-color="#ffb46b" stop-opacity=".7"/></radialGradient></defs>${motif}</svg>`;
+}
+
+/** CSS background for a namecard banner. */
+export function namecardBackground(id: string): string {
+  const nc = findNamecard(id);
+  return `linear-gradient(115deg, ${nc.from} 0%, ${nc.from} 35%, ${nc.to} 100%)`;
 }
 
 export function namecardIsDark(id: string): boolean {
@@ -485,7 +492,9 @@ export function namecardIsDark(id: string): boolean {
 
 export function namecard(o: { id: string; name: string; level: number; sub?: string; subRaw?: string; cls?: string }): HTMLElement {
   const el = h('div', { class: `namecard ${namecardIsDark(o.id) ? 'namecard--dark' : ''} ${o.cls ?? ''}` });
-  el.append(h('div', { class: 'namecard__bg', html: namecardSvg(o.id) }));
+  const bg = h('div', { class: 'namecard__bg', html: namecardSvg(o.id) });
+  bg.style.background = namecardBackground(o.id);
+  el.append(bg);
   el.append(h('div', { class: 'namecard__lvl', text: String(o.level) }));
   const text = h('div', { class: 'namecard__text' }, h('div', { class: 'namecard__name', text: o.name }));
   if (o.sub) text.append(h('div', { class: 'namecard__sub', t: o.sub }));

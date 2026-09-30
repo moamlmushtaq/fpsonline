@@ -12,7 +12,7 @@
 import type { Screen, ScreenId, UIManager, UiSound } from '../contracts';
 import type { App } from '../app';
 import { captureState, h } from './components';
-import { i18n, setText } from './i18n';
+import { i18n } from './i18n';
 import { icon } from './icons';
 import { MenuScreen } from './screens/menu';
 import { PlayScreen } from './screens/play';
@@ -590,9 +590,4 @@ export class UI implements UIManager {
     if (el.getAttribute('aria-disabled') === 'true') return;
     this.sfx((el.dataset.sfx as UiSound) || 'click');
   }
-}
-
-/** Convenience used by screens to label things with a translated string in one call. */
-export function label(el: HTMLElement, key: string, params?: Record<string, string | number>): HTMLElement {
-  return setText(el, key, params);
 }

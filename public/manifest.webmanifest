@@ -1,0 +1,19 @@
+{
+  "name": "HALCYON FRONT",
+  "short_name": "HALCYON",
+  "description": "A retro-futurist online multiplayer first-person shooter. Play instantly in your browser.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "landscape",
+  "background_color": "#1b1618",
+  "theme_color": "#1b1618",
+  "lang": "en",
+  "dir": "auto",
+  "categories": ["games", "entertainment"],
+  "icons": [
+    { "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icon-maskable.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}

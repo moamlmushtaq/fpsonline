@@ -76,7 +76,7 @@ uniform float uPaintRadius;
 varying vec2 vUv;
 
 // ACES filmic fit (identical to three.js ACESFilmicToneMapping).
-vec3 RRTAndODTFit(vec3 v) {
+vec3 hfRRTAndODTFit(vec3 v) {
   vec3 a = v * (v + 0.0245786) - 0.000090537;
   vec3 b = v * (0.983729 * v + 0.4329510) + 0.238081;
   return a / b;
@@ -86,7 +86,7 @@ vec3 aces(vec3 color) {
   const mat3 ACESOutputMat = mat3(vec3(1.60475, -0.10208, -0.00327), vec3(-0.53108, 1.10813, -0.07276), vec3(-0.07367, -0.00605, 1.07602));
   color *= uExposure / 0.6;
   color = ACESInputMat * color;
-  color = RRTAndODTFit(color);
+  color = hfRRTAndODTFit(color);
   color = ACESOutputMat * color;
   return clamp(color, 0.0, 1.0);
 }
@@ -151,8 +151,8 @@ void main() {
 
   // Painterly shadow lift toward the cool-violet shadow tint (never pure black).
   float sh = 1.0 - smoothstep(0.0, 0.42, l);
-  col = mix(col, max(col, uShadowTint), sh * 0.55);
-  col += uShadowTint * sh * sh * 0.10;
+  col = mix(col, max(col, uShadowTint), sh * 0.3);
+  col += uShadowTint * sh * sh * 0.06;
 
   // Soft oval vignette.
   vec2 q = (uv - 0.5) * vec2(uResolution.x / uResolution.y, 1.0);
@@ -198,6 +198,8 @@ class GradingPass extends Pass {
       fragmentShader: GRADING_FRAG,
       depthTest: false,
       depthWrite: false,
+      // We tone map + encode ourselves; keep three from injecting its own.
+      toneMapped: false,
     });
     this.quad = new FullScreenQuad(this.material);
   }
@@ -279,7 +281,7 @@ export class PostPipeline {
     const res = new THREE.Vector2(this.w, this.h);
     const bloom = new UnrealBloomPass(res, 0.6, 0.55, BLOOM_THRESHOLD);
     // Soft knee so the transition into bloom is gentle (default is a hard 0.01).
-    bloom.highPassUniforms['smoothWidth'].value = 0.35;
+    (bloom.highPassUniforms as Record<string, THREE.IUniform>).smoothWidth.value = 0.35;
     this.bloomPass = bloom;
     this.composer.insertPass(bloom, 2);
   }

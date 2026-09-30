@@ -3,7 +3,7 @@ export default {
   'menu.play': 'Play',
   'menu.quickPlay': 'Quick Play',
   'menu.quickPlaySub': 'Team Deathmatch · 5 v 5',
-  'menu.quickPlayOffline': 'Offline · Team Deathmatch vs bots',
+  'menu.quickPlayOffline': 'Offline · TDM vs bots',
   'menu.modes': 'Modes',
   'menu.chip.tdm': 'Team Deathmatch',
   'menu.chip.control': 'Launch Control',

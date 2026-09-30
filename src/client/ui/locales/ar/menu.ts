@@ -3,7 +3,7 @@ export default {
   'menu.play': 'العب',
   'menu.quickPlay': 'لعب سريع',
   'menu.quickPlaySub': 'قتال الفرق · 5 ضد 5',
-  'menu.quickPlayOffline': 'دون اتصال · قتال الفرق ضد الآليين',
+  'menu.quickPlayOffline': 'دون اتصال · فرق ضد الآليين',
   'menu.modes': 'الأنماط',
   'menu.chip.tdm': 'قتال الفرق',
   'menu.chip.control': 'السيطرة على الإطلاق',

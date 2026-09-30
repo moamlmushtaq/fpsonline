@@ -272,7 +272,7 @@ export class ProfileStore {
    * the bot-match reduction), lifetime stats, rating (mirrored locally for guests) and
    * range bests. Returns everything the results screen animates.
    */
-  applyMatch(results: MatchResults, youId: number, ratingDelta: number, opts: { botMatch?: boolean } = {}): MatchApplication {
+  applyMatch(results: MatchResults, youId: number, ratingDelta: number, opts: { botMatch?: boolean; dryRun?: boolean } = {}): MatchApplication {
     const p = this._value;
     const me = results.players.find((r) => r.id === youId);
     const stats = me ? me.stats : emptyStats();
@@ -320,6 +320,10 @@ export class ProfileStore {
       if (!rangeBest || stats.score > rangeBest.score) rangeBest = { score: stats.score, accuracy, headshots: stats.headshots };
     }
 
+    const application = { xp, before, after, unlocks, won, draw, mvp, stats, ratingBefore, ratingAfter };
+    // Dry runs (debug previews) compute everything without touching saved progress.
+    if (opts.dryRun) return application;
+
     this.update({
       xp: newXp,
       rating: ratingAfter,
@@ -330,7 +334,7 @@ export class ProfileStore {
     });
     void this.pushProfile();
 
-    return { xp, before, after, unlocks, won, draw, mvp, stats, ratingBefore, ratingAfter };
+    return application;
   }
 
   // ── Account sync ───────────────────────────────────────────────────────

@@ -45,4 +45,8 @@ export default {
   'hud.pause.leaveBody': 'سيحلّ لاعب آلي محلّك، ولن يُحتسب تقدّمك في هذه المباراة.',
   'hud.pause.leaveOk': 'مغادرة',
   'hud.pause.stay': 'البقاء',
+  'hud.compass.N': 'ش',
+  'hud.compass.E': 'ق',
+  'hud.compass.S': 'ج',
+  'hud.compass.W': 'غ',
 } satisfies Record<string, string>;

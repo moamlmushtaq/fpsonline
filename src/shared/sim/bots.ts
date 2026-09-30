@@ -103,6 +103,8 @@ export class BotController {
   private holdYaw = 0;
   private holdT = 0;
   private holdStart = 0;
+  /** Tick after which a marksman may settle into another long-range watch. */
+  private watchReady = 0;
   private readonly stillRef: Vec3 = { x: 0, y: 0, z: 0 };
   private stillSince = 0;
   private searchT = 0;
@@ -120,6 +122,7 @@ export class BotController {
   private stuckCount = 0;
   private unstickT = 0;
   private unstickDir = 1;
+  private dodgeT = 0;
   private moveX = 0;
   private moveZ = 0;
   private wantSprint = false;
@@ -279,6 +282,7 @@ export class BotController {
     if (this.holdT > 0) this.holdT -= dt;
     if (this.hurtT > 0) this.hurtT -= dt;
     if (this.hurtLookT > 0) this.hurtLookT -= dt;
+    if (this.dodgeT > 0) this.dodgeT -= dt;
     if (this.burstT > 0) {
       this.burstT -= dt;
       if (this.burstT <= 0) this.pauseT = this.rand(this.prof.burstPause[0], this.prof.burstPause[1]);
@@ -372,6 +376,11 @@ export class BotController {
     }
     if (tick - this.stillSince < SIM_HZ * (6.5 + this.rng() * 1.5)) return;
     this.stillSince = tick;
+    if (this.targetVisible) {
+      // Mid-fight: at least side-step hard for a moment (and then relocate).
+      this.dodgeT = this.rand(0.7, 1.1);
+      this.strafeDir = this.rng() < 0.5 ? -1 : 1;
+    }
     const nav = this.sim.nav;
     // A spot 4–14 m away, preferably not closer to the enemy we are watching.
     for (let i = 0; i < 10; i++) {
@@ -387,6 +396,11 @@ export class BotController {
         if (i < 6 && after < before - 3 && activeWeapon(p.combat) === 'longline') continue;
       }
       this.setGoal('shift', np, 5);
+      return;
+    }
+    const k = nav.randomNode(this.rng, pos, 20);
+    if (k >= 0) {
+      this.setGoal('shift', nav.nodePos(k), 6);
       return;
     }
     this.goalKind = 'none';
@@ -637,9 +651,12 @@ export class BotController {
       // Lane discipline: don't desert the flank to chase something across the map.
       const info = this.dir.lanes;
       const crossLane = !!info && zone === null && !sim.ffa && laneOfX(info, this.lastKnown.x) !== this.lane && d > (this.prof.tactics >= 0.5 ? 18 : 26);
-      if (wid === 'longline' && d > 14 && this.knownBySight && !(this.goalKind === 'hold' && tick - this.holdStart > SIM_HZ * 6)) {
-        // Marksmen keep the angle instead of running into close quarters.
-        if (this.goalKind !== 'hold') this.startHold(yawFromDir(this.lastKnown.x - pos.x, this.lastKnown.z - pos.z), this.rand(2, 4));
+      if (wid === 'longline' && d > 14 && this.knownBySight && (this.goalKind === 'hold' ? tick - this.holdStart < SIM_HZ * 6 : tick >= this.watchReady && tick - this.stillSince < SIM_HZ * 2)) {
+        // Marksmen keep the angle instead of running into close quarters (for a while).
+        if (this.goalKind !== 'hold') {
+          this.startHold(yawFromDir(this.lastKnown.x - pos.x, this.lastKnown.z - pos.z), this.rand(2, 4));
+          this.watchReady = tick + SIM_HZ * 12;
+        }
         return;
       }
       if (!offObjective && !camping && !crossLane && (this.knownBySight ? d < 45 : d < 26)) {
@@ -763,7 +780,7 @@ export class BotController {
 
   private holdScale(p: SimPlayer): number {
     const wid = activeWeapon(p.combat);
-    return wid === 'longline' ? 2.2 : wid === 'breaker' || wid === 'swift' ? 0.6 : 1;
+    return wid === 'longline' ? 1.6 : wid === 'breaker' || wid === 'swift' ? 0.6 : 1;
   }
 
   /** Next station along our push; at the far end, swing to another lane's middle. */
@@ -1039,7 +1056,7 @@ export class BotController {
         // Close range: dance. Mid/long range with rifles: plant the feet while a burst is out.
         const planted = td > 16 && wid !== 'swift' && wid !== 'breaker';
         const steady = planted ? (this.burstT > 0 ? 0.15 : 0.6) : this.burstT > 0 ? 0.7 : 1;
-        const strafe = this.strafeDir * this.prof.strafe * steady * (repositioning ? 0.4 : 1);
+        const strafe = this.dodgeT > 0 ? this.strafeDir : this.strafeDir * this.prof.strafe * steady * (repositioning ? 0.4 : 1);
         dx = bx - uz * strafe;
         dz = bz + ux * strafe;
         if (!(wid === 'breaker' && this.wantSprint)) this.wantSprint = false;

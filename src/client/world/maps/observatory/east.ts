@@ -474,11 +474,14 @@ function buildStation(kit: ObsKit, root: THREE.Object3D, rnd: () => number, deco
 
   kit.section = 'east.wheelhouse';
   // Bullwheel house: steel frame + corrugated cladding, open toward the pylon.
-  kit.add('corrugated', box(50, D, -3.5, 54.4, D + 4.4, -3.2), ENV.boneShade, { base: D });
-  kit.add('corrugated', box(50, D, 3.2, 54.4, D + 4.4, 3.5), ENV.boneShade, { base: D });
-  kit.add('corrugated', box(50, D, -3.5, 50.3, D + 4.4, 3.5), ENV.boneShade, { base: D });
-  kit.add('metal', box(49.8, D + 4.4, -3.8, 55.2, D + 4.7, 3.8), '#6d7076', { flat: true });
-  for (const z of [-3.35, 3.35]) kit.add('metal', box(54.3, D, z - 0.15, 54.6, D + 4.4, z + 0.15), '#55585c', { flat: true });
+  const WH = OBS.wheelTop - D; // house height (collision top = OBS.wheelTop)
+  kit.add('corrugated', box(50, D, -3.5, 54.4, D + WH, -3.2), ENV.boneShade, { base: D });
+  kit.add('corrugated', box(50, D, 3.2, 54.4, D + WH, 3.5), ENV.boneShade, { base: D });
+  kit.add('corrugated', box(50, D, -3.5, 50.3, D + WH, 3.5), ENV.boneShade, { base: D });
+  kit.add('metal', box(49.8, D + WH, -3.8, 55.2, D + WH + 0.3, 3.8), '#6d7076', { flat: true });
+  for (const z of [-3.35, 3.35]) kit.add('metal', box(54.3, D, z - 0.15, 54.6, D + WH, z + 0.15), '#55585c', { flat: true });
+  // The open east side: a gantry beam across the top so the house reads closed from the pylon.
+  kit.add('metal', box(54.3, D + WH - 0.5, -3.5, 54.6, D + WH, 3.5), '#55585c', { flat: true });
   kit.add('sign', quad(50.0 - 0.02, D + 3.5, 0, 3.6, 0.45, -1, 0, rect('signCable', 2)), '#ffffff', { flat: true });
   kit.add('glow', box(49.9, D + 2.9, -0.3, 49.97, D + 3.0, 0.3), ENV.glowGold, { k: 2.5, flat: true });
   kit.add('pool', floorQuad(48.8, D + 0.05, 0, 3, 3), ENV.glowGold, { k: 0.38, flat: true });

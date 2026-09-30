@@ -106,7 +106,15 @@ export const OBS = {
   /** Dormitory footprint; `bay` = inner face of the thick west wall (built-in bunk bays, benches). */
   dorm: { x0: 24.5, x1: 34.5, z: 15, h: 3.4, roofTop: 4.5, bay: 25.9 },
   /** Generator / boiler house: tall enough that no crate stack reaches its roof (no roof route). */
-  genTop: 5,
+  genTop: 5.4,
+  /** Spawn-yard wall height: nothing climbable within jumping distance reaches the coping. */
+  yardWall: 6,
+  /** Tops of the rock rib (west | courtyard divider) and the forecourt outcrop. */
+  ribTop: 6.2,
+  outcropTop: 3.2,
+  /** Dish pedestal height above the plateau; bullwheel house top. */
+  pedestal: 3.8,
+  wheelTop: 7.6,
   /** Spawn-yard gates (x ranges): W and E sit at the cliff edges behind the ridge ramp / forecourt cover. */
   gates: [
     [-57, -53],
@@ -183,10 +191,10 @@ k.ramp(-57, 0, 30, -49, R, 38, 'z', -1, 'rock', 'hidden'); // path ramp down to 
 k.box(-57, R, 21, -52.5, R + 2.8, 25, 'metal', 'hidden'); // signal hut on the path
 k.ramp(-40, 0, 8.5, -33, R, 12.5, 'x', -1, 'rock', 'hidden'); // plateau access ramp
 k.box(-44, R, 5.5, -42.4, R + 1.1, 7.6, 'metal', 'hidden'); // cable reel at the ramp head
-k.box(-53, R, 4, -48, R + 3.4, 8, 'concrete', 'hidden'); // dish pedestal
+k.box(-53, R, 4, -48, R + OBS.pedestal, 8, 'concrete', 'hidden'); // dish pedestal
 k.box(-42, 0, 20, -34, 3.2, 25, 'rock', 'hidden'); // under-ridge boulder
-k.box(-28, 0, 7, -23, 5, 27, 'rock', 'hidden'); // divider rib (west | courtyard)
-k.box(-31, 0, 30.5, -25, 3.5, 40.5, 'rock', 'hidden'); // forecourt outcrop
+k.box(-28, 0, 7, -23, OBS.ribTop, 27, 'rock', 'hidden'); // divider rib (west | courtyard)
+k.box(-31, 0, 30.5, -25, OBS.outcropTop, 40.5, 'rock', 'hidden'); // forecourt outcrop
 
 // ── East lane (south half): dormitory walls, deck ramp, shed, generator ────
 const dm = OBS.dorm;
@@ -210,8 +218,8 @@ k.box(49.5, 0, 27.5, 57, 2.8, 30.5, 'fabric', 'hidden');
 // ridge crest hides it from the array; E (x 53…57) sits behind the tarp-covered
 // cabin; the centre gate gets a wind-break porch 4 m in front of it (exits go
 // left / right). Baffles 1.6 m behind each gate close the view into the yard.
-k.box(-53, 0, 42, -2, 4, 43, 'concrete', 'hidden');
-k.box(2, 0, 42, 53, 4, 43, 'concrete', 'hidden');
+k.box(-53, 0, 42, -2, OBS.yardWall, 43, 'concrete', 'hidden');
+k.box(2, 0, 42, 53, OBS.yardWall, 43, 'concrete', 'hidden');
 k.box(-57, 0, 44.6, -47, 3.2, 45.6, 'concrete', 'hidden'); // blast baffles behind each gate
 k.box(-8.5, 0, 44.6, 8.5, 3.2, 45.6, 'concrete', 'hidden');
 k.box(47, 0, 44.6, 57, 3.2, 45.6, 'concrete', 'hidden');
@@ -228,7 +236,7 @@ k.box(28.4, 0, -0.8, 30.6, 0.9, 0.8, 'wood', 'hidden'); // common-room table (th
 k.box(42, 0, -9, 57, D, 9, 'concrete', 'hidden'); // pylon station deck
 k.box(40.6, 0, -1.8, 42, 1.3, 1.8, 'wood', 'hidden'); // mantle crate onto the deck
 k.box(36.6, 0, -1.2, 38.8, 1.9, 1.2, 'metal', 'hidden'); // transformer cabinet (breaks the alley sightline)
-k.box(50, D, -3.5, 55, 7, 3.5, 'metal', 'hidden'); // bullwheel house
+k.box(50, D, -3.5, 55, OBS.wheelTop, 3.5, 'metal', 'hidden'); // bullwheel house
 k.box(55, D, -3, 57, 9, 3, 'concrete', 'hidden'); // pylon anchor block
 k.box(44, D, -1.2, 45.6, D + 1.2, 1.2, 'metal', 'hidden'); // cable drum
 

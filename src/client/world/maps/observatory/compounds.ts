@@ -21,6 +21,7 @@ import { drift, lichen } from './rocks';
 const WALL = '#d3cbbc';
 
 export function buildCompounds(kit: ObsKit, rnd: () => number, decor: number): void {
+  const YW = OBS.yardWall;
   for (const s of [-1, 1] as const) {
     kit.section = 'spawn.walls';
     // Yard walls (4 m) with coping + pilasters, gate portals, baffles.
@@ -32,15 +33,16 @@ export function buildCompounds(kit: ObsKit, rnd: () => number, decor: number): v
     const z1 = s * 43;
     const band = s > 0 ? ENV.terracottaFaded : ENV.sage;
     for (const [a, b] of segs) {
-      kit.add('concrete', rbox(a, 0, Math.min(z0, z1), b, 4, Math.max(z0, z1), 0.05), WALL, { base: 0 });
-      kit.add('concrete', box(a - 0.05, 3.85, Math.min(z0, z1) - 0.12, b + 0.05, 4.1, Math.max(z0, z1) + 0.12), ENV.bone, { flat: true });
+      kit.add('concrete', rbox(a, 0, Math.min(z0, z1), b, YW, Math.max(z0, z1), 0.05), WALL, { base: 0 });
+      kit.add('concrete', box(a - 0.05, YW - 0.15, Math.min(z0, z1) - 0.12, b + 0.05, YW + 0.1, Math.max(z0, z1) + 0.12), ENV.bone, { flat: true });
       // Pilasters on both faces every 5 m (the long wall reads as bays, not a blank slab).
       for (let x = a + 3; x < b - 1; x += 5) {
-        kit.add('concrete', box(x - 0.25, 0.4, s * 41.85, x + 0.25, 3.85, s * 41.95), WALL, { flat: true });
-        kit.add('concrete', box(x - 0.25, 0.4, s * 43.05, x + 0.25, 3.85, s * 43.15), WALL, { flat: true });
+        kit.add('concrete', box(x - 0.25, 0.4, s * 41.85, x + 0.25, YW - 0.15, s * 41.95), WALL, { flat: true });
+        kit.add('concrete', box(x - 0.25, 0.4, s * 43.05, x + 0.25, YW - 0.15, s * 43.15), WALL, { flat: true });
       }
       // A faded painted band on both faces + a darker plinth.
       kit.add('paint', box(a, 1.1, s * 41.98, b, 1.35, s * 41.99), band, { flat: true, snow: 0 });
+      kit.add('paint', box(a, YW - 1.2, s * 41.98, b, YW - 0.95, s * 41.99), band, { flat: true, snow: 0 });
       kit.add('paint', box(a, 2.6, s * 43.01, b, 2.8, s * 43.02), band, { flat: true, snow: 0 });
       kit.add('concrete', box(a, 0, Math.min(z0, z1) - 0.06, b, 0.45, Math.max(z0, z1) + 0.06), ENV.concreteDark, { flat: true, snow: 0.7 });
     }
@@ -54,11 +56,13 @@ export function buildCompounds(kit: ObsKit, rnd: () => number, decor: number): v
     for (const [ga, gb] of OBS.gates) {
       for (const x of [ga - 0.4, gb + 0.4]) {
         // Portal pilasters sit inside the wall line (no invisible-collision mismatch) and rise above it.
-        kit.add('concrete', rbox(x - 0.4, 0, s * 42.5 - 0.55, x + 0.4, 4.7, s * 42.5 + 0.55, 0.05), ENV.bone, { base: 0 });
-        kit.add('glow', sphere(x, 4.85, s * 42.5, 0.16, 8, 6), ENV.glowGold, { k: 3, flat: true });
+        kit.add('concrete', rbox(x - 0.4, 0, s * 42.5 - 0.55, x + 0.4, YW + 0.7, s * 42.5 + 0.55, 0.05), ENV.bone, { base: 0 });
+        kit.add('glow', sphere(x, YW + 0.85, s * 42.5, 0.16, 8, 6), ENV.glowGold, { k: 3, flat: true });
       }
       kit.add('pool', floorQuad((ga + gb) / 2, 0.04, s * 40.8, 5, 3.5), ENV.glowGold, { k: 0.45, flat: true });
       kit.add('metal', box(ga - 0.4, 4.3, s * 42.45, gb + 0.4, 4.45, s * 42.55), '#55585c', { flat: true });
+      // Wall above the gate opening (the collision is the full-height wall with a 4.3 m portal cut).
+      kit.add('concrete', box(ga, 4.45, Math.min(z0, z1), gb, YW, Math.max(z0, z1)), WALL, { flat: true });
     }
     // Baffles (3.2 m) with a painted stripe.
     for (const [a, b] of [

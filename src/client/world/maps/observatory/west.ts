@@ -91,14 +91,15 @@ export function buildWest(kit: ObsKit, root: THREE.Object3D, rnd: () => number, 
   for (const s of [-1, 1]) {
     const z0 = s > 0 ? 4 : -8;
     const z1 = s > 0 ? 8 : -4;
-    kit.add('concrete', rbox(-53, R, z0, -48, R + 3.4, z1, 0.08), '#d2cabb', { base: R });
+    const PT = R + OBS.pedestal;
+    kit.add('concrete', rbox(-53, R, z0, -48, PT, z1, 0.08), '#d2cabb', { base: R });
     kit.add('concrete', box(-53.25, R, z0 - 0.25, -47.75, R + 0.45, z1 + 0.25), ENV.concreteDark, { flat: true });
     kit.add('metal', box(-48.02, R + 0.4, (z0 + z1) / 2 - 0.5, -47.9, R + 2.4, (z0 + z1) / 2 + 0.5), '#8e968a', { flat: true });
     kit.add('sign', quad(-47.88, R + 1.7, (z0 + z1) / 2, 0.9, 0.45, 1, 0, rect('dials', 2)), '#ffffff', { flat: true });
     // Ladder on the pedestal (visual, flush).
-    for (let y = R + 0.4; y < R + 3.3; y += 0.35) kit.add('metal', box(-50.9, y, s > 0 ? z1 : z0 - 0.06, -50.1, y + 0.04, s > 0 ? z1 + 0.06 : z0), '#55585c', { flat: true });
+    for (let y = R + 0.4; y < PT - 0.1; y += 0.35) kit.add('metal', box(-50.9, y, s > 0 ? z1 : z0 - 0.06, -50.1, y + 0.04, s > 0 ? z1 + 0.06 : z0), '#55585c', { flat: true });
     const g = new THREE.Group();
-    g.position.set(-50.5, R + 3.4, (z0 + z1) / 2);
+    g.position.set(-50.5, PT, (z0 + z1) / 2);
     const dk = new ObsKit(kit.ctx, 'obs.dish');
     dk.snowDefault = 0.6;
     buildDish(dk, s);
@@ -169,8 +170,8 @@ export function buildWest(kit: ObsKit, root: THREE.Object3D, rnd: () => number, 
   // Under-ridge boulders, the rib, the forecourt outcrop (collision boxes, all covered by rock).
   for (const s of [-1, 1]) {
     rockBox(kit, -42, -0.3, s > 0 ? 20 : -25, -34, 3.2, s > 0 ? 25 : -20, { amp: 0.55, crest: 0.6, color: ROCK });
-    rockBox(kit, -28, -0.3, s > 0 ? 7 : -27, -23, 5, s > 0 ? 27 : -7, { amp: 0.55, crest: 0.7, seg: 1.1, color: ROCK });
-    rockBox(kit, -31, -0.3, s > 0 ? 30.5 : -40.5, -25, 3.5, s > 0 ? 40.5 : -30.5, { amp: 0.55, crest: 0.8, color: ROCK_DARK });
+    rockBox(kit, -28, -0.3, s > 0 ? 7 : -27, -23, OBS.ribTop, s > 0 ? 27 : -7, { amp: 0.55, crest: 0.7, seg: 1.1, color: ROCK });
+    rockBox(kit, -31, -0.3, s > 0 ? 30.5 : -40.5, -25, OBS.outcropTop, s > 0 ? 40.5 : -30.5, { amp: 0.55, crest: 0.8, color: ROCK_DARK });
     // Glowing lichen on the shaded (west) feet of the rocks.
     lichen(kit, -28.6, 0, s * 12, 1.8, ENV.glowChartreuse, rnd);
     lichen(kit, -42.6, 0, s * 23.5, 1.5, ENV.glowSoftPink, rnd);

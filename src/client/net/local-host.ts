@@ -81,6 +81,8 @@ class MainThreadHost implements Backend {
       host.disconnect(conn);
     } else if (msg.op === 'debug') {
       debugHostCommand(host, msg.action);
+    } else if (msg.op === 'warm') {
+      // Prewarming on the page's own thread would only cause hitches: skip it.
     } else {
       const conn = this.conns.get(msg.c);
       if (conn) host.receive(conn, msg.m);
@@ -268,6 +270,15 @@ export class LocalHostLink {
   disconnect(id: string): void {
     if (!this.endpoints.delete(id)) return;
     this.backendImpl?.post({ op: 'disconnect', c: id });
+  }
+
+  /**
+   * Boots the host ahead of time (idle, after the menu is up) and lets it build
+   * the maps' collision worlds + nav graphs, so the first offline match /
+   * training session starts without waiting for any of it.
+   */
+  warm(): void {
+    this.ensure().post({ op: 'warm' });
   }
 
   /** Debug/e2e only: see ToHost 'debug'. */

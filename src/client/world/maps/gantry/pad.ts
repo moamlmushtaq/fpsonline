@@ -506,7 +506,8 @@ export function buildPad(kit: DecorKit, rnd: () => number, root: THREE.Group, de
   // pouring horizontally into the trench mouth.
   const shaftAnchors: PadAnim['shaftAnchors'] = [
     { pos: new THREE.Vector3(-3.2, D + 3.5, 0.3), dir: new THREE.Vector3(0.12, -1, -0.05).normalize(), length: 7.5, radius: 1.3, color: ENV.glowGold, intensity: 1.2 },
-    { pos: new THREE.Vector3(22, 3.4, -1.2), dir: new THREE.Vector3(-0.96, -0.1, 0.24).normalize(), length: 20, radius: 2.8, color: '#ffd2a0', intensity: 0.9 },
+    // Sunset slipping past the deluge valve house into the trench mouth.
+    { pos: new THREE.Vector3(21.5, 3.3, -3.1), dir: new THREE.Vector3(-0.96, -0.1, 0.24).normalize(), length: 19, radius: 2.2, color: '#ffd2a0', intensity: 0.9 },
   ];
   // Warm spill where the sunset hits the trench floor.
   kit.add('pool', floorQuad(11, 0.03, 0, 12, 7), '#ffc995', { flat: true, k: 0.5 });

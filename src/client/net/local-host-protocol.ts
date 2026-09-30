@@ -12,7 +12,9 @@ export type ToHost =
   | { op: 'disconnect'; c: string }
   | { op: 'msg'; c: string; m: ClientMsg }
   /** Debug/e2e only (?debug=1): force-end every running match. */
-  | { op: 'debug'; action: 'endMatch' };
+  | { op: 'debug'; action: 'endMatch' }
+  /** Idle-time prewarm: build every map's collision world + nav graph so the first match starts fast. */
+  | { op: 'warm' };
 export type FromHost = { op: 'ready' } | { op: 'batch'; items: { c: string; m: ServerMsg }[] } | { op: 'fatal'; message: string };
 
 

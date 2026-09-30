@@ -5,8 +5,21 @@
 // warm wash, vignette). Used by keyart-scenes.ts.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type Ctx = CanvasRenderingContext2D;
+/** Main-thread canvas or an OffscreenCanvas in the key-art worker (keyart.worker.ts). */
+export type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 export type Rng = () => number;
+
+/** Scratch canvas for patterns: a DOM canvas on the page, an OffscreenCanvas in a worker. */
+function scratch2d(w: number, h: number): { canvas: HTMLCanvasElement | OffscreenCanvas; ctx: Ctx | null } {
+  if (typeof document === 'undefined') {
+    const canvas = new OffscreenCanvas(w, h);
+    return { canvas, ctx: canvas.getContext('2d') };
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  return { canvas, ctx: canvas.getContext('2d') };
+}
 
 // ── Color helpers ───────────────────────────────────────────────────────────
 
@@ -215,10 +228,7 @@ export function finish(ctx: Ctx, rng: Rng, warm: string): void {
   const w = ctx.canvas.width;
   const h = ctx.canvas.height;
   // Brush texture pattern.
-  const tile = document.createElement('canvas');
-  tile.width = 384;
-  tile.height = 384;
-  const t = tile.getContext('2d');
+  const { canvas: tile, ctx: t } = scratch2d(384, 384);
   if (t) {
     t.lineCap = 'round';
     // Short, fat, low-contrast dabs in two stroke directions read as paint, not rain.
@@ -244,10 +254,7 @@ export function finish(ctx: Ctx, rng: Rng, warm: string): void {
     }
   }
   // Grain.
-  const g = document.createElement('canvas');
-  g.width = 128;
-  g.height = 128;
-  const gc = g.getContext('2d');
+  const { canvas: g, ctx: gc } = scratch2d(128, 128);
   if (gc) {
     const img = gc.createImageData(128, 128);
     for (let i = 0; i < img.data.length; i += 4) {

@@ -104,7 +104,7 @@ function buildYardDressing(kit: ObsKit, s: 1 | -1): void {
   const y = 0.03;
   const line = s > 0 ? ENV.pastelYellow : ENV.bone;
   // Dashed safety line between the spawn row and the baffles.
-  for (let x = -54; x < 54; x += 2.4) kit.add('paint', box(x, 0.02, s * 47.7 - 0.07, x + 1.3, y, s * 47.7 + 0.07), line, { flat: true, snow: 0 });
+  for (let x = -54; x < 54; x += kit.low ? 4.8 : 2.4) kit.add('paint', box(x, 0.02, s * 47.7 - 0.07, x + 1.3, y, s * 47.7 + 0.07), line, { flat: true, snow: 0 });
   // Chevrons pointing to each gate's way round its baffle.
   const bar = (ax: number, az: number, bx: number, bz: number): void => {
     const len = Math.hypot(bx - ax, bz - az);

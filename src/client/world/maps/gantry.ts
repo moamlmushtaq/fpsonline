@@ -136,7 +136,9 @@ const buildGantry: DecorBuilder = (ctx: DecorContext): MapDecor => {
         while (steamAcc >= 1) {
           steamAcc -= 1;
           const r = rnd();
-          if (r < 0.72) trenchSteam.emit(16.5, 0.8 + rnd() * 1.8, (rnd() - 0.5) * 5, 11 + rnd() * 9, 0.6 + rnd() * 2.4, (rnd() - 0.5) * 5, 4.5 + rnd() * 2.5, 2.2, 9 + rnd() * 6, 0.85, 0.55);
+          // Out of the trench mouth, fanning north and south around the deluge valve house.
+          const side = rnd() < 0.5 ? -1 : 1;
+          if (r < 0.72) trenchSteam.emit(16.5, 0.8 + rnd() * 1.8, side * (0.5 + rnd() * 2.5), 4 + rnd() * 5, 1 + rnd() * 3, side * (4 + rnd() * 6), 4.5 + rnd() * 2.5, 2.2, 9 + rnd() * 6, 0.85, 0.55);
           else trenchSteam.emit(-3.2 + (rnd() - 0.5), GANTRY_DECK + 0.2, (rnd() - 0.5), (rnd() - 0.5) * 1.5, 7 + rnd() * 5, (rnd() - 0.5) * 1.5, 3 + rnd() * 1.5, 1.2, 5 + rnd() * 3, 0.7, 0.9);
         }
       }

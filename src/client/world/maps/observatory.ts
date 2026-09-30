@@ -87,6 +87,7 @@ const buildObservatory: DecorBuilder = (ctx: DecorContext): MapDecor => {
     if (q.has('domeT')) devDome = Number(q.get('domeT'));
   }
 
+  const PINK = new THREE.Color(ENV.glowSoftPink);
   const signGlow = kit.meshes.find((m) => m.name === 'obs.signGlow')?.material as THREE.MeshBasicMaterial | undefined;
   const cloudU = back.cloudMat.uniforms;
   const mwU = back.milkyMat.uniforms;
@@ -109,9 +110,9 @@ const buildObservatory: DecorBuilder = (ctx: DecorContext): MapDecor => {
     // Beacons: slow double blink; the dome crown pulses out of phase.
     const ph = t % 2.6;
     const on = ph < 0.12 || (ph > 0.3 && ph < 0.42);
-    beaconMat.color.set(ENV.glowSoftPink).multiplyScalar(on ? 3.6 : 0.35);
+    beaconMat.color.copy(PINK).multiplyScalar(on ? 3.6 : 0.35);
     const ph2 = (t + 1.3) % 2.6;
-    dome.beacon.color.set(ENV.glowSoftPink).multiplyScalar(ph2 < 0.14 ? 4 : 0.4);
+    dome.beacon.color.copy(PINK).multiplyScalar(ph2 < 0.14 ? 4 : 0.4);
     if (signGlow) signGlow.color.setScalar(0.94 + 0.06 * Math.sin(t * 0.7) * Math.sin(t * 1.9));
     // Sky: clouds drift, the Milky Way and the moon fade in with the match.
     cloudU.uTime.value = t;

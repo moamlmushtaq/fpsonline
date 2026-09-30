@@ -35,12 +35,18 @@ export class LoadingScreen extends BaseScreen {
     const art = h('div', { class: 'loading__art' });
     const ready = keyArtReady(map, 'full');
     const setArt = (url: string) => {
-      if (!url) return;
+      if (!url || !art.isConnected) return;
       art.style.backgroundImage = `url("${url}")`;
       requestAnimationFrame(() => art.classList.add('is-ready'));
     };
     if (ready) setArt(ready);
-    else void keyArt(map, 'full').then(setArt);
+    else {
+      // The full painting is made off-thread and may take a moment: show the
+      // (already prewarmed) thumbnail right away, then swap in the full art.
+      const thumb = keyArtReady(map, 'thumb');
+      void keyArt(map, 'full').then(setArt);
+      if (thumb) queueMicrotask(() => setArt(thumb));
+    }
 
     const title = h(
       'div',

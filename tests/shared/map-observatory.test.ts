@@ -1,7 +1,7 @@
 // Observatory-specific layout guarantees: collision budget, reachability,
 // spawn safety, the hall's vertical layout, and bots flowing through all lanes.
 import { describe, expect, it } from 'vitest';
-import { EYE_HEIGHT, PLAYER_HEIGHT, PLAYER_RADIUS, SIM_HZ } from '../../src/shared/constants';
+import { EYE_HEIGHT, GRAVITY, JUMP_VELOCITY, MANTLE_MAX_HEIGHT, MANTLE_REACH, PLAYER_HEIGHT, PLAYER_RADIUS, SIM_HZ, SPRINT_SPEED } from '../../src/shared/constants';
 import { OBS, OBSERVATORY } from '../../src/shared/maps/observatory';
 import { makeGameConfig } from '../../src/shared/modes';
 import { CollisionWorld } from '../../src/shared/physics';
@@ -128,7 +128,7 @@ describe('observatory layout', () => {
     for (const sz of [1, -1]) {
       for (const [a, b] of OBS.gates) {
         const mid = (a + b) / 2;
-        expect(world.segmentClear(mid, 1.2, sz * 40, mid, 1.2, sz * 46, 'move'), `gate ${a}…${b}`).toBe(true);
+        expect(world.segmentClear(mid, 1.2, sz * 40, mid, 1.2, sz * 44, 'move'), `gate ${a}…${b}`).toBe(true);
         expect(b - a).toBeGreaterThanOrEqual(4);
       }
     }
@@ -164,30 +164,63 @@ describe('observatory spawn exits and roofs', () => {
     }
   }, 30_000);
 
-  it('dressed roofs are out of jump+mantle reach from anything climbable nearby', () => {
-    // Jump apex (v²/2g) + mantle reach above the feet.
-    const reach = 6.8 ** 2 / (2 * 20) + 1.3;
-    const roofs = map.solids.filter((s) => {
-      const top = s.max.y;
-      return (
-        (Math.abs(top - OBS.genTop) < 1e-6 && s.min.x >= 17.9 && s.max.x <= 26.1) || // generator / boiler house
-        (Math.abs(top - OBS.dorm.roofTop) < 1e-6 && s.min.y > 3) // dorm roof
-      );
+  it('no jump+mantle chain reaches a roof, wall top or pedestal (only cover tops are climbable)', () => {
+    // Every solid top a player can stand on, starting from the nav graph's surfaces and
+    // then chaining frame-perfect sprint jumps + mantles between tops (a flight path must be clear).
+    const apex = JUMP_VELOCITY ** 2 / (2 * GRAVITY);
+    const reachGap = (dh: number): number => {
+      if (dh > apex + MANTLE_MAX_HEIGHT) return -1;
+      const t = (JUMP_VELOCITY + Math.sqrt(Math.max(0, JUMP_VELOCITY ** 2 - 2 * GRAVITY * (dh - MANTLE_MAX_HEIGHT)))) / GRAVITY;
+      return SPRINT_SPEED * t + PLAYER_RADIUS + MANTLE_REACH;
+    };
+    const S = map.solids;
+    const spots = S.map((s) => {
+      const out: { x: number; z: number }[] = [];
+      if (s.ramp || s.style === 'ground') return out;
+      const sx = Math.max(0.2, (s.max.x - s.min.x - 0.2) / 8);
+      const sz = Math.max(0.2, (s.max.z - s.min.z - 0.2) / 8);
+      for (let x = s.min.x + 0.1; x <= s.max.x - 0.1 + 1e-6; x += sx) {
+        for (let z = s.min.z + 0.1; z <= s.max.z - 0.1 + 1e-6; z += sz) {
+          if (!world.playerOverlaps({ x, y: s.max.y + 0.02, z }, PLAYER_HEIGHT) && Math.abs(world.supportHeight(x, z, PLAYER_RADIUS, s.max.y + 0.05, 0.3) - s.max.y) < 0.03) out.push({ x, z });
+        }
+      }
+      return out;
     });
-    expect(roofs.length).toBe(3);
-    for (const r of roofs) {
-      for (const s of map.solids) {
-        if (s === r || s.style === 'ground' || s.max.y >= r.max.y) continue;
-        // Horizontal gap between the footprints.
-        const gx = Math.max(0, s.min.x - r.max.x, r.min.x - s.max.x);
-        const gz = Math.max(0, s.min.z - r.max.z, r.min.z - s.max.z);
-        if (Math.hypot(gx, gz) > 6) continue;
-        // Only surfaces a player can stand on and get up to (≤ reach from the ground).
-        if (s.max.y > reach + 0.01 && s.min.y < 0.1) continue;
-        expect(s.max.y + reach, `${JSON.stringify(s.min)} → roof ${r.max.y}`).toBeLessThan(r.max.y);
+    const reach = S.map(() => false);
+    for (let i = 0; i < nav.count; i++) {
+      if (nav.comp[i] !== nav.mainComp) continue;
+      S.forEach((s, j) => {
+        if (!spots[j].length) return;
+        if (nav.px[i] >= s.min.x - 0.4 && nav.px[i] <= s.max.x + 0.4 && nav.pz[i] >= s.min.z - 0.4 && nav.pz[i] <= s.max.z + 0.4 && Math.abs(nav.py[i] - s.max.y) < 0.06) reach[j] = true;
+      });
+    }
+    for (let changed = true; changed; ) {
+      changed = false;
+      for (let a = 0; a < S.length; a++) {
+        if (!reach[a]) continue;
+        for (let b = 0; b < S.length; b++) {
+          if (reach[b] || !spots[b].length) continue;
+          const g = reachGap(S[b].max.y - S[a].max.y);
+          if (g < 0) continue;
+          const y = Math.max(S[a].max.y, S[b].max.y) + 0.9;
+          const hit = spots[a].some((pa) => spots[b].some((pb) => Math.hypot(pa.x - pb.x, pa.z - pb.z) - 0.2 <= g && world.segmentClear(pa.x, y, pa.z, pb.x, y, pb.z, 'move')));
+          if (hit) reach[b] = changed = true;
+        }
       }
     }
-  });
+    const forbidden = S.map((s, i) => ({ s, i })).filter(({ s }) => {
+      const top = s.max.y;
+      return (
+        top >= OBS.yardWall - 1e-6 || // yard walls, dome base, lintels, rib, pylon, bullwheel house
+        Math.abs(top - OBS.genTop) < 1e-6 ||
+        Math.abs(top - OBS.dorm.roofTop) < 1e-6 ||
+        Math.abs(top - (OBS.ridge + OBS.pedestal)) < 1e-6 ||
+        (s.min.y >= OBS.ridge - 1e-6 && top > OBS.ridge + 2.5) // signal huts on the ridge
+      );
+    });
+    expect(forbidden.length).toBeGreaterThan(20);
+    for (const { s, i } of forbidden) expect(reach[i], `solid #${i} ${JSON.stringify(s.min)}…${JSON.stringify(s.max)} is climbable`).toBe(false);
+  }, 60_000);
 
   it('dorm furniture and the observer desk sit on collision (no walking through bunks or shelves)', () => {
     // Bunks / lockers / bookcases: the wall collision faces are the furniture fronts.

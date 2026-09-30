@@ -257,7 +257,7 @@ function buildBuiltIns(kit: ObsKit, rnd: () => number): void {
       }
       // Books: a few runs of spines in faded paper colours.
       const cols = [ENV.terracottaFaded, ENV.sage, ENV.pastelBlue, ENV.boneShade, ENV.pastelYellow, '#7a6048'];
-      for (const y of [0.96, 1.59, 2.19, 2.79]) {
+      for (const y of kit.low ? [] : [0.96, 1.59, 2.19, 2.79]) {
         let z = a + 0.08;
         while (z < b - 0.3) {
           if (stove && y < 2 && z > stove[0] - 0.1 && z < stove[1]) {

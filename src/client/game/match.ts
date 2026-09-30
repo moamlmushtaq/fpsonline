@@ -204,6 +204,12 @@ export class ClientMatch implements MatchContext, MatchApi {
 
   private async build(): Promise<void> {
     const app = this.app;
+    this.loadProgress = 0.02;
+    // The map build is a long synchronous chunk: let the loading screen (key art,
+    // tips, dial) mount and paint first instead of freezing the previous screen.
+    for (let i = 0; i < 60 && !this.disposed && app.ui.baseScreen !== 'loading' && app.ui.baseScreen !== 'match'; i++) await nextFrame();
+    await nextFrame();
+    if (this.disposed) return;
     this.loadProgress = 0.05;
     const map = await buildMapView(this.def, { engine: app.engine, materials: app.materials });
     if (this.disposed) {
@@ -308,6 +314,41 @@ export class ClientMatch implements MatchContext, MatchApi {
       console.warn('[match] shader warm-up skipped', err);
     } finally {
       for (const o of hidden) o.visible = false;
+    }
+    await this.finishPrograms();
+  }
+
+  /**
+   * compile() only issues the compile/link calls; three.js queries the link
+   * result and uniform locations on a program's FIRST USE, which blocks until
+   * the driver has finished (seconds in total on slow GPUs / software GL) — i.e.
+   * the first frames of the intro would freeze. Finish every program here,
+   * behind the loading screen: with KHR_parallel_shader_compile we wait without
+   * blocking; otherwise one program per slice, yielding between them.
+   */
+  private async finishPrograms(): Promise<void> {
+    const r = this.app.engine.renderer;
+    const programs = (r.info.programs ?? []) as unknown as { isReady?: () => boolean; getUniforms: () => unknown }[];
+    const from = this.loadProgress;
+    let t = performance.now();
+    try {
+      for (let i = 0; i < programs.length; i++) {
+        if (this.disposed) return;
+        const prog = programs[i];
+        const waitUntil = performance.now() + 3000;
+        while (prog.isReady && !prog.isReady() && performance.now() < waitUntil) {
+          await new Promise((res) => window.setTimeout(res, 8));
+          if (this.disposed) return;
+        }
+        prog.getUniforms();
+        this.loadProgress = from + (0.95 - from) * ((i + 1) / programs.length);
+        if (performance.now() - t > 20) {
+          await nextFrame();
+          t = performance.now();
+        }
+      }
+    } catch (err) {
+      console.warn('[match] shader finish skipped', err);
     }
   }
 

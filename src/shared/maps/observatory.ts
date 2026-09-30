@@ -12,22 +12,24 @@
 //
 //  z=-60 ┌────────────────────────────────────────────────────────────────────┐
 //        │      [ BLOOM: WINTER QUARTERS + GENERATOR HUT (beyond the rim) ]   │
-//  z=-46 │ ▬▬baffle▬▬         ▬▬baffle▬▬                  ▬▬baffle▬▬          │
-//  z=-42 │ ██WG██████████████████ CG ██████████████████████████ EG ████████   │
-//        │ ▲ridge  rock◆                        ◆reel                          │
-//  z=-30 │ ║ramp   ▓▓boulder  crates▪  ▪sled▪  ▪crates   shed▓▓▓   ramp▲     │
-//        │ ║path   ░        ▓▓div     snowcat▪        ▓▓div    │            │
-//  z=-13 │ ║hut    ░under-                                      ├─DORM─┐ ▲ramp│
+//  z=-46 │▬▬baffle▬           ▬▬baffle▬▬                         ▬baffle▬▬│
+//  z=-42 │WG████████████████████ CG ███████████████████████████████████ EG│
+//  z=-38 │ ▲ramp                 ▬porch▬                   ▓tarp cabin▓  │
+//        │ ║     rock◆                              ◆reel                   │
+//  z=-30 │ ║path  ▓▓boulder  crates▪  ▪sled▪  ▪crates   shed▓▓▓   ramp▲     │
+//        │ ║     ░       ▓▓rib     snowcat▪        ▓▓boiler  │            │
+//  z=-13 │ ║hut  ░under-                                      ├─DORM─┐ ▲ramp│
 //        │ ┌PLATEAU┐ ridge  ┌──────┐  ┌──── DOME ────┐        │bunks │┌DECK┐│
-//        │ │◎dish ▲│ yard  │ HUT  │══│ ▒gallery ring▒ │═corr══│radio ││ C  ││→ stuck
-//  z=0   │ │ (A)  ▲│ ramps │spect.│W │▒ ◉ telescope B▒│E arcade│common││wheel│  cabin
-//        │ │◎dish ▲│       └──────┘══│ ▒ (Sunspear on podium) ▒ │      ││ ▣  ││  + pylon
+//        │ │◎dish ▲│ yard  │ HUT  │══│ ▒gallery ring▒ │═arcade═│radio ▣│ C  ││→ stuck
+//  z=0   │ │ (A)  ▲│ ramps │spect.│W │▒ ◉ telescope B▒│E       │common││wheel│  cabin
+//        │ │◎dish ▲│       └──────┘══│ ▒ (Sunspear on podium) ▒ │  xfmr││ ▣  ││  + pylon
 //  z=+13 │ └───────┘                  └────────────────┘        │bunks │└────┘│
-//        │ ║hut    ░        ▓▓div     snowcat▪        ▓▓div    ├──────┘ ▼ramp│
-//  z=+30 │ ║path   ▓▓boulder  crates▪  ▪sled▪  ▪crates   shed▓▓▓            │
-//        │ ▼ramp   rock◆                        ◆reel                          │
-//  z=+42 │ ██WG██████████████████ CG ██████████████████████████ EG ████████   │
-//  z=+46 │ ▬▬baffle▬▬         ▬▬baffle▬▬                  ▬▬baffle▬▬          │
+//        │ ║     ░       ▓▓rib     snowcat▪        ▓▓generator│            │
+//  z=+30 │ ║path  ▓▓boulder  crates▪  ▪sled▪  ▪crates   shed▓▓▓            │
+//        │ ║     rock◆                              ◆reel                   │
+//  z=+38 │ ▼ramp                 ▬porch▬                   ▓tarp cabin▓  │
+//  z=+42 │WG████████████████████ CG ███████████████████████████████████ EG│
+//  z=+46 │▬▬baffle▬           ▬▬baffle▬▬                         ▬baffle▬▬│
 //        │      [ HALCYON: UPPER TRAM TERMINAL (beyond the rim) ]   cables→S  │
 //  z=+60 └────────────────────────────────────────────────────────────────────┘
 //        x=-57  WEST: signal array   x=-24  CENTER: dome      x=24  EAST: pylon  x=57
@@ -54,21 +56,26 @@
 //    (y 2.6, Zone C) with the bullwheel house, control booths and the pylon
 //    anchor on the east rim; a freight cabin hangs stuck off the pylon over the
 //    void (decor). Ramps N & S, a mantle crate from the dorm alley.
-//  Dividers: rock ribs between the under-ridge yard and the courtyards, the
-//  generator block + maintenance shed between the courtyards and the east lane.
+//  Dividers: rock ribs (6.2 m) between the under-ridge yard and the courtyards,
+//  the generator / boiler house + maintenance shed between the courtyards and
+//  the east lane; a transformer cabinet breaks the dorm alley's long sightline.
 //  Cross-connectors: the arcades through the dome (z 0), the forecourts along
 //  each spawn wall, the gaps at z ≈ ±28.
-//  Spawns: 8 per team in a walled yard (4 m walls) in front of their building
-//  (which stands just outside the bounds, cantilevered over the cliff), 3 gates
-//  4 m wide (W / C / E), each with a blast baffle behind it; never visible from
-//  the mid map (tested).
+//  Spawns: 8 per team in a walled yard (6 m wind walls) in front of their
+//  building (just outside the bounds, cantilevered over the cliff), 3 gates
+//  4 m wide, each with a blast baffle behind it. The W gate opens at the foot
+//  of the ridge ramp (the crest hides it from the array), the centre gate has a
+//  wind-break porch (exits split left / right), the E gate sits behind a
+//  tarp-covered spare cabin: no gate exit is visible from the enemy half, no
+//  spawn from anywhere in the mid map, and no jump+mantle chain reaches a wall
+//  top, roof or pedestal (all tested).
 //
-// Heights: ground 0 · deck 2.6 · plateau / ridge 3 · gallery 3.6 · arcade
-// roof 3.7 · dorm roof 4.5 · generator 5 · base 7.5 · dome apex ≈ 22. Walls
-// meant to block players ≥ 2.6 m; roofs with dressing on top sit > 2.45 m above
-// anything climbable within jumping distance (no roof routes, tested).
-// Collision is lean (≤ 120 solids); 'hidden' solids are drawn by the decor
-// module src/client/world/maps/observatory.ts.
+// Heights: ground 0 · deck 2.6 · plateau / ridge 3 · gallery 3.6 · arcade roof
+// 3.7 · dorm roof 4.5 · generator 5.4 · yard walls 6 · rib 6.2 · base 7.5 · dome
+// apex ≈ 22. Walls meant to block players ≥ 2.6 m; roofs with dressing on top
+// sit > 2.45 m above anything climbable within jumping distance (tested).
+// Collision is lean (119 of the 120-solid budget); 'hidden' solids are drawn by
+// the decor module src/client/world/maps/observatory.ts.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { MapKit, mirrorSpawnsZ, spawn, v, yawToward } from '../sim/map-kit';
@@ -92,6 +99,8 @@ export const OBS = {
   forkTop: 7,
   bridgeHalf: 1.2,
   deskDepth: 0.35,
+  /** Inner (hall-side) edge of the four gallery stairs (they run x ±stairInner…±hallHalfEW, 2.8 m wide). */
+  stairInner: 5,
   /** Dome: drum radius, springline (top of the drum), shell radius. */
   domeRadius: 11.4,
   domeSpring: 10,
@@ -139,7 +148,7 @@ k.box(1.4, 0, 10, 10, OBS.baseTop, 12, 'concrete', 'hidden'); // south wall
 // Gallery plinth: solid mass under the east gallery (no dead-end nooks), stairs against it.
 k.box(7.8, 0, 1.4, 10, G, 7.8, 'concrete', 'hidden');
 // Stairs (drawn by decor) from the hall floor up to the south gallery strip.
-k.ramp(5.6, 0, 1.8, 7.8, G, 7.8, 'z', 1, 'metal', 'hidden');
+k.ramp(OBS.stairInner, 0, 1.8, 7.8, G, 7.8, 'z', 1, 'metal', 'hidden');
 k.mirrorX(m);
 k.mirrorZ(m);
 // Lintels over the doors, gallery strips N/S (x −10…10), bridges over the E/W doors.
@@ -160,8 +169,8 @@ k.box(-OBS.forkHalf, G, -OBS.forkHalf, OBS.forkHalf, OBS.forkTop, OBS.forkHalf, 
 // Bridges gallery ↔ podium (N/S) and see-through railings along the gallery's inner edge.
 m = k.mark();
 k.box(-OBS.bridgeHalf, G - 0.3, OBS.podiumHalf, OBS.bridgeHalf, G, OBS.hallHalfEW, 'metal', 'hidden');
-k.box(-5.6, G, OBS.hallHalfEW, -OBS.bridgeHalf, G + 1.05, OBS.hallHalfEW + 0.12, 'metal', 'hidden', { shootThrough: true });
-k.box(OBS.bridgeHalf, G, OBS.hallHalfEW, 5.6, G + 1.05, OBS.hallHalfEW + 0.12, 'metal', 'hidden', { shootThrough: true });
+k.box(-OBS.stairInner, G, OBS.hallHalfEW, -OBS.bridgeHalf, G + 1.05, OBS.hallHalfEW + 0.12, 'metal', 'hidden', { shootThrough: true });
+k.box(OBS.bridgeHalf, G, OBS.hallHalfEW, OBS.stairInner, G + 1.05, OBS.hallHalfEW + 0.12, 'metal', 'hidden', { shootThrough: true });
 k.mirrorZ(m);
 
 // ── Arcades: glazed walkways dome ↔ dormitory (E) and dome ↔ spectrograph hut (W) ──

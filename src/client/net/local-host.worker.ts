@@ -8,7 +8,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { HostCore, type HostConnection } from '../../shared/host/host-core';
+import { getMap } from '../../shared/maps/index';
 import type { ServerMsg } from '../../shared/protocol';
+import { worldForMap } from '../../shared/sim/game';
+import { NavGraph } from '../../shared/sim/nav';
+import { PVP_MAP_IDS, type MapId } from '../../shared/types';
 import { debugHostCommand, type FromHost, type ToHost } from './local-host-protocol';
 
 interface WorkerScope {
@@ -96,9 +100,37 @@ function handle(msg: ToHost): void {
     case 'debug':
       debugHostCommand(h, msg.action);
       return;
+    case 'warm':
+      warmMaps();
+      return;
     default:
       return;
   }
+}
+
+let warmed = false;
+/**
+ * Builds each map's collision world + nav graph ahead of the first match (both
+ * are cached per map), one map per task so an incoming connect/queue is never
+ * held up for long. Saves the first bot match / training session that work.
+ */
+function warmMaps(): void {
+  if (warmed) return;
+  warmed = true;
+  const ids: MapId[] = [...PVP_MAP_IDS, 'range'];
+  const next = (): void => {
+    const id = ids.shift();
+    if (!id) return;
+    try {
+      const map = getMap(id);
+      const world = worldForMap(map);
+      if (id !== 'range') NavGraph.build(world, map);
+    } catch (err) {
+      console.warn('[local-host] map prewarm failed', id, err);
+    }
+    setTimeout(next, 0);
+  };
+  setTimeout(next, 0);
 }
 
 scope.addEventListener('message', (e: MessageEvent) => {

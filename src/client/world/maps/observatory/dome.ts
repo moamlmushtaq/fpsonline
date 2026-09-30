@@ -246,8 +246,8 @@ function buildHall(kit: ObsKit, rnd: () => number, decor: number): void {
   // See-through railings (match the shootThrough collision) along the N/S strips.
   for (const s of [-1, 1]) {
     for (const [a0, a1] of [
-      [-5.6, -OBS.bridgeHalf],
-      [OBS.bridgeHalf, 5.6],
+      [-OBS.stairInner, -OBS.bridgeHalf],
+      [OBS.bridgeHalf, OBS.stairInner],
     ]) {
       const z = s * (HE + 0.06);
       kit.add('gloss', cylAB(a0, G + 1.02, z, a1, G + 1.02, z, 0.035, 0.035, 6), BONE, { flat: true, snow: 0 });
@@ -262,8 +262,8 @@ function buildHall(kit: ObsKit, rnd: () => number, decor: number): void {
   // Four steel stairs (treads + stringers) over the ramp collision.
   for (const sx of [-1, 1]) {
     for (const sz of [-1, 1]) {
-      const xa = sx > 0 ? 5.6 : -HE;
-      const xb = sx > 0 ? HE : -5.6;
+      const xa = sx > 0 ? OBS.stairInner : -HE;
+      const xb = sx > 0 ? HE : -OBS.stairInner;
       const n = 12;
       for (let i = 0; i < n; i++) {
         const t0 = i / n;
@@ -273,7 +273,7 @@ function buildHall(kit: ObsKit, rnd: () => number, decor: number): void {
         kit.add('interiorMetal', box(xa + 0.05, yTop - 0.06, Math.min(za, zb), xb - 0.05, yTop, Math.max(za, zb)), '#b3a898', { flat: true, snow: 0 });
       }
       // Stringer on the open (hall) side.
-      const xs = sx > 0 ? 5.6 : -5.6;
+      const xs = sx * OBS.stairInner;
       kit.add('interiorMetal', beam(xs, 0.12, sz * 1.8, xs, G - 0.1, sz * HE, 0.14, 0.34), STEEL_IN, { flat: true, snow: 0 });
     }
   }

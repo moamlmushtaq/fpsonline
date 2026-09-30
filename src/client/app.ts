@@ -31,6 +31,7 @@ import { settings, type SettingsStore } from './state/settings';
 import { profile, type ProfileStore } from './state/profile';
 import { NetManager } from './net/net-manager';
 import type { Transport } from './net/transport';
+import { LocalHostLink } from './net/local-host';
 import { ClientMatch } from './game/match';
 import type { LoadingScreen } from './ui/screens/loading';
 import { PROTOCOL_VERSION, ROOM_CODE_LENGTH } from '../shared/constants';
@@ -197,6 +198,16 @@ export class App {
     await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
     prewarmKeyArt(['gantry', 'pastel', 'observatory', 'range']);
     void this.net.probe().catch(() => undefined);
+    // Offline play (bots, training, quick play without a server) runs on the in-browser
+    // host: boot it and let it build the maps' worlds + nav graphs while the player
+    // looks at the menu, so PLAY → match is not spent waiting for any of that.
+    window.setTimeout(() => {
+      try {
+        LocalHostLink.get().warm();
+      } catch (err) {
+        console.warn('[app] local host prewarm failed', err);
+      }
+    }, 800);
     this.handleUrlEntry();
     if (this.debug) this.installDebug();
   }

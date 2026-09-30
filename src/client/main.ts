@@ -134,10 +134,6 @@ async function boot(): Promise<void> {
   const urlLang = params.get('lang');
   if (urlLang === 'ar' || urlLang === 'en') i18n.setLang(urlLang);
   progress(0.25);
-  if (!hasWebGL()) {
-    showFatal('webgl');
-    return;
-  }
   const canvas = document.getElementById('game') as HTMLCanvasElement | null;
   const root = document.getElementById('ui');
   if (!canvas || !root) throw new Error('index.html is missing #game or #ui');
@@ -151,7 +147,18 @@ async function boot(): Promise<void> {
   progress(0.45);
   const { App } = await import('./app');
   progress(0.75);
-  const app = new App(canvas, root);
+  let app: App;
+  try {
+    app = new App(canvas, root);
+  } catch (err) {
+    // Only probe for WebGL when the renderer could not start: a throw-away test
+    // context up front costs a noticeable slice of boot time on every visit.
+    if (!hasWebGL()) {
+      showFatal('webgl');
+      return;
+    }
+    throw err;
+  }
   window.__hfApp = app;
   progress(0.9);
   await app.start();

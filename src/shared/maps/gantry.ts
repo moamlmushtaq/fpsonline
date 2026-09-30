@@ -36,19 +36,26 @@
 //    trench mouth on the east face (sunset pours in), and a broken grate in the
 //    deck over the junction — the Sunspear lies right under it (drop in!).
 //  • EAST (x 34…64) docks: containers, the harbor crane portal over Zone A, the
-//    upper quay (y 0) and the lower timber pier (y −1.2, mantle up anywhere);
-//    long sightlines along the seawall.
+//    upper quay (y 0) and the lower timber pier (y −1.2, the full length of the
+//    seawall, mantle up anywhere); long sightlines along the seawall.
 //  Dividers: WD (fuel transfer station + compressor houses) and ED (transit
 //  shed + container stacks with a CQB alley). Cross-connectors at z ≈ ±15
 //  (1/3 and 2/3 of the lanes) and along each spawn front; tunnels under the pad.
-//  Spawns: 8 per team inside their hangar behind a rocket stage on its cradle
-//  (3 exits: main door behind a blast baffle + two corner doors); never visible
-//  from the mid-map (tested).
+//  The aprons flanking the pad (x ≈ −24…−18.6 and 16…22) carry chicanes — a
+//  bottle rack / cable housing at z ≈ ±11 and a valve house at z = 0 on the
+//  opposite side — so no straight line runs from one spawn front to the other.
+//  Spawns: 8 per team inside their hangar behind a rocket stage on its cradle,
+//  facing the way out. 3 doors (main + two corners) open onto a forecourt strip
+//  screened by STAGGERED blast baffles (main baffle proud of the corner walls,
+//  2 m dog-legs + both outer ends): neither the spawns nor the doors are visible
+//  from the mid-map, the tower platform or the enemy third (tested).
 //
 // Heights: ground 0 · pier −1.2 · crawler 2.4 · deck 3.6 · catwalk / bunker
 // roof 4.8 · L1 8.4 · tower 64. Walls meant to block players are ≥ 2.6 m.
-// Collision is kept lean (all detail lives in src/client/world/maps/gantry.ts);
-// 'hidden' solids are drawn by that decor module.
+// Collision is kept lean (119 solids; nav.test caps PvP maps at 120 — all
+// detail lives in src/client/world/maps/gantry.ts); 'hidden' solids are drawn
+// by that decor module, and every drawn railing/wall a player can reach has a
+// matching solid (stair railings, the launch mount + fin skirt).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { MapKit, mirrorSpawnsZ, spawn, v, yawToward } from '../sim/map-kit';

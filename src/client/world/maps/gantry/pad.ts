@@ -22,31 +22,49 @@ const STEEL_DARK = ENV.metalDark;
 export function lamp(kit: DecorKit, x: number, y: number, z: number, nx: number, nz: number, color: string = ENV.glowGold, poolSize = 3.2, floorY: number | null = 0): void {
   kit.add('metal', boxC(x - nx * 0.06, y, z - nz * 0.06, nz !== 0 ? 0.42 : 0.12, 0.22, nx !== 0 ? 0.42 : 0.12), STEEL_DARK, { flat: true });
   kit.add('glow', boxC(x + nx * 0.02, y, z + nz * 0.02, nz !== 0 ? 0.34 : 0.1, 0.14, nx !== 0 ? 0.34 : 0.1), color, { flat: true, k: 3.2 });
-  kit.add('pool', quad(x + nx * 0.05, y - 0.2, z + nz * 0.05, poolSize, poolSize * 0.8, nx, nz), color, { flat: true, k: 0.32 });
-  if (floorY !== null) kit.add('pool', floorQuad(x + nx * 0.9, floorY + 0.03, z + nz * 0.9, poolSize * 0.9, poolSize * 0.9), color, { flat: true, k: 0.14 });
+  kit.add('pool', quad(x + nx * 0.05, y - 0.2, z + nz * 0.05, poolSize, poolSize * 0.8, nx, nz), color, { flat: true, k: 0.42 });
+  if (floorY !== null) kit.add('pool', floorQuad(x + nx * 0.9, floorY + 0.03, z + nz * 0.9, poolSize * 1.1, poolSize * 1.1), color, { flat: true, k: 0.22 });
 }
 
-/** A cluster of glowing moss / fungus (bioluminescence in the shade). */
+/**
+ * A cluster of bioluminescent moss: a dark leafy mat, a few pods on thin
+ * stems with glowing tips (chartreuse / pale gold / soft pink), and a soft
+ * light pool on the surface around it. For shaded corners only.
+ */
 export function moss(kit: DecorKit, rnd: () => number, x: number, y: number, z: number, spread: number, count: number, wallNx = 0, wallNz = 0): void {
+  const onWall = wallNx !== 0 || wallNz !== 0;
+  // Leafy mat.
+  if (!onWall) {
+    for (let k = 0; k < Math.max(1, Math.round(count / 5)); k++) {
+      const a = rnd() * Math.PI * 2;
+      const r = Math.sqrt(rnd()) * spread * 0.7;
+      const mat = new THREE.CircleGeometry(0.25 + rnd() * spread * 0.45, 7);
+      mat.rotateX(-Math.PI / 2);
+      mat.translate(x + Math.cos(a) * r, y + 0.012 + k * 0.002, z + Math.sin(a) * r);
+      kit.add('foliage', mat, GREENS[k % 3], { flat: true, k: 0.55 });
+    }
+  }
   for (let i = 0; i < count; i++) {
     const a = rnd() * Math.PI * 2;
     const r = Math.sqrt(rnd()) * spread;
     let px = x + Math.cos(a) * r;
     let pz = z + Math.sin(a) * r;
     let py = y;
-    if (wallNx || wallNz) {
+    if (onWall) {
       // Spread up the wall instead of across the floor.
-      px = x + (wallNz !== 0 ? Math.cos(a) * r : 0);
-      pz = z + (wallNx !== 0 ? Math.cos(a) * r : 0);
+      px = x + (wallNz !== 0 ? Math.cos(a) * r : 0) + wallNx * 0.03;
+      pz = z + (wallNx !== 0 ? Math.cos(a) * r : 0) + wallNz * 0.03;
       py = y + Math.abs(Math.sin(a)) * r * 0.8;
     }
-    const s = 0.04 + rnd() * 0.08;
     const hue = rnd();
-    const col = hue < 0.6 ? ENV.glowChartreuse : hue < 0.85 ? ENV.glowGold : ENV.glowSoftPink;
-    kit.add('glow', sphere(px, py + s * 0.4, pz, s, 6, 4, 0.7), col, { flat: true, k: 0.9 + rnd() * 0.7 });
-    if (rnd() < 0.5) kit.add('foliage', sphere(px + 0.05, py, pz + 0.05, s * 2.2, 6, 3, 0.35), GREENS[0], { flat: true, k: 0.7 });
+    const col = hue < 0.62 ? ENV.glowChartreuse : hue < 0.86 ? ENV.glowGold : ENV.glowSoftPink;
+    const stem = onWall ? 0.02 : 0.06 + rnd() * 0.16;
+    if (!onWall) kit.add('foliage', beam(px, py, pz, px + (rnd() - 0.5) * 0.05, py + stem, pz + (rnd() - 0.5) * 0.05, 0.018), GREENS[0], { flat: true });
+    const tip = 0.022 + rnd() * 0.03;
+    kit.add('glow', sphere(px, py + stem + tip * 0.6, pz, tip, 5, 3, 1.2), col, { flat: true, k: 2.0 + rnd() * 1.0 });
   }
-  kit.add('pool', wallNx || wallNz ? quad(x + wallNx * 0.04, y + spread * 0.4, z + wallNz * 0.04, spread * 2.6, spread * 2, wallNx, wallNz) : floorQuad(x, y + 0.03, z, spread * 2.8, spread * 2.8), ENV.glowChartreuse, { flat: true, k: 0.22 });
+  const size = spread * 3.2;
+  kit.add('pool', onWall ? quad(x + wallNx * 0.04, y + spread * 0.4, z + wallNz * 0.04, size, size * 0.8, wallNx, wallNz) : floorQuad(x, y + 0.03, z, size, size), ENV.glowChartreuse, { flat: true, k: 0.28 });
 }
 
 export interface PadAnim {
@@ -160,6 +178,10 @@ export function buildPad(kit: DecorKit, rnd: () => number, root: THREE.Group, de
   }
 
   // ── Flame trench ──────────────────────────────────────────────────────────
+  // Dark, damp floor liners (trench + both tunnels) with drain channels.
+  kit.add('concrete', box(-12, 0, -3.5, 16, 0.008, 3.5), '#3f3a35', { flat: true });
+  for (const s of halves) kit.add('concrete', box(-9.3, 0, Math.min(s * 3.5, s * 17), -6.7, 0.008, Math.max(s * 3.5, s * 17)), '#3f3a35', { flat: true });
+  kit.add('metal', box(-12, 0.008, -0.2, 16, 0.02, 0.2), '#2d2a27', { flat: true });
   // Ceiling with transverse ribs, scorched wall liners (skipping openings).
   kit.add('concrete', box(-12, 2.95, -3.5, 16, 2.99, 3.5), '#37312d', { flat: true });
   for (let x = -11; x < 16; x += 2.2) {
@@ -167,7 +189,7 @@ export function buildPad(kit: DecorKit, rnd: () => number, root: THREE.Group, de
     kit.add('concrete', box(x - 0.15, 2.6, -3.5, x + 0.15, 2.96, 3.5), '#4a423c', { flat: true });
   }
   const wallSeg = (x0: number, x1: number, z: number): void => {
-    kit.add('concrete', box(x0, 0, z - 0.02, x1, 2.95, z + 0.02), '#57504a', {
+    kit.add('concrete', box(x0, 0, z - 0.02, x1, 2.95, z + 0.02), '#4a433d', {
       shade: (_x, y) => 0.55 + 0.45 * Math.min(1, y / 2.6) * (0.75 + 0.25 * Math.sin(_x * 1.7)),
     });
   };
@@ -177,7 +199,18 @@ export function buildPad(kit: DecorKit, rnd: () => number, root: THREE.Group, de
     wallSeg(-6.7, 7, z);
     wallSeg(9.6, 16, z);
   }
-  kit.add('concrete', box(-11.99, 0, -3.5, -11.95, 2.95, 3.5), '#4d4640');
+  kit.add('concrete', box(-11.99, 0, -3.5, -11.95, 2.95, 3.5), '#433c36');
+  // Service pipes running along both trench walls at knee and head height.
+  for (const s of halves) {
+    const z = s * 3.3;
+    kit.add('metal', cylAB(-11.9, 2.35, z, -6.9, 2.35, z, 0.12, 0.12, 8), '#8a7d6f');
+    kit.add('metal', cylAB(-6.5, 2.35, z, 6.8, 2.35, z, 0.12, 0.12, 8), '#8a7d6f');
+    kit.add('metal', cylAB(9.8, 2.35, z, 15.9, 2.35, z, 0.12, 0.12, 8), '#8a7d6f');
+    kit.add('metal', cylAB(-6.5, 0.5, s * 3.36, 0.8, 0.5, s * 3.36, 0.08, 0.08, 6), '#6f7a80');
+    for (let x = -11; x < 16; x += 3.1) if (x < -9.3 || (x > -6.7 && x < 7) || x > 9.6) kit.add('metal', box(x - 0.05, 2.2, z - s * 0.18, x + 0.05, 2.5, z + s * 0.1), STEEL_DARK, { flat: true });
+  }
+  // Hazard striping on the deflector's flanks.
+  for (const s of halves) kit.add('sign', quad(3, 2.55, s * 2.0 + s * 0.02, 3.8, 0.4, 0, s, uvOf('hazard')), '#ffffff', { flat: true, k: 0.8 });
   // Soot plumes on the walls around the deflector.
   for (const s of halves) {
     for (let i = 0; i < 5; i++) {
@@ -261,14 +294,14 @@ export function buildPad(kit: DecorKit, rnd: () => number, root: THREE.Group, de
     }
   }
   // Lattice bracing above head height on L1.
-  kit.addAll('metal', lattice(TCX, 0, 3, 11, top, 5.3, 0.2, 0.16, true, false), TOWER);
+  kit.addAll('metal', lattice(TCX, 0, 3, 11, top, 5.3, 0.2, 0.16, !kit.low, false), TOWER);
   // Service levels (grated floors + small cantilevers toward the rocket).
   for (let y = 16.3; y < top - 2; y += 10.6) {
     kit.add('metal', box(TX0 - 0.6, y - 0.18, -3.8, TX1 + 0.6, y, 3.8), ENV.boneShade);
     kit.addAll('metal', railing(TX1 + 0.6, y, -3.8, TX1 + 0.6, y, 3.8, 1.0, 1.9), ENV.bone);
   }
   // Elevator core cage + a stuck elevator car at L1.
-  kit.addAll('metal', lattice(-9.5, 0, 0.92, D, top, 3.2, 0.14, 0.07, false), '#8b7466');
+  kit.addAll('metal', lattice(-9.5, 0, 0.92, D, top, kit.low ? 6.4 : 3.2, 0.14, 0.07, false), '#8b7466');
   kit.add('paint', rbox(-10.4, L1 + 0.02, -0.9, -8.6, L1 + 2.3, 0.9, 0.06), ENV.bone);
   kit.add('glow', box(-8.58, L1 + 1.5, -0.5, -8.56, L1 + 2.0, 0.5), ENV.glowGold, { flat: true, k: 1.6 });
   // Hammerhead crane, lightning mast.
@@ -359,7 +392,8 @@ export function buildPad(kit: DecorKit, rnd: () => number, root: THREE.Group, de
     { pos: new THREE.Vector3(22, 3.4, -1.2), dir: new THREE.Vector3(-0.96, -0.1, 0.24).normalize(), length: 20, radius: 2.8, color: '#ffd2a0', intensity: 0.9 },
   ];
   // Warm spill where the sunset hits the trench floor.
-  kit.add('pool', floorQuad(10, 0.03, 0, 10, 6), '#ffc995', { flat: true, k: 0.35 });
+  kit.add('pool', floorQuad(11, 0.03, 0, 12, 7), '#ffc995', { flat: true, k: 0.5 });
+  kit.add('pool', quad(-11.9, 1.4, 0.4, 5, 3.2, 1, 0), '#ffc995', { flat: true, k: 0.18 });
   // Glow halo under the grate (reads even without shafts on Low).
   kit.add('pool', floorQuad(-3.2, 0.035, 0, 3.4, 3.4), ENV.glowGold, { flat: true, k: 0.5 });
 

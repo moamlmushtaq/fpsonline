@@ -18,7 +18,7 @@ function mixHex(a: string, b: string, t: number): string {
   return '#' + new THREE.Color(a).lerp(new THREE.Color(b), t).getHexString();
 }
 /** Foliage greens derived from the palette (olive/sage cooled toward the violet shadow tone). */
-export const GREENS = [mixHex(ENV.olive, ENV.shadowCool, 0.3), mixHex(ENV.olive, ENV.sage, 0.35), mixHex(ENV.sage, ENV.shadowCool, 0.2)] as const;
+export const GREENS = [mixHex(mixHex(ENV.olive, ENV.shadowCool, 0.3), ENV.skyBlue, 0.12), mixHex(mixHex(ENV.olive, ENV.sage, 0.35), ENV.skyBlue, 0.12), mixHex(mixHex(ENV.sage, ENV.shadowCool, 0.2), ENV.skyBlue, 0.1)] as const;
 
 export type Kind =
   | 'concrete'
@@ -85,11 +85,15 @@ export class DecorKit {
   readonly low: boolean;
   readonly shadows: boolean;
   signTexture: THREE.Texture | null = null;
+  /** Dev stats: triangles added per section label. */
+  section = '';
+  readonly sectionTris = new Map<string, number>();
   leafTexture: THREE.Texture | null = null;
 
   constructor(readonly ctx: DecorContext) {
     this.low = ctx.quality.preset === 'low';
     this.shadows = ctx.quality.shadows !== 'off';
+    PIPE_DETAIL = this.low ? 0.6 : 1;
   }
 
   /** Radial segment count scaled by quality. */
@@ -119,6 +123,8 @@ export class DecorKit {
     const tex = KIND_TEX[kind];
     const tile = tex ? TEX_TILE[tex.tex] : 1;
     const n = pos.count;
+    const key = `${this.section}.${kind}`;
+    this.sectionTris.set(key, (this.sectionTris.get(key) ?? 0) + n / 3);
     for (let i = 0; i < n; i++) {
       const x = pos.getX(i);
       const y = pos.getY(i);
@@ -192,10 +198,14 @@ export class DecorKit {
       }
       case 'foliage':
         return std(0.95, 0, { side: THREE.DoubleSide });
-      case 'sign':
-        return std(0.8, 0, { map: this.signTexture });
+      case 'sign': {
+        // Cut-out decals (stencils, facade lettering, deck roundels) share the atlas.
+        const m = std(0.8, 0, { map: this.signTexture });
+        m.alphaTest = 0.35;
+        return m;
+      }
       case 'signGlow':
-        return own(new THREE.MeshBasicMaterial({ vertexColors: true, map: this.signTexture }));
+        return own(new THREE.MeshBasicMaterial({ vertexColors: true, map: this.signTexture, alphaTest: 0.35 }));
       case 'leaf': {
         const m = std(0.95, 0, { map: this.leafTexture, side: THREE.DoubleSide });
         (m as THREE.MeshStandardMaterial).alphaTest = 0.5;
@@ -343,6 +353,9 @@ export function lathe(profile: [number, number][], seg: number, x = 0, y = 0, z 
   return g;
 }
 
+/** Tessellation factor for pipes (set by DecorKit from the quality preset). */
+let PIPE_DETAIL = 1;
+
 /** Pipe along a polyline with rounded bends. */
 export function pipe(points: [number, number, number][], r: number, seg = 8, bend = 0.6): THREE.BufferGeometry {
   const path = new THREE.CurvePath<THREE.Vector3>();
@@ -365,7 +378,7 @@ export function pipe(points: [number, number, number][], r: number, seg = 8, ben
   }
   let len = 0;
   for (let i = 1; i < pts.length; i++) len += pts[i].distanceTo(pts[i - 1]);
-  return new THREE.TubeGeometry(path as unknown as THREE.Curve<THREE.Vector3>, Math.max(2, Math.min(64, Math.round(len / 1.2) + pts.length * 3)), r, seg, false);
+  return new THREE.TubeGeometry(path as unknown as THREE.Curve<THREE.Vector3>, Math.max(2, Math.min(64, Math.round((len / 1.2 + pts.length * 3) * PIPE_DETAIL))), r, Math.max(5, Math.round(seg * PIPE_DETAIL)), false);
 }
 
 /** Visual stair treads over a ramp footprint (rising toward +axis if dir 1). */

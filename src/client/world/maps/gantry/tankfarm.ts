@@ -73,7 +73,7 @@ function sphereTank(kit: DecorKit, rnd: () => number, s: number, decor: number):
   kit.addAll('metal', railing(cx - 1.3, cy + r + 0.15, cz, cx + 1.3, cy + r + 0.15, cz, 0.9, 1.3), ENV.bone);
   kit.add('sign', quad(cx + 5.6, cy + 1.6, cz, 4.4, 0.55, 0.92, 0, uvOf('stencilLox2'), 0), '#ffffff', { flat: true });
   // Pipe from the tank bottom into a valve pit toward the lane.
-  kit.add('metal', pipe([[cx + 2, 4.2, cz], [cx + 2, 3.3, cz], [-47.3, 3.3, cz + 0.6], [-46.4, 0.4, cz + 0.6]], 0.2, 8, 0.6), ENV.terracottaFaded);
+  kit.add('metal', pipe([[cx + 2, 4.2, cz], [cx + 2, 3.3, cz], [-47.72, 3.3, cz + 0.6], [-47.72, 0.2, cz + 0.6]], 0.2, 8, 0.6), ENV.terracottaFaded);
   if (bloomSide) {
     ivy(kit, rnd, cx - 5, cx + 5, 3.0, cz - s * 5.45, s > 0 ? 'z-' : 'z+', decor, 2.4);
     moss(kit, rnd, -48, 0, cz - s * 6.2, 1.1, Math.round(10 * decor));
@@ -171,14 +171,14 @@ export function buildTankFarm(kit: DecorKit, rnd: () => number, root: THREE.Grou
     kit.add('concrete', box(-54.6, 0, -6.3, -53.95, 1.1, 6.3), '#bdb5a6');
     // Side walls (collision z ±[5.6, 6]) and door frames.
     for (const s of [-1, 1]) {
-      kit.add('concrete', box(-64.4, 0, s * 5.55, -56.4, 3.2, s * 6.35), '#bdb5a6');
+      kit.add('concrete', box(-64.4, 0, s * 5.55, -56.4, 3.2, s * 6.05), '#bdb5a6');
       kit.add('metal', box(-56.5, 0, s * 5.5, -56.2, 3.2, s * 6.4), STEEL_DARK);
       kit.add('metal', box(-54.8, 0, s * 5.5, -54.5, 3.2, s * 6.4), STEEL_DARK);
       // Blast door swung open against the wall.
-      kit.add('gloss', rbox(-58.6, 0.02, s * 6.38, -56.5, 2.9, s * 6.6, 0.05), '#a8a79f');
-      kit.add('sign', quad(-60, 2.5, s * 6.37, 3.4, 0.5, 0, s, uvOf('stencilBunker')), '#ffffff', { flat: true });
+      kit.add('gloss', rbox(-58.6, 0.02, s * 6.05, -56.5, 2.9, s * 6.22, 0.04), '#a8a79f');
+      kit.add('sign', quad(-61.2, 2.5, s * 6.07, 3.4, 0.5, 0, s, uvOf('stencilBunker')), '#ffffff', { flat: true });
       // Sand drifts at the foot of the walls.
-      kit.add('sand', sphere(-60, 0, s * 6.6, 2.4, 10, 5, 0.18), ENV.sand, { flat: true });
+      kit.add('sand', sphere(-61, 0, s * 6.3, 2.2, 10, 5, 0.08), ENV.sand, { flat: true });
     }
     // Slanted window: panes tilting outward, mullions, the brow shadow line.
     for (let z = -5.7; z < 5.7; z += 1.9) {
@@ -194,9 +194,9 @@ export function buildTankFarm(kit: DecorKit, rnd: () => number, root: THREE.Grou
     kit.add('concrete', box(-64.0, 0, -5.55, -63.95, 3.2, 5.55), '#5b544c');
     kit.add('concrete', box(-63.95, 0, -5.6, -54.6, 3.2, -5.55), '#5b544c');
     kit.add('concrete', box(-63.95, 0, 5.55, -54.6, 3.2, 5.6), '#5b544c');
-    kit.add('paint', box(-63.95, 0.004, -5.55, -54.6, 0.012, 5.55), '#6d665e', { flat: true });
+    kit.add('paint', box(-63.95, 0.004, -5.55, -54.6, 0.012, 5.55), '#4f4943', { flat: true });
     // Console row (collision x −60.2..−59, z ±3.6, h 0.95) with a raked screen bank behind.
-    kit.add('paint', rbox(-60.2, 0, -3.6, -59, 0.95, 3.6, 0.06), '#c9c1b0');
+    kit.add('paint', rbox(-60.2, 0, -3.6, -59, 0.95, 3.6, 0.06), '#9d9486');
     kit.add('paint', box(-59.02, 0.2, -3.5, -58.98, 0.8, 3.5), '#8e877b', { flat: true });
     const deskTop = new THREE.BoxGeometry(1.25, 0.06, 7.3);
     deskTop.rotateZ(-0.18);
@@ -204,7 +204,10 @@ export function buildTankFarm(kit: DecorKit, rnd: () => number, root: THREE.Grou
     kit.add('paint', deskTop, '#a39a8a');
     for (let i = 0; i < 4; i++) {
       const z = -2.7 + i * 1.8;
-      kit.add('paint', rbox(-60.35, 0.95, z - 0.75, -59.6, 1.75, z + 0.75, 0.05), '#b8ad9a');
+      kit.add('paint', rbox(-60.35, 0.95, z - 0.75, -59.6, 1.75, z + 0.75, 0.05), '#8e877b');
+      // Rear vents and a dim status lamp so the console reads from behind too.
+      kit.add('metal', box(-60.37, 1.1, z - 0.6, -60.35, 1.6, z + 0.6), ENV.metalDark, { flat: true });
+      kit.add('glow', box(-60.38, 1.65, z - 0.08, -60.37, 1.7, z + 0.08), i % 2 ? ENV.glowChartreuse : ENV.glowGold, { flat: true, k: 2 });
       const scr = quad(-59.58, 1.37, z, 1.2, 0.5, 1, 0, [
         uvOf('screens')[0] + ((uvOf('screens')[2] - uvOf('screens')[0]) / 4) * i,
         uvOf('screens')[1],
@@ -254,11 +257,15 @@ export function buildTankFarm(kit: DecorKit, rnd: () => number, root: THREE.Grou
     kit.add('sign', quad(-63.93, 1.5, -3.6, 0.9, 1.35, 1, 0, uvOf('posterReach')), '#ffffff', { flat: true });
     kit.add('sign', quad(-63.93, 1.5, -1.9 - 0.1, 0.9, 1.35, 1, 0, uvOf('posterSafety')), '#ffffff', { flat: true });
     kit.add('sign', quad(-58, 2.4, -5.53, 3.8, 0.5, 0, 1, uvOf('plaque')), '#ffffff', { flat: true });
-    // Dim ceiling lamps.
+    // Ceiling lamps (caged fixtures) and the sunset spilling through the slot window.
     for (const z of [-3, 3]) {
-      kit.add('glow', box(-60.5, 3.08, z - 0.6, -60.1, 3.12, z + 0.6), '#ffe9c2', { flat: true, k: 1.2 });
-      kit.add('pool', floorQuad(-60, 0.02, z, 4, 4), '#ffe9c2', { flat: true, k: 0.1 });
+      kit.add('metal', box(-61.4, 2.98, z - 0.7, -60.6, 3.12, z + 0.7), ENV.metalDark, { flat: true });
+      kit.add('glow', box(-61.3, 2.96, z - 0.6, -60.7, 2.98, z + 0.6), ENV.glowGold, { flat: true, k: 1.9 });
+      kit.add('pool', floorQuad(-61, 0.02, z, 5, 5), ENV.glowGold, { flat: true, k: 0.2 });
     }
+    kit.add('pool', floorQuad(-56.8, 0.025, 0, 4.2, 11.5), '#ffc58f', { flat: true, k: 0.55 });
+    kit.add('pool', floorQuad(-57.5, 3.1, 0, 5, 11), '#ffc58f', { flat: true, k: 0.3 });
+    kit.add('pool', quad(-63.9, 1.7, 0, 9, 2.6, 1, 0), '#ffb98a', { flat: true, k: 0.32 });
     moss(kit, rnd, -63.7, 0, -5.2, 0.5, Math.round(8 * decor));
   }
 
@@ -294,11 +301,11 @@ export function buildTankFarm(kit: DecorKit, rnd: () => number, root: THREE.Grou
   kit.add('sign', quad(-34.1, 1.7, 6.5, 1.3, 1.95, -1, 0, uvOf('posterReach')), '#ffffff', { flat: true });
   // Fuel lines descend the station's west wall into the ground.
   for (const [dz, r, col] of [
-    [-0.6, 0.32, ENV.bone],
-    [0.3, 0.26, '#9fa98c'],
-    [0.95, 0.18, ENV.rust],
+    [-0.5, 0.2, ENV.bone],
+    [0.1, 0.16, '#9fa98c'],
+    [0.6, 0.12, ENV.rust],
   ] as [number, number, string][]) {
-    kit.add('metal', pipe([[-33.8, 7.2, dz + 3], [-34.35, 7.2, dz + 3], [-34.35, -0.4, dz + 3]], r, 10, 0.5), col);
+    kit.add('metal', pipe([[-33.6, 7.2, dz + 3], [-34.02 - r, 7.2, dz + 3], [-34.02 - r, -0.4, dz + 3]], r, 8, 0.4), col);
   }
   lamp(kit, -24.02, 3.0, -9, 1, 0, ENV.glowGold, 3.4);
   lamp(kit, -24.02, 3.0, 9, 1, 0, ENV.glowGold, 3.4);

@@ -15,9 +15,10 @@
 //    the only team color in any environment art.
 //
 // Placement: `root` origin = the top of the launch pad (the mount stands on it).
-// Height ≈ 50 m × scale (mount 3.6 m + vehicle 46 m). `tower: true` adds a
-// standalone complex (lattice umbilical tower with swing arms + a concrete
-// apron) for maps that show the rocket far away on the horizon.
+// Height ≈ 50 m × scale (mount 3.6 m + vehicle 46 m). The launch pitches over
+// toward local +X — rotate `root` so +X points away from the audience.
+// `tower: true` adds a standalone complex (lattice umbilical tower with swing
+// arms on the local −Z side + a concrete apron) for horizon rockets.
 // Distant rockets: the materials here thin the scene fog with distance from the
 // map origin so the silhouette stays readable on the horizon (keep it inside the
 // camera far plane: quality.drawDistance is 260 m on Low).
@@ -845,7 +846,10 @@ export function createLaunchRocket(materials: MaterialLibrary, quality: QualityS
   // ── Optional standalone complex: lattice umbilical tower + apron ──
   let arms: THREE.Mesh | null = null;
   if (opts.tower) {
-    const tx = -9;
+    // The tower stands on the rocket's local −Z side so that, with local +X
+    // (the pitch-over direction) pointing away from the viewers, it never
+    // hides the rocket.
+    const tz = -9;
     const half = 2.6;
     const top = 58;
     const lat: THREE.BufferGeometry[] = [];
@@ -855,42 +859,41 @@ export function createLaunchRocket(materials: MaterialLibrary, quality: QualityS
       [half, half],
       [-half, half],
     ];
-    for (const [lx, lz] of legs) lat.push(box(tx + lx, top / 2, lz, 0.55, top, 0.55));
+    for (const [lx, lz] of legs) lat.push(box(lx, top / 2, tz + lz, 0.55, top, 0.55));
     const step = low ? 6 : 4;
     for (let y = 0; y < top - 0.1; y += step) {
       const y1 = Math.min(top, y + step);
       for (let i = 0; i < 4; i++) {
         const [ax, az] = legs[i];
         const [bx, bz] = legs[(i + 1) % 4];
-        lat.push(beam(tx + ax, y1, az, tx + bx, y1, bz, 0.2));
-        lat.push(beam(tx + ax, y, az, tx + bx, y1, bz, 0.14));
-        if (!low) lat.push(beam(tx + bx, y, bz, tx + ax, y1, az, 0.14));
+        lat.push(beam(ax, y1, tz + az, bx, y1, tz + bz, 0.2));
+        lat.push(beam(ax, y, tz + az, bx, y1, tz + bz, 0.14));
+        if (!low) lat.push(beam(bx, y, tz + bz, ax, y1, tz + az, 0.14));
       }
     }
-    // Hammerhead crane + mast.
-    lat.push(box(tx + 2, top + 1.2, 0, 14, 1.4, 1.6));
-    lat.push(box(tx - 3.5, top + 0.2, 0, 3, 2.4, 3));
-    lat.push(box(tx, top + 5, 0, 0.3, 8, 0.3));
+    // Hammerhead crane (jib over the rocket) + counterweight + mast.
+    lat.push(box(0, top + 1.2, tz + 2, 1.6, 1.4, 14));
+    lat.push(box(0, top + 0.2, tz - 3.5, 3, 2.4, 3));
+    lat.push(box(0, top + 5, tz, 0.3, 8, 0.3));
     // Service platforms.
-    for (const y of [12, 24, 36, 48]) lat.push(box(tx, y, 0, 7.2, 0.3, 7.2));
+    for (const y of [12, 24, 36, 48]) lat.push(box(0, y, tz, 7.2, 0.3, 7.2));
     const latMesh = cast(new THREE.Mesh(merge(lat), matTower));
     root.add(latMesh);
     // Swing arms (pivot on the tower's rocket-side face; they swing away at ignition).
     const armGeo: THREE.BufferGeometry[] = [];
     for (const y of [16, 27, 38]) {
-      armGeo.push(box(2.1, y + H, 0, 4.2, 0.9, 1.4));
-      armGeo.push(box(4.0, y + H - 0.8, 0, 0.8, 1.6, 1.6));
+      armGeo.push(box(0, y + H, 2.1, 1.4, 0.9, 4.2));
+      armGeo.push(box(0, y + H - 0.8, 4.0, 1.6, 1.6, 0.8));
     }
-    const armPivot = tx + half;
     arms = cast(new THREE.Mesh(merge(armGeo), matTower));
-    arms.position.set(armPivot, 0, 0);
+    arms.position.set(0, 0, tz + half);
     root.add(arms);
     // Concrete apron with the flame trench slot hinted by a dark band.
-    const apron = new THREE.Mesh(new THREE.BoxGeometry(34, 3, 28), matMount);
-    apron.position.set(-4, -1.5, 0);
+    const apron = new THREE.Mesh(new THREE.BoxGeometry(28, 3, 34), matMount);
+    apron.position.set(0, -1.5, -4);
     apron.receiveShadow = true;
     root.add(apron);
-    const slot = new THREE.Mesh(new THREE.BoxGeometry(5, 0.1, 30), matDark);
+    const slot = new THREE.Mesh(new THREE.BoxGeometry(30, 0.1, 5), matDark);
     slot.position.set(0, 0.02, 0);
     root.add(slot);
   }

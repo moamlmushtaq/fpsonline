@@ -7,6 +7,4 @@ export default {
   'pastel.landmark.rocket': 'Launch Rocket',
   'pastel.landmark.mast': 'Radio Mast',
   'pastel.landmark.sun': 'Sun',
-  'pastel.landmark.chapel': 'Community Chapel',
-  'pastel.landmark.diner': 'Moonbeam Diner',
 } satisfies Record<string, string>;

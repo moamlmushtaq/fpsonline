@@ -132,11 +132,14 @@ function iceCreamVan(kit: DecorKit, signs: Signs, rng: () => number): void {
     kit.geo('paint', g, new THREE.Matrix4().makeRotationY(tilt).setPosition(wx, 0.4, wz), K.tire, { drift: 0.05 });
     g.dispose();
   }
-  // Debris filling the rest of the blocking volume: toppled freezer cart,
-  // crates, the snapped porch post and a fallen streetlight.
-  kit.boxE('paint', new THREE.Vector3(32.2, 0.75, 0.2), new THREE.Euler(0, 0.3, 0.15), new THREE.Vector3(2.0, 1.4, 1.8), K.bone, 0.1);
-  kit.boxE('wood', new THREE.Vector3(31.9, 1.8, -0.5), new THREE.Euler(0.1, 0.5, 0), new THREE.Vector3(0.9, 0.8, 0.9), K.wood, 0.03);
-  kit.boxE('wood', new THREE.Vector3(32.6, 2.5, 0.4), new THREE.Euler(0, -0.2, 0.1), new THREE.Vector3(0.8, 0.7, 0.8), K.woodDark, 0.03);
+  // Debris filling the rest of the blocking volume: the toppled roadside
+  // sign leaning on the van, a chest freezer on its side, stacked crates, the
+  // snapped porch post and a fallen streetlight.
+  kit.boxE('paint', new THREE.Vector3(32.05, 1.45, 0), new THREE.Euler(0, 0, -0.32), new THREE.Vector3(0.14, 3.2, 2.35), mix(K.pink, K.bone, 0.4), 0.03);
+  signs.board.quad(REGION.cone, new THREE.Vector3(31.95, 1.5, 0), 1.9, 2.85, new THREE.Vector3(-0.95, 0.31, 0).normalize());
+  kit.boxE('paint', new THREE.Vector3(32.9, 0.55, 0.55), new THREE.Euler(0, 0.2, Math.PI / 2), new THREE.Vector3(1.1, 1.3, 1.0), mix(K.bone, K.blue, 0.3), 0.08);
+  kit.box('wood', 31.2, 0, -1.15, 32.3, 0.85, -0.1, K.wood, 0.03);
+  kit.box('wood', 31.3, 0.85, -1.05, 32.2, 1.6, -0.2, K.woodDark, 0.03);
   kit.boxE('wood', new THREE.Vector3(42.2, 1.4, 0), new THREE.Euler(0.2, 0, 0.5), new THREE.Vector3(0.18, 3.2, 2.2), K.wood, 0.02);
   kit.tube('chrome', new THREE.Vector3(42.6, 0.2, -1.6), new THREE.Vector3(34.5, 3.1, 0.6), 0.09, K.boneShade, 6);
   kit.ball('paint', 34.3, 3.15, 0.65, 0.35, 0.35, 0.35, K.bone, 1);
@@ -148,10 +151,10 @@ function iceCreamVan(kit: DecorKit, signs: Signs, rng: () => number): void {
 // ── Pool ────────────────────────────────────────────────────────────────────
 
 function pool(kit: DecorKit, rng: () => number): void {
-  // Hole x −45..−33, z ±5: deep floor −1.25 (x < −38), sloped floor up to x −33.
+  // Hole x −45..−33, z ±5: deep floor −1.2 (x < −38), sloped floor up to x −33.
   const tileW = rgb('#bcd2d8');
   const tileD = rgb('#9fbac4');
-  const deep = -1.25;
+  const deep = -1.2;
   // Walls (tiled) — inner faces of the hole, just inside the edge.
   kit.box('tile', -45, deep, -5, -44.96, 0, 5, tileW, 0, { base: deep, ao: 0.3 });
   kit.box('tile', -45, deep, 4.96, -33, 0, 5, tileW, 0, { base: deep, ao: 0.3 });
@@ -359,7 +362,7 @@ function tree(kit: DecorKit, x: number, z: number, h: number, r: number, rng: ()
     const a = rng() * Math.PI * 2;
     const d = rng() * r * 0.45;
     const s = r * (0.55 + rng() * 0.35);
-    kit.ball('foliage', x + Math.cos(a) * d, h * 0.72 + rng() * h * 0.2, z + Math.sin(a) * d, s, s * 0.72, s, mix(K.olive, K.sage, rng()), 1, { drift: 0.2, shade: (_x, y, _z, _nx, ny) => (ny < -0.2 ? 0.7 : 1) * (0.85 + (y - h * 0.5) * 0.05) });
+    kit.ball('foliage', x + Math.cos(a) * d, h * 0.72 + rng() * h * 0.2, z + Math.sin(a) * d, s, s * 0.72, s, mix(mix(K.sage, K.sand, 0.25), K.olive, rng() * 0.45), 1, { drift: 0.2, shade: (_x, _y, _z, _nx, ny) => (ny < -0.3 ? 0.82 : 1.06) });
   }
   if (vines) {
     const n = 3 + Math.floor(rng() * 3);

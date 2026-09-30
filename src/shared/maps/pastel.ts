@@ -10,38 +10,47 @@
 // TOP-DOWN PLAN (x → east, z ↓ south). Mirror-symmetric across z = 0 for the
 // collision; the two spawn ends are dressed differently by the decor.
 //
-//   z=-54 ┌───────────────────────── BLOOM SPAWN (−Z) ───────────────────────────┐
-//         │  overgrown yards    ▒ MOONBEAM DINER + STARLIGHT GAS forecourt ▒ cul-de-sac │
-//   z=-40 │══════════╗   exit W   ════════╗  exit C  ╔════════   exit E   ╔═══════│ 2.8–3.2 m walls
-//         │ W1'+carport         [W2' 2-st.]   [sign]   [E2' 2-st.]    car  E1'+carport│
-//         │  shed   fence       balcony→W    parking   balcony→E      ┃street┃        │
-//   z=-12 │    sheets ≈≈   ▓alley▓  ┏━━━━━━━━ STARLIGHT MALL ━━━━━━━━┓ ▓alley▓ wagon │
-//         │ cabana ┌─POOL─┐  grand ┃gal│esc  kiosk      │gal┃ grand   ┌truck┐ corner│
-//   z=  0 │   (A)  │~deep~│/ stair→┃ W │ ══ bridge ◆ ══ │ E ┃←stair   │ (C) │ house │
-//         │        └──────┘        ┃   │esc  fountain   │   ┃         └─────┘       │
-//   z=+12 │    sheets ≈≈   ▓alley▓  ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ ▓alley▓ wagon │
-//         │  shed   fence       [W2 2-st.]  planter    [E2 2-st.]          car       │
-//         │ W1+carport          balcony→W   parking    balcony→E    ┃street┃ E1+carport│
-//   z=+40 │══════════╝   exit W   ════════╝  exit C  ╚════════   exit E   ╚═══════│
-//         │  back gardens     ▒ HALCYON HEIGHTS COMMUNITY CHAPEL lot ▒      turnaround │
-//   z=+54 └──────────────────────── HALCYON SPAWN (+Z) ───────────────────────────┘
-//         x=-54      -45   -30   -17  -15          0          15  17   30 31   43  54
+//  z=-54 ┌─────────────── BLOOM SPAWN: Moonbeam Diner + Comet Gas (beyond −54) ───────────────┐
+//        │ B·back gardens          B  B  (diner lot)  B  B               cul-de-sac bulb  B│
+//  z=-40 │▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ exitW ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ exitE ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓│ 2.8–3.2 walls
+//        │ W1'+carport   fence   ¦vines¦          [pylon]        ¦vines¦   car   E1'+carport│
+//        │  bungalow  shed       [W2' 2-storey]   parking lot    [E2' 2-storey] ┃street┃   │
+//  z=-12 │  cabana   ≈≈≈curtain≈≈≈[garage row]┏━━━ STARLIGHT MALL ━━━┓[garage row]  van     │
+//        │ ▐pool▌   ┌──POOL──┐ ▒screen▒ grand┃gal esc │ esc gal┃grand ▒shelter▒ ┌truck┐corner│
+//  z=  0 │  house   │~deep~/ │  (A)    stair→┃ W  ══bridge◆══  E ┃←stair       │ (C) │house │
+//        │          └────────┘ ▒screen▒     ┃gal esc │ esc gal┃      ▒shelter▒ └─────┘      │
+//  z=+12 │          ≈≈≈curtain≈≈≈[garage row]┗━━━ fountain (B) ━━━┛[garage row]  van        │
+//        │  bungalow  shed       [W2 2-storey]    parking lot    [E2 2-storey]  ┃street┃   │
+//        │ W1+carport    fence   ¦vines¦          [pylon]        ¦vines¦   car   E1+carport │
+//  z=+40 │▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ exitW ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ exitE ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓│
+//        │ H·back gardens          H  H  (chapel lot)  H  H              turnaround       H│
+//  z=+54 └─────────────── HALCYON SPAWN: Community Chapel (beyond +54) ───────────────────────┘
+//        x=-54     -47  -45   -33 -30 -24 -17 -15     0      15 17  24  30 31      43 44    54
 //
-// LANES   West = BACKYARDS (fences to mantle, shed, carport → roof chain, laundry
-//         sheets that block sight but not movement, the drained kidney pool dip).
-//         Centre = STARLIGHT MALL (parking lot → two doors per end → flooded
-//         atrium, fountain island, escalators → bridge → galleries).
-//         East = MAIN STREET (station wagons, crashed ice-cream truck across the
-//         intersection, carport → roof chain on the far side).
+// LANES   West = BACKYARDS: fences to mantle, tool shed, wagon → carport → roof
+//         chain, vine-curtain pergolas (walk through, no sight / bullets), the
+//         drained kidney pool dip (A) with a sloped shallow end.
+//         Centre = STARLIGHT MALL: parking lot (wagon, sedan, pylon base) → two
+//         doors per end, each fronted by a double escalator that blocks the
+//         through-mall sightline → flooded atrium, fountain island (B) with the
+//         "Sunrise" screen, bridge (Sunspear) and galleries; grand stairs from
+//         both alleys up to the galleries.
+//         East = MAIN STREET: parked cars, camper vans (jump-mantle), bus shelter,
+//         the crashed soft-serve van across the intersection (C), carport chain.
+//         Garage rows close the mall corners, so the parking lots only feed the
+//         mall and lanes cross mid-map through the alleys, near spawn through the
+//         enterable two-storey houses (patio doors both ends, stair, balcony,
+//         jump-mantle roof) and the vine pergolas behind them.
+// SPAWNS  Behind unmantleable screen walls; exits west and east only. Verified
+//         in tests/shared/map-pastel.test.ts: never visible from the enemy half.
 // ZONES   A pool (−39, 0) · B atrium fountain (0, 0) · C intersection (37, 0).
-// PICKUP  Sunspear on the mall bridge, 3.2 m above the fountain.
-// HEIGHTS ground 0 · mall floor −0.35 (water −0.2) · pool −1.25 · car roofs 1.3 ·
-//         carports 2.55 · 1-storey roofs 2.95 · house upper floors/balconies 2.7 ·
-//         house roofs 5.1 (jump-mantle from the balcony) · mall galleries 3.2 ·
-//         mall parapet 8 (decor roof 8.4, skylight peak ~12).
-// ROUTES  Rotations mid-map: pool ↔ west alley ↔ mall side doors ↔ atrium ↔ east
-//         alley ↔ intersection; upper: grand stairs (W/E) → galleries → bridge.
-//         Near spawn: W2/E2 ground floors connect yards ↔ parking ↔ street.
+// PICKUP  Sunspear on the mall bridge (0, 3.2, 0), above the fountain.
+// HEIGHTS ground 0 · mall floor −0.35 (water −0.2) · pool −1.2 · car roofs 1.3 ·
+//         vans 2.2 · carports 2.55 · bungalow roofs 2.95 · house upper floors /
+//         balconies 2.7 · house roofs 5.1 · garages 5 · mall galleries & bridge
+//         3.2 · mall walls 8 (decor roof 8.7, glass vault peak 12.3).
+// SIGHT   Ground-level lines ≤ ~60 m (door slivers only); elevated lines from the
+//         mall bridge through its side windows are the one deliberate long view.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { MapKit, mirrorSpawnsZ, spawn, v, yawToward } from '../sim/map-kit';
@@ -65,7 +74,6 @@ const C_YELLOW = '#efdca6';
 const C_BLUE = '#b9cfda';
 const C_BONE = '#efe6d6';
 const C_TERRA = '#c99a82';
-const C_CONCRETE = '#bdb5a6';
 
 // ── Ground (drawn by decor: streets, lawns, parking lines, sidewalks) ───────
 let m = k.mark();
@@ -78,8 +86,8 @@ m = k.mark();
 k.box(-45, -1, 5, -33, 0, 12, 'tile', 'hidden'); // pool deck
 k.mirrorZ(m);
 // Drained kidney pool: deep end west, sloped floor up to the shallow east end.
-k.box(-45, -2, -5, -38, -1.25, 5, 'tile', 'hidden');
-k.ramp(-38, -1.25, -5, -33, 0, 5, 'x', 1, 'tile', 'hidden');
+k.box(-45, -2, -5, -38, -1.2, 5, 'tile', 'hidden');
+k.ramp(-38, -1.2, -5, -33, 0, 5, 'x', 1, 'tile', 'hidden');
 // Flooded mall floor.
 k.box(-15, -1.5, -12, 15, MALL_Y, 12, 'tile', 'hidden');
 
@@ -126,7 +134,7 @@ k.box(-47.5, 0.2, 7.4, -30, 4.4, 7.6, 'foliage', 'hidden', { walkThrough: true }
 // Camper van parked at the curb before the intersection (jump-mantle roof).
 k.box(31.2, 0, 7.5, 33.4, 2.2, 12.5, 'metal', 'hidden');
 // Bus shelter (east) and loading-dock screen (west): break the alley diagonals.
-k.box(22, 0, 6, 29.5, 2.6, 6.4, 'metal', 'shelter', { color: C_CONCRETE });
+k.box(22, 0, 6, 29.5, 2.6, 6.4, 'metal', 'hidden');
 k.box(-29.5, 0, 6, -22, 2.6, 6.4, 'concrete', 'breeze', { color: C_SAND });
 // Garage rows closing the corners between the mall and the houses: the parking
 // lots feed the mall; the alleys connect the lanes at mid.
@@ -214,7 +222,7 @@ export const PASTEL: MapDef = {
   solids: k.solids,
   spawns: [...south, ...mirrorSpawnsZ(south), ...ffaHalf, ...mirrorSpawnsZ(ffaHalf)],
   zones: [
-    { id: 'A', center: v(-39, -0.1, 0), radius: 7.5, height: 3, nameKey: 'pastel.zone.A' },
+    { id: 'A', center: v(-39, 0, 0), radius: 7.5, height: 3, nameKey: 'pastel.zone.A' },
     { id: 'B', center: v(0, MALL_Y, 0), radius: 7, height: 2.8, nameKey: 'pastel.zone.B' },
     { id: 'C', center: v(37, 0, 0), radius: 7.5, height: 3, nameKey: 'pastel.zone.C' },
   ],

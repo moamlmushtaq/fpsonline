@@ -100,6 +100,26 @@ function weather(c: C2D, r: Region, amount: number, seed: number): void {
   c.restore();
 }
 
+/** Wear for cut-out lettering (transparent background): peel holes out of the paint. */
+function peel(c: C2D, r: Region, amount: number, seed: number): void {
+  const rnd = rng(seed);
+  c.save();
+  c.beginPath();
+  c.rect(r.x, r.y, r.w, r.h);
+  c.clip();
+  c.globalCompositeOperation = 'destination-out';
+  for (let i = 0; i < 70 * amount; i++) {
+    const x = r.x + rnd() * r.w;
+    const y = r.y + rnd() * r.h;
+    const rr = 1.5 + rnd() * r.w * 0.025;
+    c.fillStyle = `rgba(0,0,0,${0.35 + rnd() * 0.65})`;
+    c.beginPath();
+    c.ellipse(x, y, rr * (1 + rnd() * 2), rr, rnd() * 3, 0, Math.PI * 2);
+    c.fill();
+  }
+  c.restore();
+}
+
 function text(c: C2D, s: string, x: number, y: number, px: number, color: string, weight = 700, align: CanvasTextAlign = 'center', track = 0): void {
   c.fillStyle = color;
   c.font = `${weight} ${px}px ${FONT}`;
@@ -351,7 +371,7 @@ function drawFacadeHalcyon(c: C2D, r: Region): void {
   text(c, 'HALCYON', r.x + 560, cy - 44, 104, 'rgba(47,42,38,0.92)', 800, 'center', 6);
   text(c, 'VEHICLE ASSEMBLY · 1', r.x + 560, cy + 46, 34, 'rgba(47,42,38,0.85)', 700, 'center', 5);
   text(c, 'REACH FOR TOMORROW', r.x + 560, cy + 104, 26, 'rgba(154,106,79,0.9)', 700, 'center', 6);
-  weather(c, r, 0.9, 51);
+  peel(c, r, 1, 51);
 }
 
 function drawFacadeStation(c: C2D, r: Region): void {
@@ -374,7 +394,7 @@ function drawFacadeStation(c: C2D, r: Region): void {
   c.fill();
   text(c, 'TRACKING STATION', r.x + 600, cy - 30, 78, 'rgba(47,42,38,0.88)', 800, 'center', 5);
   text(c, 'DEEP RANGE · NORTH', r.x + 600, cy + 50, 34, 'rgba(47,42,38,0.75)', 700, 'center', 6);
-  weather(c, r, 1.2, 67);
+  peel(c, r, 1.6, 67);
 }
 
 function drawMural(c: C2D, r: Region): void {
@@ -546,7 +566,7 @@ function drawDeckSeven(c: C2D, r: Region): void {
   c.arc(r.x + r.w / 2, r.y + r.h / 2, r.w / 2 - 12, 0, Math.PI * 2);
   c.stroke();
   text(c, '7', r.x + r.w / 2, r.y + r.h / 2 + 8, 180, 'rgba(239,230,214,0.88)', 800);
-  weather(c, r, 1.6, 77);
+  peel(c, r, 2.2, 77);
 }
 
 export function paintAtlas(c: C2D, w: number, h: number): void {
@@ -598,7 +618,14 @@ function leafTones(): string[] {
     const y = hex(b);
     return `rgb(${Math.round(x[0] + (y[0] - x[0]) * t)},${Math.round(x[1] + (y[1] - x[1]) * t)},${Math.round(x[2] + (y[2] - x[2]) * t)})`;
   };
-  return [mix(ENV.olive, ENV.shadowCool, 0.5), mix(ENV.olive, ENV.shadowCool, 0.3), mix(ENV.olive, ENV.shadowCool, 0.12), mix(ENV.olive, ENV.sage, 0.4), mix(ENV.sage, ENV.olive, 0.2), ENV.sage];
+  // Pulled slightly toward sky blue so the warm sunset keeps them green, not mustard.
+  const base = [mix(ENV.olive, ENV.shadowCool, 0.5), mix(ENV.olive, ENV.shadowCool, 0.3), mix(ENV.olive, ENV.shadowCool, 0.12), mix(ENV.olive, ENV.sage, 0.4), mix(ENV.sage, ENV.olive, 0.2), ENV.sage];
+  return base.map((c) => {
+    const m = /rgb\((\d+),(\d+),(\d+)\)/.exec(c);
+    const rgb = m ? [Number(m[1]), Number(m[2]), Number(m[3])] : hex(c);
+    const sky = hex(ENV.skyBlue);
+    return `rgb(${Math.round(rgb[0] * 0.78 + sky[0] * 0.08)},${Math.round(rgb[1] * 0.9 + sky[1] * 0.1)},${Math.round(rgb[2] * 0.8 + sky[2] * 0.12)})`;
+  });
 }
 const LEAF_TONES = leafTones();
 

@@ -59,7 +59,7 @@ const build: DecorBuilder = (ctx: DecorContext): MapDecor => {
   twoStorey(kit, signs, -1, -1, styles[3], rng, true);
   for (const sx of [1, -1]) {
     for (const sz of [1, -1]) {
-      bungalow(kit, sx, sz, rng, false);
+      bungalow(kit, sx, sz, rng);
       garageRow(kit, signs, sx, sz, rng);
     }
   }
@@ -146,15 +146,17 @@ const build: DecorBuilder = (ctx: DecorContext): MapDecor => {
   const puddle = new THREE.CircleGeometry(1, kit.low ? 14 : 24);
   puddle.rotateX(-Math.PI / 2);
   puddle.scale(2.5, 1, 3.2);
-  puddle.translate(-42, -1.225, -0.6);
+  puddle.translate(-42, -1.175, -0.6);
   const waterGeo = kit.ownGeometry(mergeTwo(atrium, puddle));
-  const water = kit.add(createWaterSurface(def.lighting, waterGeo, 0, 0.62));
+  const water = kit.add(createWaterSurface(def.lighting, waterGeo, 0, 0.82));
   const waterMat = water.material as THREE.ShaderMaterial;
   kit.ownMaterial(waterMat);
 
   if (import.meta.env?.DEV) {
     const tris: Record<string, number> = {};
+    let meshes = 0;
     ctx.root.traverse((o) => {
+      if ((o as THREE.Mesh).isMesh || (o as THREE.Points).isPoints) meshes++;
       const m = o as THREE.Mesh;
       if (!m.isMesh || !m.geometry) return;
       const g = m.geometry;
@@ -162,7 +164,7 @@ const build: DecorBuilder = (ctx: DecorContext): MapDecor => {
       const inst = (m as THREE.InstancedMesh).isInstancedMesh ? (m as THREE.InstancedMesh).count : 1;
       tris[m.name || 'unnamed'] = (tris[m.name || 'unnamed'] ?? 0) + Math.round(n * inst);
     });
-    (window as unknown as { __pastelDecor?: unknown }).__pastelDecor = { staticCalls, shafts: mall.shafts.length, tris };
+    (window as unknown as { __pastelDecor?: unknown }).__pastelDecor = { staticCalls, meshes, shafts: mall.shafts.length, tris, total: Object.values(tris).reduce((a, b) => a + b, 0) };
   }
 
   const rocketTarget = (): THREE.Vector3 => {
@@ -180,7 +182,7 @@ const build: DecorBuilder = (ctx: DecorContext): MapDecor => {
       if (kind === 'keyart') return { pos: { x: 12, y: 1.7, z: -37 }, target: { x: -3, y: 8, z: 0 }, fov: 52 };
       if (kind === 'intro') return { pos: { x: 26, y: 24, z: 58 }, target: { x: -2, y: 5, z: 2 }, fov: 55 };
       const t = rocketTarget();
-      return { pos: { x: 22, y: 11, z: 34 }, target: { x: t.x, y: t.y, z: t.z }, fov: 42 };
+      return { pos: { x: -14, y: 11, z: 26 }, target: { x: t.x, y: t.y, z: t.z }, fov: 40 };
     },
     dispose(): void {
       back.dispose();

@@ -110,7 +110,7 @@ function crawler(kit: DecorKit, rnd: () => number, s: number, overgrown: boolean
       const z = zl + 0.4 + rnd() * 6.2;
       kit.add('foliage', sphere(x, 2.42, z, 0.35 + rnd() * 0.5, 6, 3, 0.35), GREENS[Math.floor(rnd() * 3)], { flat: true });
     }
-    for (let i = 0; i < Math.round(8 * decor); i++) vine(kit, rnd, 6.2 + rnd() * 9.6, 2.35, s > 0 ? zl - 0.05 : zh + 0.05, 1 + rnd() * 1.2, 0, s > 0 ? -1 : 1);
+    ivy(kit, rnd, 6.2, 15.8, 2.45, s > 0 ? zl - 0.02 : zh + 0.02, s > 0 ? 'z-' : 'z+', decor, 1.8);
     moss(kit, rnd, 11, 2.41, s * 33.5, 1.4, Math.round(10 * decor));
   }
 }
@@ -129,7 +129,7 @@ function tanker(kit: DecorKit, s: number, overgrown: boolean, rnd: () => number,
   kit.add('paint', box(-29.9, 0.35, zl + 0.1, -24.6, 0.75, zh - 0.1), '#4a433d');
   for (const wx of [-29, -27.8, -23.6]) for (const wz of [zl + 0.02, zh - 0.37]) kit.add('metal', cylAB(wx, 0.5, wz, wx, 0.5, wz + 0.35, 0.5, 0.5, 12), '#2f2c2a');
   kit.add('sign', quad(-27.3, 1.85, s > 0 ? zl - 0.02 : zh + 0.02, 2.2, 0.3, 0, s > 0 ? -1 : 1, uvOf('stencilRp1')), '#ffffff', { flat: true });
-  if (overgrown) for (let i = 0; i < Math.round(6 * decor); i++) vine(kit, rnd, -29 + rnd() * 5, 2.9, s > 0 ? zl : zh, 0.8 + rnd(), 0, s > 0 ? -1 : 1);
+  if (overgrown) ivy(kit, rnd, -29.8, -24.8, 3.0, s > 0 ? zl - 0.02 : zh + 0.02, s > 0 ? 'z-' : 'z+', decor, 1.6);
 }
 
 export function buildCompounds(kit: DecorKit, rnd: () => number, root: THREE.Group, decor: number): CompoundAnim {
@@ -156,6 +156,19 @@ export function buildCompounds(kit: DecorKit, rnd: () => number, root: THREE.Gro
     }
     kit.add('metal', box(-0.08, 6, -46.06, 0.08, 20, -45.98), '#8e877b', { flat: true });
     kit.add('sign', quad(0, 21.2, -45.97, 7.5, 0.95, 0, 1, uvOf('stencilHangar')), '#ffffff', { flat: true });
+    // Work floodlights on the shaded north facade (sunset is behind the hangar):
+    // over the corner doors, washing the emblem, and warm light spilling out of the door.
+    for (const x of [-16.3, 16.3]) {
+      kit.add('metal', box(x - 0.5, 7.0, -46.0, x + 0.5, 7.5, -45.4), ENV.metalDark, { flat: true });
+      kit.add('glow', box(x - 0.42, 7.0, -45.42, x + 0.42, 7.1, -45.38), ENV.glowGold, { flat: true, k: 2.8 });
+      kit.add('pool', quad(x, 5.2, -45.95, 5.5, 5, 0, 1), ENV.glowGold, { flat: true, k: 0.3 });
+      kit.add('pool', floorQuad(x, 0.03, -43.5, 6, 6), ENV.glowGold, { flat: true, k: 0.26 });
+    }
+    kit.add('metal', box(-12, 12.2, -45.9, -10.4, 12.7, -45.2), ENV.metalDark, { flat: true });
+    kit.add('glow', box(-11.9, 12.2, -45.25, -10.5, 12.3, -45.2), '#fff1d6', { flat: true, k: 2.4 });
+    kit.add('pool', quad(-11.2, 16.2, -45.94, 15, 8.5, 0, 1), '#ffe6c0', { flat: true, k: 0.2 });
+    kit.add('pool', quad(0, 3, -46.45, 12, 6, 0, 1), ENV.glowGold, { flat: true, k: 0.35 });
+    kit.add('pool', floorQuad(0, 0.03, -44, 13, 5), ENV.glowGold, { flat: true, k: 0.28 });
     // Agency emblem + lettering over the west bay.
     kit.add('sign', quad(-11.2, 16.2, -45.96, 13.2, 6.6, 0, 1, uvOf('facadeHalcyon')), '#ffffff', { flat: true });
     // Clerestory windows (east + west walls) and roof vents.
@@ -203,7 +216,7 @@ export function buildCompounds(kit: DecorKit, rnd: () => number, root: THREE.Gro
         kit.add('metal', cylAB(x, 21.8, z, x, 11.6, z, 0.02, 0.02, 3), STEEL_DARK, { flat: true });
         kit.add('metal', lathe([[0.05, 0], [0.6, -0.1], [0.62, -0.5]], 10, x, 11.6, z), '#8a8680');
         kit.add('glow', sphere(x, 11.1, z, 0.28, 8, 6), ENV.glowGold, { flat: true, k: 2.6 });
-        kit.add('pool', floorQuad(x, 0.02, z, 7, 7), ENV.glowGold, { flat: true, k: 0.2 });
+        kit.add('pool', floorQuad(x, 0.02, z, 9.5, 9.5), ENV.glowGold, { flat: true, k: 0.3 });
       }
     }
     // Back wall: lockers, benches, posters (all within the unreachable margin).
@@ -214,8 +227,12 @@ export function buildCompounds(kit: DecorKit, rnd: () => number, root: THREE.Gro
     }
     kit.add('sign', quad(-1.6, 2.4, -60.15, 1.4, 2.1, 0, 1, uvOf('posterReach')), '#ffffff', { flat: true });
     kit.add('sign', quad(1.6, 2.4, -60.15, 1.4, 2.1, 0, 1, uvOf('posterSafety')), '#ffffff', { flat: true });
+    // Sunset through the east clerestory lands high on the west wall.
+    for (let z = -58; z < -47; z += 3.2) kit.add('pool', quad(-17.93, 11.4, z + 1.2, 2.8, 3.4, 1, 0), '#ffc08e', { flat: true, k: 0.45 });
+    // Painted assembly floor (darker than the sunlit apron outside).
+    kit.add('concrete', box(-18, 0, -60, 18, 0.006, -46.5), '#8a8176', { flat: true });
     // Floor bay markings.
-    for (const x of [-14.5, 14.5]) kit.add('paint', box(x - 0.08, 0, -59.5, x + 0.08, 0.012, -46.5), '#c9a24e', { flat: true });
+    for (const x of [-14.5, 14.5]) kit.add('paint', box(x - 0.08, 0, -59.5, x + 0.08, 0.012, -46.5), '#d8cdb8', { flat: true });
     void s;
   }
 
@@ -232,11 +249,24 @@ export function buildCompounds(kit: DecorKit, rnd: () => number, root: THREE.Gro
     // Brutalist vertical fins on the facade + a dark window band.
     for (let x = -18; x <= 18; x += 3) {
       if (Math.abs(x) < 7 || (Math.abs(x) > 14 && Math.abs(x) < 18)) continue;
-      kit.add('concrete', box(x - 0.3, 0.8, 45.4, x + 0.3, 12.6, 46), '#c1c5ae');
+      kit.add('concrete', box(x - 0.3, 0.8, 45.72, x + 0.3, 12.6, 46), '#c1c5ae');
     }
+    // Window band: the reclaimed interior glows faintly through the dusty glass.
+    kit.add('glow', box(-14.3, 7.4, 46.0, -6.2, 9.6, 46.02), '#55683f', { flat: true, k: 0.75 });
+    kit.add('glow', box(6.2, 7.4, 46.0, 14.3, 9.6, 46.02), '#55683f', { flat: true, k: 0.75 });
     kit.add('glass', box(-14.3, 7.4, 45.94, -6.2, 9.6, 46.0), '#7f9199', { flat: true });
     kit.add('glass', box(6.2, 7.4, 45.94, 14.3, 9.6, 46.0), '#7f9199', { flat: true });
+    kit.add('concrete', box(-18, 0, 46.5, 18, 0.006, 60), '#6f7466', { flat: true });
     kit.add('sign', quad(0, 9.2, 45.96, 11.4, 2.85, 0, -1, uvOf('facadeStation')), '#ffffff', { flat: true });
+    // Bioluminescent spill from the reclaimed interior + two old sodium lamps still burning.
+    kit.add('pool', quad(0, 3, 46.45, 12, 6, 0, -1), ENV.glowChartreuse, { flat: true, k: 0.22 });
+    kit.add('pool', floorQuad(0, 0.03, 44, 13, 5), ENV.glowChartreuse, { flat: true, k: 0.18 });
+    for (const x of [-16.3, 16.3]) {
+      kit.add('metal', box(x - 0.5, 7.0, 45.4, x + 0.5, 7.5, 46.0), ENV.metalDark, { flat: true });
+      kit.add('glow', box(x - 0.42, 7.0, 45.38, x + 0.42, 7.1, 45.42), ENV.glowGold, { flat: true, k: 2.4 });
+      kit.add('pool', quad(x, 5.2, 45.95, 5.5, 5, 0, -1), ENV.glowGold, { flat: true, k: 0.26 });
+      kit.add('pool', floorQuad(x, 0.03, 43.5, 6, 6), ENV.glowGold, { flat: true, k: 0.22 });
+    }
     kit.add('sign', quad(16.25, 2.95, 45.98, 3.4, 0.3, 0, -1, uvOf('hazard')), '#ffffff', { flat: true });
     kit.add('sign', quad(-16.25, 2.95, 45.98, 3.4, 0.3, 0, -1, uvOf('stencilStation')), '#ffffff', { flat: true });
     // Corner doors: steel shutters jammed half open, overgrown.
@@ -327,6 +357,13 @@ export function buildCompounds(kit: DecorKit, rnd: () => number, root: THREE.Gro
       ivy(kit, rnd, -9, 9, 4.6, face, s > 0 ? 'z-' : 'z+', decor * 0.7, 2.6);
     }
     kit.add('sign', quad(0, 2.3, s * 41 + s * 0.02, 5, 0.6, 0, s, uvOf('stencilPad')), '#ffffff', { flat: true });
+    // Gooseneck lamps on the baffle's crown wash the pad-side painting.
+    for (const x of [-5, 5]) {
+      kit.add('metal', beam(x, 4.7, s * 40.5, x, 5.3, s * 40.5 - s * 0.9, 0.06), ENV.metalDark, { flat: true });
+      kit.add('metal', box(x - 0.3, 5.1, s * 40.5 - s * 1.15, x + 0.3, 5.4, s * 40.5 - s * 0.75), ENV.metalDark, { flat: true });
+      kit.add('glow', box(x - 0.25, 5.08, s * 40.5 - s * 1.1, x + 0.25, 5.1, s * 40.5 - s * 0.8), ENV.glowGold, { flat: true, k: 2.6 });
+      kit.add('pool', quad(x, 2.6, face - s * 0.02, 8, 4.4, 0, -s), ENV.glowGold, { flat: true, k: 0.24 });
+    }
     // Weeds in the cracks; the Bloom's side is properly reclaimed.
     const weeds = Math.round((bloom ? 26 : 8) * decor);
     for (let i = 0; i < weeds; i++) {
@@ -336,6 +373,25 @@ export function buildCompounds(kit: DecorKit, rnd: () => number, root: THREE.Gro
       bush(kit, x, 0, z, bloom ? 0.8 + rnd() * 1.2 : 0.5 + rnd() * 0.5, rnd() * Math.PI, !bloom || rnd() < 0.5);
     }
     if (bloom) {
+      // Bloom flora in the pad's shade: glowing moss and tall bulb stalks.
+      for (const [x, z] of [
+        [-16.5, 43.5],
+        [15.8, 43.8],
+        [-8.5, 39.3],
+        [8.7, 39.3],
+        [-21.8, 33],
+        [4.8, 18.4],
+        [-6.5, 18.2],
+      ] as [number, number][]) {
+        moss(kit, rnd, x, 0, z, 0.9, Math.round(14 * decor));
+        for (let i = 0; i < Math.round(4 * decor); i++) {
+          const px = x + (rnd() - 0.5) * 1.6;
+          const pz = z + (rnd() - 0.5) * 1.2;
+          const h = 0.7 + rnd() * 1.3;
+          kit.add('foliage', beam(px, 0, pz, px + (rnd() - 0.5) * 0.3, h, pz + (rnd() - 0.5) * 0.3, 0.035), GREENS[1], { flat: true });
+          kit.add('glow', sphere(px, h + 0.08, pz, 0.1 + rnd() * 0.08, 7, 5, 1.3), rnd() < 0.6 ? ENV.glowChartreuse : ENV.glowSoftPink, { flat: true, k: 2.6 });
+        }
+      }
       for (const [x, z, sz] of [
         [-17.5, 44.5, 2.2],
         [17.2, 44.8, 2.6],

@@ -59,13 +59,13 @@ export function hangingVine(kit: DecorKit, anchor: THREE.Vector3, length: number
     kit.tube('stem', prev, p, 0.018 * (1.2 - t * 0.5), STEM, 4, { drift: 0.1, sway: (_x, y) => Math.max(0, (anchor.y - y) / length) ** 1.5 * amp });
     prev = p;
   }
-  const leaves = Math.round((kit.low ? 3 : 6) * Math.min(2, length / 1.5) * Math.max(0.5, kit.detail));
+  const leaves = Math.round((kit.low ? 2 : 6) * Math.min(2, length / 1.5) * Math.max(0.5, kit.detail));
   for (let i = 0; i < leaves; i++) {
     const t = 0.1 + rng() * 0.9;
     const p = anchor.clone().add(new THREE.Vector3(bend.x * Math.sin(t * 2.4), -length * t, bend.z * Math.sin(t * 2.1)));
     leaf(kit, p, 0.16, rng, t ** 1.5 * Math.min(1, length / 3), 0.1);
   }
-  const bulbs = Math.round(glow * (1 + length * 0.8) * Math.max(0.5, kit.detail));
+  const bulbs = Math.round(glow * (1 + length * 0.8) * kit.detail);
   for (let i = 0; i < bulbs; i++) {
     const t = 0.25 + rng() * 0.75;
     const p = anchor.clone().add(new THREE.Vector3(bend.x * Math.sin(t * 2.4) + (rng() - 0.5) * 0.08, -length * t, bend.z * Math.sin(t * 2.1) + (rng() - 0.5) * 0.08));
@@ -198,8 +198,9 @@ export interface CurtainSpec {
  * batch and a few glowing strands in front for depth).
  */
 export function buildCurtains(kit: DecorKit, lib: MaterialLibrary, specs: CurtainSpec[], rng: () => number): THREE.Mesh {
-  const tex = lib.canvasTexture('pastel.curtain', 512, 256, (c, w, h) => drawCurtain(c, w, h));
-  const buds = lib.canvasTexture('pastel.curtain.buds', 512, 256, (c, w, h) => drawCurtain(c, w, h, true));
+  const res = kit.low ? 1 : 2;
+  const tex = lib.canvasTexture(`pastel.curtain.${res}`, 512 * res, 256 * res, (c, w, h) => drawCurtain(c, w, h));
+  const buds = lib.canvasTexture(`pastel.curtain.buds.${res}`, 512 * res, 256 * res, (c, w, h) => drawCurtain(c, w, h, true));
   buds.wrapS = THREE.RepeatWrapping;
   tex.wrapS = THREE.RepeatWrapping;
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -223,7 +224,7 @@ export function buildCurtains(kit: DecorKit, lib: MaterialLibrary, specs: Curtai
       const bz = c.z1 + n.z * off;
       const top = c.y1 + 0.05;
       const bot = c.y0 - 0.15;
-      const reps = len / 6;
+      const reps = len / 5;
       const quad = [
         [ax, bot, az, u0, 0, 1],
         [bx, bot, bz, u0 + reps, 0, 1],

@@ -26,6 +26,7 @@ import { createLaunchRocket, createSteamEmitter } from '../rocket';
 import { buildBackdrop } from './gantry/backdrop';
 import { buildCompounds } from './gantry/compounds';
 import { buildDocks } from './gantry/docks';
+import { buildGround } from './gantry/ground';
 import { DecorKit, sphere } from './gantry/kit';
 import { buildPad } from './gantry/pad';
 import { ATLAS_H, ATLAS_W, paintAtlas, paintLeaves } from './gantry/signage';
@@ -44,12 +45,24 @@ const buildGantry: DecorBuilder = (ctx: DecorContext): MapDecor => {
   kit.signTexture = ctx.materials.canvasTexture(low ? 'gantry.atlas.lo' : 'gantry.atlas', low ? ATLAS_W / 2 : ATLAS_W, low ? ATLAS_H / 2 : ATLAS_H, paintAtlas);
   kit.leafTexture = ctx.materials.canvasTexture(low ? 'gantry.leaves.lo' : 'gantry.leaves', low ? 256 : 512, low ? 256 : 512, paintLeaves);
 
+  kit.section = 'pad';
   const pad = buildPad(kit, rnd, root, decor);
+  kit.section = 'compounds';
   const compounds = buildCompounds(kit, rnd, root, decor);
+  kit.section = 'farm';
   const farm = buildTankFarm(kit, rnd, root, decor);
+  kit.section = 'docks';
   const docks = buildDocks(kit, rnd, root, decor, ctx.def.solids);
+  kit.section = 'backdrop';
   const gulls = buildBackdrop(kit, rnd, root, quality);
+  kit.section = 'ground';
+  buildGround(kit, rnd, decor);
   kit.build(root);
+
+  if (import.meta.env.DEV && typeof location !== 'undefined' && new URLSearchParams(location.search).has('decorStats')) {
+    console.info('[gantry] decor tris', kit.meshes.map((m) => `${m.name}:${(m.geometry.attributes.position.count / 3) | 0}`).join(' '));
+    console.info('[gantry] by section', [...kit.sectionTris.entries()].sort((a, b) => b[1] - a[1]).slice(0, 16).map(([k, v]) => `${k}:${v | 0}`).join(' '));
+  }
 
   // ── The hero rocket ──
   const rocket = createLaunchRocket(ctx.materials, quality, { scale: ctx.def.rocket.scale });
@@ -164,7 +177,7 @@ const buildGantry: DecorBuilder = (ctx: DecorContext): MapDecor => {
   const showcase = (kind: 'intro' | 'outro' | 'keyart'): ShowcasePose | undefined => {
     const rx = GANTRY_ROCKET.x;
     if (kind === 'keyart') return { pos: { x: -21.5, y: 2.1, z: -41 }, target: { x: rx - 2, y: 20, z: 0 }, fov: 52 };
-    if (kind === 'intro') return { pos: { x: 92, y: 27, z: 58 }, target: { x: -4, y: 12, z: -2 }, fov: 52 };
+    if (kind === 'intro') return { pos: { x: -74, y: 30, z: 58 }, target: { x: 8, y: 10, z: -8 }, fov: 52 };
     return { pos: { x: -17, y: 6.5, z: 40 }, target: { x: rx, y: GANTRY_DECK + 26, z: 0 }, fov: 58 };
   };
 

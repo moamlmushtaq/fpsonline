@@ -303,6 +303,17 @@ export function buildDocks(kit: DecorKit, rnd: () => number, root: THREE.Group, 
   rowboat(kit, 69, -2.55, -56, 0.5, '#b9cfda');
   rowboat(kit, 72.5, -2.6, -58.5, -0.3, '#c99a82', true);
 
+  // Deep sea bed under the (transparent) water so the sea reads deep blue-grey
+  // instead of showing the pale sky through it; the haze takes it at distance.
+  const bed = new THREE.PlaneGeometry(900, 1400);
+  bed.rotateX(-Math.PI / 2);
+  bed.translate(64.6 + 450, -9, 0);
+  kit.add('paint', bed, new THREE.Color(ENV.water).multiplyScalar(0.42), { flat: true });
+  const shelf = new THREE.PlaneGeometry(14, 1400);
+  shelf.rotateX(-Math.PI / 2);
+  shelf.translate(64.6 + 7, -5.5, 0);
+  kit.add('sand', shelf, '#7f7a6b', { flat: true });
+
   // ── Animated water dressing ───────────────────────────────────────────────
   const foamMat = foamMaterial(FOAM_FRAG);
   // Plane across the seawall's foot: u (0 → 1) runs from the wall out to sea.

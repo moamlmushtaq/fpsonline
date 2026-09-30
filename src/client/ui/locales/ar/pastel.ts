@@ -7,6 +7,4 @@ export default {
   'pastel.landmark.rocket': 'صاروخ الإطلاق',
   'pastel.landmark.mast': 'سارية الراديو',
   'pastel.landmark.sun': 'الشمس',
-  'pastel.landmark.chapel': 'كنيسة الحي',
-  'pastel.landmark.diner': 'مطعم مونبيم',
 } satisfies Record<string, string>;

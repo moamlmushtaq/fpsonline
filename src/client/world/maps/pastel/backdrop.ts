@@ -190,11 +190,13 @@ export function buildBackdrop(kit: DecorKit, def: MapDef, rng: () => number): Ba
   kit.box('plaster', pad.x + 22 * ps, pad.y, pad.z - 10 * ps, pad.x + 34 * ps, pad.y + 7 * ps, pad.z + 6 * ps, rgb(ENV.bone), 0.2, { ao: 0.2, base: pad.y });
 
   let blinkT = 0;
+  const beaconOn = new THREE.Color(ENV.glowGold).multiplyScalar(3.2);
+  const beaconOff = new THREE.Color(ENV.glowGold).multiplyScalar(0.5);
   const update = (dt: number, s: MapRuntimeState): void => {
     rocket.update(dt, s.rocketLaunch, s.time);
     blinkT += dt;
     const on = blinkT % 2.2 < 0.25;
-    beacon.color.set(ENV.glowGold).multiplyScalar(on ? 3.2 : 0.5);
+    beacon.color.copy(on ? beaconOn : beaconOff);
     for (let i = 0; i < count; i++) {
       const a = s.time * (0.08 + (i % 3) * 0.01) + phase[i];
       pos.set(Math.cos(a) * radius[i] + 10, height[i] + Math.sin(a * 3 + i) * 1.5, Math.sin(a) * radius[i] - 10);

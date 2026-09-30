@@ -198,7 +198,8 @@ export class DecorKit {
   sphereGeo(detail: number): THREE.BufferGeometry {
     let g = this.prims.sphere.get(detail);
     if (!g) {
-      g = flat(new THREE.IcosahedronGeometry(1, detail));
+      // detail −1 = octahedron (8 tris) for tiny glowing bulbs on Low.
+      g = flat(detail < 0 ? new THREE.OctahedronGeometry(1, 0) : new THREE.IcosahedronGeometry(1, detail));
       this.prims.sphere.set(detail, g);
       this.ownedGeos.push(g);
     }
@@ -276,7 +277,7 @@ export class DecorKit {
     if (w < 1e-4 || h < 1e-4 || d < 1e-4) return;
     const m = new THREE.Matrix4().makeTranslation((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
     // Tiny chamfers are invisible at game distances: plain boxes (12 tris vs 108).
-    if (r >= 0.06 || (r > 0 && !this.low && Math.max(w, h, d) < 1.5)) {
+    if (this.low ? r >= 0.2 : r >= 0.06 || (r > 0 && Math.max(w, h, d) < 1.5)) {
       this.geo(kind, this.chamferGeo(w, h, d, r, r > 0.2 ? 2 : 1), m, color, { base: Math.min(y0, y1), ...opts });
     } else {
       m.scale(new THREE.Vector3(w, h, d));
@@ -287,7 +288,7 @@ export class DecorKit {
   /** Box centered at (cx, cy, cz) with size (sx, sy, sz), rotated about Y by `ry`. */
   boxR(kind: Kind, cx: number, cy: number, cz: number, sx: number, sy: number, sz: number, ry: number, color: RGB, r = 0, opts: AddOpts = {}): void {
     const m = new THREE.Matrix4().makeRotationY(ry).setPosition(cx, cy, cz);
-    if (r >= 0.06) this.geo(kind, this.chamferGeo(sx, sy, sz, r, r > 0.2 ? 2 : 1), m, color, { base: cy - sy / 2, ...opts });
+    if (this.low ? r >= 0.2 : r >= 0.06) this.geo(kind, this.chamferGeo(sx, sy, sz, r, r > 0.2 ? 2 : 1), m, color, { base: cy - sy / 2, ...opts });
     else {
       m.multiply(new THREE.Matrix4().makeScale(sx, sy, sz));
       this.geo(kind, this.prims.box, m, color, { base: cy - sy / 2, ...opts });
@@ -296,8 +297,9 @@ export class DecorKit {
 
   /** Box with a full transform (position, euler rotation, size). */
   boxE(kind: Kind, pos: THREE.Vector3, rot: THREE.Euler, size: THREE.Vector3, color: RGB, r = 0, opts: AddOpts = {}): void {
-    const m = new THREE.Matrix4().compose(pos, new THREE.Quaternion().setFromEuler(rot), r > 0 ? new THREE.Vector3(1, 1, 1) : size);
-    if (r > 0) this.geo(kind, this.chamferGeo(size.x, size.y, size.z, r, 1), m, color, opts);
+    const round = this.low ? r >= 0.2 : r > 0;
+    const m = new THREE.Matrix4().compose(pos, new THREE.Quaternion().setFromEuler(rot), round ? new THREE.Vector3(1, 1, 1) : size);
+    if (round) this.geo(kind, this.chamferGeo(size.x, size.y, size.z, r, 1), m, color, opts);
     else this.geo(kind, this.prims.box, m, color, opts);
   }
 
@@ -320,7 +322,9 @@ export class DecorKit {
   /** Sphere / ellipsoid. */
   ball(kind: Kind, x: number, y: number, z: number, rx: number, ry: number, rz: number, color: RGB, detail = 1, opts: AddOpts = {}): void {
     const m = new THREE.Matrix4().makeTranslation(x, y, z).multiply(new THREE.Matrix4().makeScale(rx, ry, rz));
-    this.geo(kind, this.sphereGeo(detail), m, color, opts);
+    // Low preset: one tessellation level less (bulbs become octahedra).
+    const d = this.low ? (detail === 0 && Math.max(rx, ry, rz) < 0.25 ? -1 : Math.max(0, detail - 1)) : detail;
+    this.geo(kind, this.sphereGeo(d), m, color, opts);
   }
 
   /** Flat quad from 4 corners (counter-clockwise seen from the front). */

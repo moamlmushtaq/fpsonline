@@ -461,7 +461,7 @@ function interior(kit: DecorKit, signs: { board: SignBatch; lit: SignBatch }, rn
     kit.box('plaster', -3.6, GAL, Math.min(1.45 * s, 1.75 * s), 3.6, GAL + 1, Math.max(1.45 * s, 1.75 * s), COL.bone, 0.04, { base: GAL, ao: 0.25 });
     kit.box('chrome', -3.62, GAL + 1, 1.6 * s - 0.2, 3.62, GAL + 1.06, 1.6 * s + 0.2, COL.chrome, 0.02, { ao: 0 });
     for (const x of [-2.4, 2.4]) {
-      kit.box('concrete', x - 0.7, GAL + 1.06, 1.6 * s - 0.2, x + 0.7, GAL + 1.3, 1.6 * s + 0.2, COL.terraF, 0.03, { ao: 0 });
+      kit.box('concrete', x - 0.7, GAL + 1.06, 1.6 * s - 0.2, x + 0.7, GAL + 1.3, 1.6 * s + 0.2, COL.boneShade, 0.03, { ao: 0 });
       hangingVine(kit, new THREE.Vector3(x - 0.4, GAL + 1.25, 1.78 * s), 2.2 + rng() * 1.2, rng, 0.9);
       hangingVine(kit, new THREE.Vector3(x + 0.3, GAL + 1.25, 1.78 * s), 1.6 + rng() * 1.4, rng, 0.9);
     }
@@ -578,10 +578,10 @@ function escalator(kit: DecorKit, sx: number, sz: number): void {
 }
 
 function fountain(kit: DecorKit, rng: () => number): void {
-  // Island: collision box ±2.6 (top 0.45). Rounded terrazzo rim, dry basin.
-  kit.box('tile', -2.6, MALL_Y, -2.6, 2.6, 0.45, 2.6, COL.terrazzo, 0.35, { base: MALL_Y, ao: 0.35 });
-  kit.box('tile', -2.25, 0.2, -2.25, 2.25, 0.455, 2.25, mix(COL.sky, COL.bone, 0.45), 0.25, { ao: 0 });
-  kit.box('paint', -2.64, 0.38, -2.64, 2.64, 0.47, 2.64, COL.terraF, 0.3, { ao: 0 });
+  // Island: collision box ±2.6 (top 0.45). Stone rim, pale-blue dry basin.
+  kit.box('concrete', -2.6, MALL_Y, -2.6, 2.6, 0.45, 2.6, COL.terrazzo, 0.3, { base: MALL_Y, ao: 0.35 });
+  kit.box('tile', -2.25, 0.2, -2.25, 2.25, 0.455, 2.25, mix(COL.sky, COL.bone, 0.45), 0.2, { ao: 0 });
+  kit.box('concrete', -2.64, 0.4, -2.64, 2.64, 0.48, 2.64, COL.bone, 0.28, { ao: 0 });
   // Dry basin bottom: leaves + glowing algae crust.
   for (let i = 0; i < 12; i++) {
     const x = (rng() - 0.5) * 4;
@@ -589,21 +589,30 @@ function fountain(kit: DecorKit, rng: () => number): void {
     if (Math.abs(z) < 0.5) continue;
     kit.ball('glow', x, 0.47, z, 0.18 + rng() * 0.25, 0.02, 0.14 + rng() * 0.2, rgb(rng() < 0.6 ? ENV.glowChartreuse : ENV.glowGold, 1.15), 0);
   }
-  // "Sunrise": fanned ceramic fins (collision screen x ±2.4, z ±0.35, up to 2.9).
-  const fins = 9;
-  for (let i = 0; i < fins; i++) {
-    const t = i / (fins - 1);
-    const x = -2.1 + t * 4.2;
-    const h = 1.6 + Math.sin(t * Math.PI) * 0.85;
-    const lean = (t - 0.5) * 0.35;
-    kit.boxE('paint', new THREE.Vector3(x, 0.45 + h / 2, 0), new THREE.Euler(0, 0, -lean), new THREE.Vector3(0.36, h, 0.55), COL.bone, 0.12);
-    kit.ball('paint', x + Math.sin(lean) * h * 0.5, 0.45 + h + 0.05, 0, 0.2, 0.2, 0.2, COL.mustard, 1);
+  // "Sunrise": a ceramic sunburst fan — a half sun with radiating blades
+  // (collision screen x ±2.4, z ±0.35, up to 2.9), echoing the facade mural.
+  const cy = 0.5;
+  const rays = 11;
+  for (let i = 0; i < rays; i++) {
+    const a = Math.PI * (0.06 + (0.88 * i) / (rays - 1));
+    const r0 = 1.05;
+    const r1 = i % 2 === 0 ? 2.35 : 1.95;
+    const len = r1 - r0;
+    const mid = new THREE.Vector3(Math.cos(a) * (r0 + len / 2), cy + Math.sin(a) * (r0 + len / 2), 0);
+    kit.boxE('paint', mid, new THREE.Euler(0, 0, a - Math.PI / 2), new THREE.Vector3(i % 2 === 0 ? 0.3 : 0.22, len, 0.36), COL.bone, 0.08, { drift: 0.04 });
+    kit.ball('glow', Math.cos(a) * r1, cy + Math.sin(a) * r1, 0, 0.09, 0.09, 0.2, rgb(ENV.glowGold, 1.2), 1, { drift: 0 });
   }
-  // Sun disc between the fins + column carrying the bridge.
-  const disc = new THREE.CylinderGeometry(1.05, 1.05, 0.5, kit.low ? 16 : 28);
-  disc.rotateX(Math.PI / 2);
-  kit.geo('paint', disc, new THREE.Matrix4().makeTranslation(0, 1.75, 0), COL.mustard, { drift: 0.05 });
-  disc.dispose();
-  kit.box('paint', -0.35, 2.3, -0.3, 0.35, GAL - 0.3, 0.3, COL.bone, 0.08, { ao: 0 });
-  kit.box('plaster', -2.4, 2.62, -0.33, 2.4, GAL - 0.3, 0.33, COL.bone, 0.06, { ao: 0 });
+  const half = new THREE.Shape();
+  half.absarc(0, 0, 1.0, 0, Math.PI, false);
+  half.closePath();
+  const sun = new THREE.ExtrudeGeometry(half, { depth: 0.56, bevelEnabled: false, curveSegments: kit.low ? 10 : 20 });
+  kit.geo('paint', sun, new THREE.Matrix4().makeTranslation(0, cy, -0.28), rgb(ENV.pastelYellow), { drift: 0.05 });
+  sun.dispose();
+  const ring = new THREE.TorusGeometry(1.06, 0.07, 6, kit.low ? 14 : 28, Math.PI);
+  kit.geo('chrome', ring, new THREE.Matrix4().makeTranslation(0, cy, 0.3), COL.chrome, { drift: 0 });
+  kit.geo('chrome', ring, new THREE.Matrix4().makeTranslation(0, cy, -0.3), COL.chrome, { drift: 0 });
+  ring.dispose();
+  // Slim column carrying the bridge, behind the fan's crown.
+  kit.box('paint', -0.22, 2.35, -0.22, 0.22, GAL - 0.3, 0.22, COL.bone, 0.06, { ao: 0 });
+  kit.box('chrome', -2.4, GAL - 0.42, -0.3, 2.4, GAL - 0.3, 0.3, COL.bone, 0.03, { ao: 0 });
 }

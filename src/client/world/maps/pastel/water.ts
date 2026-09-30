@@ -41,10 +41,21 @@ vec2 wave(vec2 p, vec2 d, float f, float s, float t) {
 void main() {
   vec2 p = vWorld.xz;
   float t = uTime;
-  vec2 g = wave(p, normalize(vec2(1.0, 0.35)), 1.7, 1.1, t) * 0.012
-         + wave(p, normalize(vec2(-0.4, 1.0)), 2.3, 1.6, t) * 0.009
+  vec2 g = wave(p, normalize(vec2(1.0, 0.35)), 1.7, 1.1, t) * 0.016
+         + wave(p, normalize(vec2(-0.4, 1.0)), 2.3, 1.6, t) * 0.012
          + wave(p, normalize(vec2(0.7, -0.8)), 4.1, 2.3, t) * 0.004
          + wave(p, normalize(vec2(-1.0, -0.2)), 7.3, 3.1, t) * 0.002;
+  // Expanding rings where the broken skylight drips.
+  for (int i = 0; i < 3; i++) {
+    vec2 c = i == 0 ? vec2(-5.0, 6.0) : i == 1 ? vec2(6.0, -5.0) : vec2(-3.0, -7.5);
+    float per = 2.3 + float(i) * 0.7;
+    float ph = fract((t + float(i) * 0.9) / per);
+    vec2 dd = p - c;
+    float d = length(dd);
+    float rr = ph * 3.2;
+    float ring = exp(-pow((d - rr) * 5.0, 2.0)) * (1.0 - ph);
+    g += (dd / max(d, 0.001)) * ring * 0.06;
+  }
   vec3 n = normalize(vec3(-g.x, 1.0, -g.y));
   vec3 v = normalize(cameraPosition - vWorld);
   float fres = pow(1.0 - max(dot(n, v), 0.0), 3.0);
@@ -69,7 +80,7 @@ export function createWaterSurface(l: MapLighting, geo: THREE.BufferGeometry, y:
       THREE.UniformsLib.fog,
       {
         uTime: { value: 0 },
-        uShallow: { value: new THREE.Color('#7f9a98') },
+        uShallow: { value: new THREE.Color('#71898a') },
         uSky: { value: new THREE.Color(l.skyZenith) },
         uHorizon: { value: new THREE.Color(l.skyHorizon) },
         uSun: { value: new THREE.Color(l.sunColor) },

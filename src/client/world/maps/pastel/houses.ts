@@ -190,8 +190,31 @@ export function twoStorey(kit: DecorKit, signs: { board: SignBatch; lit: SignBat
       }
     }
   }
-  // Interior: living room props against the walls (low, flush).
-  const inner = Z(16.45);
+  // Interior: parquet floor, walnut wall paneling, a pendant lamp.
+  bx('wood', -29.6, 0.005, 16.4, -17.4, 0.04, 26.6, mix(K.wood, K.terraF, 0.25), 0, -Infinity);
+  for (const [z0, z1] of [
+    [16.4, 16.46],
+    [26.54, 26.6],
+  ] as const) bx('wood', -29.6, 0, z0, -17.4, 1.25, z1, K.woodDark, 0, -Infinity);
+  // Pale interior liners (bounce the sky fill so rooms stay readable).
+  const liner = mix(K.bone, st.wall, 0.35);
+  bx('plaster', -29.6, 1.45, 16.4, -17.4, wallTop - 0.02, 16.45, liner, 0, -Infinity);
+  bx('plaster', -29.6, 1.45, 26.55, -17.4, wallTop - 0.02, 26.6, liner, 0, -Infinity);
+  for (const xw of [-29.6, -17.4]) {
+    const a = xw < -20 ? xw : xw - 0.05;
+    bx('plaster', a, 0, 16.45, a + 0.05, wallTop - 0.02, 20, liner, 0, -Infinity);
+    bx('plaster', a, 0, 23, a + 0.05, wallTop - 0.02, 26.55, liner, 0, -Infinity);
+  }
+  bx('plaster', -30, wallTop - 0.25, 16.4, -17, wallTop - 0.2, 26.6, K.bone, 0, -Infinity);
+  bx('plaster', -31.5, UP - 0.34, 16.4, -22, UP - 0.3, 26.6, K.bone, 0, -Infinity);
+  bx('plaster', -29.6, 1.25, 16.4, -17.4, 1.45, 16.47, K.mustard, 0, -Infinity);
+  bx('plaster', -29.6, 1.25, 26.53, -22.2, 1.45, 26.6, K.mustard, 0, -Infinity);
+  kit.tube('chrome', new THREE.Vector3(X(-19.6), ROOF - 0.2, Z(21.5)), new THREE.Vector3(X(-19.6), 3.3, Z(21.5)), 0.01, K.dark, 3);
+  kit.ball('glow', X(-19.6), 3.1, Z(21.5), 0.34, 0.26, 0.34, rgb(ENV.glowGold, 0.9), 1, { drift: 0 });
+  kit.cyl('paint', X(-19.6), 3.18, Z(21.5), 0.36, 0.1, 0.22, st.accent, 12);
+  // Vines that crept in through the patio door.
+  hangingVine(kit, new THREE.Vector3(X(-17.8), UP - 0.35, Z(22.6)), 1.6, rng, 1.4);
+  climbingVine(kit, new THREE.Vector3(X(-17.45), 0, Z(23.4)), 2.2, new THREE.Vector3(-sx, 0, 0), rng, 1.3);
   bx('fabric', -21.8, 0, 16.45, -19.2, 0.45, 17.3, mix(st.accent, K.terraF, 0.4), 0.12);
   bx('fabric', -21.8, 0.45, 16.45, -19.2, 0.85, 16.75, mix(st.accent, K.terraF, 0.4), 0.1, -Infinity);
   bx('wood', -18.9, 0, 16.45, -17.6, 0.6, 16.95, K.woodDark, 0.03);
@@ -200,7 +223,6 @@ export function twoStorey(kit: DecorKit, signs: { board: SignBatch; lit: SignBat
     bx('wood', -18.8, 0.6, 16.5, -17.8, 1.4, 17.05, K.woodDark, 0.08, -Infinity);
     signs.lit.quad(REGION.tv, new THREE.Vector3(X(-18.3), 1.0, Z(17.08)), 0.72, 0.54, new THREE.Vector3(0, 0, sz));
   }
-  void inner;
   // Shag rug + lamp.
   bx('fabric', -22, 0.01, 18.2, -18.5, 0.03, 21.5, K.mustard, 0);
   kit.cyl('chrome', X(-21.6), 0, Z(24), 0.02, 0.02, 1.5, K.chrome, 5);
@@ -237,7 +259,7 @@ function chimes(kit: DecorKit, top: THREE.Vector3): void {
 
 // ── Bungalows with carports (builder draws the masses) ──────────────────────
 
-export function bungalow(kit: DecorKit, sx: number, sz: number, rng: () => number, porchRadio: boolean): void {
+export function bungalow(kit: DecorKit, sx: number, sz: number, rng: () => number): void {
   const X = (x: number): number => x * sx;
   const Z = (z: number): number => z * sz;
   // Mass: x −54..−45, z 15..25 (roof 2.95). Yard-facing wall at x = −45.
@@ -268,7 +290,6 @@ export function bungalow(kit: DecorKit, sx: number, sz: number, rng: () => numbe
   // TV antenna on the roof.
   kit.tube('chrome', new THREE.Vector3(X(-50), 2.95, Z(18)), new THREE.Vector3(X(-50), 5.2, Z(18)), 0.03, K.dark, 4);
   for (let i = 0; i < 4; i++) kit.tube('chrome', new THREE.Vector3(X(-50) - 0.8 + i * 0.1, 4.6 + i * 0.15, Z(18)), new THREE.Vector3(X(-50) + 0.8 - i * 0.1, 4.6 + i * 0.15, Z(18)), 0.012, K.dark, 3);
-  if (porchRadio) void 0;
 }
 
 // ── Garage rows (builder masses x ±15..±30, z ±12..±15.6, 5 m) ─────────────

@@ -33,7 +33,7 @@ describe('maps', () => {
       } else {
         expect(map.targets?.length).toBeGreaterThanOrEqual(16);
         const dists = new Set(map.targets!.map((t) => t.distance));
-        expect([...dists].sort((a, b) => a - b)).toEqual([10, 25, 50, 75]);
+        expect([...dists].sort((a, b) => a - b)).toEqual([10, 25, 50, 75, 100]); // range lanes (training range redesign)
         expect(map.targets!.some((t) => t.path && t.period)).toBe(true);
       }
       // Stairs never rise more than a step.

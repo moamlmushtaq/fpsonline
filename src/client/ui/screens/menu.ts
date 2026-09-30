@@ -78,12 +78,15 @@ export class MenuScreen extends BaseScreen {
       chips.append(b);
     }
     const main = h('div', { class: 'menu__main' }, play, chips);
-    if (!app.profile.value.seenTutorial) {
-      const go = h('button', { class: 'btn btn--sm', attrs: { type: 'button' }, t: 'menu.tutorial' });
-      go.dataset.sfx = 'confirm';
-      go.addEventListener('click', () => void app.training(true));
-      main.append(h('div', { class: 'nudge panel' }, h('span', { html: icon('sparkle') }), h('span', { t: 'menu.firstTime' }), go));
-    }
+    // First-time tutorial nudge: always built, hidden once the tutorial was seen (live via profile.onChange).
+    const go = h('button', { class: 'btn btn--sm', attrs: { type: 'button' }, t: 'menu.tutorial' });
+    go.dataset.sfx = 'confirm';
+    go.addEventListener('click', () => void app.training(true));
+    const nudge = h('div', { class: 'nudge panel' }, h('span', { html: icon('sparkle') }), h('span', { t: 'menu.firstTime' }), go);
+    const syncNudge = (seen: boolean) => (nudge.style.display = seen ? 'none' : '');
+    syncNudge(app.profile.value.seenTutorial);
+    main.append(nudge);
+    this.track(app.profile.onChange((p) => syncNudge(p.seenTutorial)));
 
     // Side: equipped weapon mini card (near the character)
     this.equippedSlot = h('div');

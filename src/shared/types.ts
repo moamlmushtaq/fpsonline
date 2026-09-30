@@ -363,7 +363,12 @@ export type GameEvent =
   | { t: 'pickup'; p: number; id: string; w: WeaponId }
   | { t: 'pickupSpawn'; id: string }
   | { t: 'zone'; z: ZoneId; team: Team; ev: 'captured' | 'neutralized' | 'contested' }
-  | { t: 'target'; id: number; head: boolean; kill: boolean; dmg: number; dist: number }
+  /**
+   * Training range hit (sent to the shooter). Additive optional fields:
+   * `w` = weapon (or 'grenade') that dealt it, `s` = InputCmd.seq of the shot
+   * (lets the client count pellets of one shot as one hit and detect misses).
+   */
+  | { t: 'target'; id: number; head: boolean; kill: boolean; dmg: number; dist: number; w?: KillCause; s?: number }
   | { t: 'phase'; phase: MatchPhase }
   | { t: 'announce'; key: AnnouncerKey }
   | { t: 'join'; p: PlayerIdentity }

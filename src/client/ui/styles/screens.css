@@ -954,6 +954,8 @@ html[lang='ar'] .mm__status {
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 1.3fr) minmax(16rem, 1fr);
+  /* One row that fits the screen: each column scrolls on its own (phones in landscape). */
+  grid-template-rows: minmax(0, 1fr);
   gap: var(--sp-4);
   max-width: 64rem;
 }
@@ -1076,6 +1078,21 @@ html[lang='ar'] .team-list__head {
   gap: var(--sp-3);
   padding: var(--sp-4);
   min-height: 0;
+  overflow: hidden;
+}
+
+/* Settings scroll; the footer (Start match / waiting) is always visible. */
+.room-side > .opt-block {
+  flex: 0 1 auto;
+  min-height: 0;
+}
+
+.room-side > .opt-block > * {
+  flex-shrink: 0;
+}
+
+.room-side > .detail-actions {
+  flex: none;
 }
 
 /* ── Loadout ─────────────────────────────────────────────────────────────── */
@@ -2487,6 +2504,16 @@ html[lang='ar'] .pause-card__title {
   .loadout-row,
   .weapon-detail {
     grid-template-columns: 1fr;
+  }
+
+  /* Stacked columns: the whole room scrolls instead. */
+  .room-grid {
+    grid-template-rows: none;
+    overflow: auto;
+  }
+
+  .room-side {
+    overflow: visible;
   }
 }
 

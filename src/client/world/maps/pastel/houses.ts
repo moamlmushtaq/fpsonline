@@ -191,13 +191,19 @@ export function twoStorey(kit: DecorKit, signs: { board: SignBatch; lit: SignBat
     }
   }
   // Interior: parquet floor, walnut wall paneling, a pendant lamp.
-  bx('wood', -29.6, 0.005, 16.4, -17.4, 0.04, 26.6, mix(K.wood, K.terraF, 0.25), 0, -Infinity);
+  // The hemisphere fill reaches indoors at outdoor-shade strength (cool, flat),
+  // so interior surfaces carry a baked honey bounce instead — warm, lighter
+  // vertex colours, ceilings lifted (the kit darkens down-facing faces) — the
+  // rooms read as sun-warmed 1970s living rooms, not grey boxes. Zero cost.
+  const bounce = (c: RGB, k: number): RGB => [c[0] * k * 1.2, c[1] * k * 1.05, c[2] * k * 0.84];
+  const ceilingLift = { shade: (_x: number, _y: number, _z: number, _nx: number, ny: number): number => (ny < -0.5 ? 2.1 : 1) };
+  bx('wood', -29.6, 0.005, 16.4, -17.4, 0.04, 26.6, bounce(mix(K.wood, K.mustard, 0.3), 1.5), 0, -Infinity);
   for (const [z0, z1] of [
     [16.4, 16.46],
     [26.54, 26.6],
-  ] as const) bx('wood', -29.6, 0, z0, -17.4, 1.25, z1, K.woodDark, 0, -Infinity);
+  ] as const) bx('wood', -29.6, 0, z0, -17.4, 1.25, z1, bounce(K.woodDark, 1.45), 0, -Infinity);
   // Pale interior liners (bounce the sky fill so rooms stay readable).
-  const liner = mix(K.bone, st.wall, 0.35);
+  const liner = bounce(mix(K.bone, st.wall, 0.35), 1.5);
   bx('plaster', -29.6, 1.45, 16.4, -17.4, wallTop - 0.02, 16.45, liner, 0, -Infinity);
   bx('plaster', -29.6, 1.45, 26.55, -17.4, wallTop - 0.02, 26.6, liner, 0, -Infinity);
   for (const xw of [-29.6, -17.4]) {
@@ -205,8 +211,8 @@ export function twoStorey(kit: DecorKit, signs: { board: SignBatch; lit: SignBat
     bx('plaster', a, 0, 16.45, a + 0.05, wallTop - 0.02, 20, liner, 0, -Infinity);
     bx('plaster', a, 0, 23, a + 0.05, wallTop - 0.02, 26.55, liner, 0, -Infinity);
   }
-  bx('plaster', -30, wallTop - 0.25, 16.4, -17, wallTop - 0.2, 26.6, K.bone, 0, -Infinity);
-  bx('plaster', -31.5, UP - 0.34, 16.4, -22, UP - 0.3, 26.6, K.bone, 0, -Infinity);
+  kit.box('plaster', Math.min(X(-30), X(-17)), wallTop - 0.25, Math.min(Z(16.4), Z(26.6)), Math.max(X(-30), X(-17)), wallTop - 0.2, Math.max(Z(16.4), Z(26.6)), bounce(K.bone, 1.3), 0, { base: -Infinity, ...ceilingLift });
+  kit.box('plaster', Math.min(X(-31.5), X(-22)), UP - 0.34, Math.min(Z(16.4), Z(26.6)), Math.max(X(-31.5), X(-22)), UP - 0.3, Math.max(Z(16.4), Z(26.6)), bounce(K.bone, 1.3), 0, { base: -Infinity, ...ceilingLift });
   bx('plaster', -29.6, 1.25, 16.4, -17.4, 1.45, 16.47, K.mustard, 0, -Infinity);
   bx('plaster', -29.6, 1.25, 26.53, -22.2, 1.45, 26.6, K.mustard, 0, -Infinity);
   kit.tube('chrome', new THREE.Vector3(X(-19.6), ROOF - 0.2, Z(21.5)), new THREE.Vector3(X(-19.6), 3.3, Z(21.5)), 0.01, K.dark, 3);
@@ -224,7 +230,7 @@ export function twoStorey(kit: DecorKit, signs: { board: SignBatch; lit: SignBat
     signs.lit.quad(REGION.tv, new THREE.Vector3(X(-18.3), 1.0, Z(17.08)), 0.72, 0.54, new THREE.Vector3(0, 0, sz));
   }
   // Shag rug + lamp.
-  bx('fabric', -22, 0.01, 18.2, -18.5, 0.03, 21.5, K.mustard, 0);
+  bx('fabric', -22, 0.01, 18.2, -18.5, 0.03, 21.5, bounce(K.mustard, 1.35), 0);
   kit.cyl('chrome', X(-21.6), 0, Z(24), 0.02, 0.02, 1.5, K.chrome, 5);
   kit.ball('paint', X(-21.6), 1.6, Z(24), 0.28, 0.2, 0.28, K.bone, 1);
   // Kitchen counter along the north wall (under the upper floor).
@@ -243,6 +249,101 @@ export function twoStorey(kit: DecorKit, signs: { board: SignBatch; lit: SignBat
   // Ivy on the shaded wall + vines under the roof edge.
   climbingVine(kit, new THREE.Vector3(X(-17), 0, Z(25.6)), 3.9, new THREE.Vector3(sx, 0, 0), rng, 0.8);
   for (let i = 0; i < 4; i++) hangingVine(kit, new THREE.Vector3(X(-29 + i * 3.4), wallTop - 0.05, Z(27.35)), 0.8 + rng() * 1.4, rng, 1);
+}
+
+/**
+ * Warm light pools cast by the four two-storey houses' pendant lamps (the vine
+ * bulbs wound round them still glow): a pool on the parquet + washes on the
+ * walls, drawn as additive radial-gradient quads clipped to each room, all four
+ * houses in ONE draw call. It lifts the living rooms out of the grading's cool
+ * shadow lift without adding a scene light (no global shader cost, every preset).
+ */
+export function houseLightPools(kit: DecorKit): void {
+  const pos: number[] = [];
+  const uv: number[] = [];
+  const col: number[] = [];
+  // Room interior (local, house at sx = sz = +1 is x −29.6..−17.4, z 16.45..26.55).
+  const RX0 = -29.55;
+  const RX1 = -17.45;
+  const RZ0 = 16.5;
+  const RZ1 = 26.5;
+  const LX = -19.6;
+  const LZ = 21.5;
+  const LY = 3.0;
+  for (const sx of [1, -1]) {
+    for (const sz of [1, -1]) {
+      const P = (x: number, y: number, z: number): [number, number, number] => [x * sx, y, z * sz];
+      /** Quad over the rectangle [a0,a1]×[b0,b1] of a plane; UV = radial falloff around (ca, cb) with radius r. */
+      const quad = (corner: (a: number, b: number) => [number, number, number], a0: number, a1: number, b0: number, b1: number, ca: number, cb: number, r: number, k: number): void => {
+        const cs: [number, number][] = [
+          [a0, b0],
+          [a1, b0],
+          [a1, b1],
+          [a0, b0],
+          [a1, b1],
+          [a0, b1],
+        ];
+        for (const [a, b] of cs) {
+          pos.push(...corner(a, b));
+          uv.push((a - ca) / (2 * r) + 0.5, (b - cb) / (2 * r) + 0.5);
+          col.push(k, k, k);
+        }
+      };
+      // Floor pool under the lamp (clipped to the room, just above the parquet).
+      const fr = 4.2;
+      quad((a, b) => P(a, 0.065, b), Math.max(RX0, LX - fr), Math.min(RX1, LX + fr), Math.max(RZ0, LZ - fr), Math.min(RZ1, LZ + fr), LX, LZ, fr, 1);
+      // Wall washes on the long walls (in front of the liners / paneling).
+      const wr = 4.4;
+      for (const zw of [RZ0 + 0.03, RZ1 - 0.03]) quad((a, b) => P(a, b, zw), Math.max(RX0, LX - wr), RX1, 0.05, 4.85, LX, LY, wr, 0.7);
+      // End wall beside the patio door slot (z 20..23 stays open: no glow in the air).
+      const xe = RX1 - 0.03;
+      for (const [z0, z1] of [
+        [RZ0, 20],
+        [23, RZ1],
+      ] as const) quad((a, b) => P(xe, b, a), z0, z1, 0.05, 4.85, LZ, LY, wr, 0.5);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.computeBoundingSphere();
+  // Radial falloff (smooth, no hard rim), warm honey.
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const x2d = c.getContext('2d');
+  if (x2d) {
+    const gr = x2d.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, 'rgba(255,255,255,1)');
+    gr.addColorStop(0.35, 'rgba(255,255,255,0.62)');
+    gr.addColorStop(0.7, 'rgba(255,255,255,0.18)');
+    gr.addColorStop(1, 'rgba(255,255,255,0)');
+    x2d.fillStyle = gr;
+    x2d.fillRect(0, 0, 64, 64);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const mat = kit.ownMaterial(
+    new THREE.MeshBasicMaterial({
+      map: tex,
+      color: new THREE.Color(ENV.glowGold).multiplyScalar(0.4),
+      vertexColors: true,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      fog: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
+    }),
+  );
+  mat.addEventListener('dispose', () => tex.dispose());
+  const mesh = new THREE.Mesh(g, mat);
+  mesh.name = 'pastel.lampPools';
+  mesh.matrixAutoUpdate = false;
+  mesh.renderOrder = 4;
+  kit.add(mesh);
 }
 
 /** Wind chimes: little chrome tubes hanging from a disc (sway via 'stem'?? — static, cheap). */

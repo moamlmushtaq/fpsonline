@@ -188,7 +188,7 @@ export class Feedback {
     const v = this.m.view;
     if (!v) return;
     this.shotsFired++;
-    this.range?.onShot();
+    this.range?.onShot(shot.weapon); // weapon: per-weapon range stats
     const w = shot.weapon;
     const def = WEAPONS[w];
     const audio = this.m.app.audio;

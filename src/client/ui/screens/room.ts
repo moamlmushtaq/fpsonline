@@ -131,7 +131,8 @@ export class RoomScreen extends BaseScreen {
     });
     const controls = h(
       'div',
-      { class: 'opt-block' },
+      // Scrolls on short (phone landscape) screens so the Start button below stays reachable.
+      { class: 'opt-block scroll' },
       h('div', { class: 'field__label', t: 'play.mode' }),
       modeSeg.el,
       h('div', { class: 'field__label', t: 'play.map' }),

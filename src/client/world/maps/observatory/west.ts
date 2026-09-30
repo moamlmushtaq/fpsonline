@@ -31,9 +31,9 @@ export interface WestParts {
 export function buildWest(kit: ObsKit, root: THREE.Object3D, rnd: () => number, decor: number): WestParts {
   kit.section = 'west.ridge';
   // Plateau + paths: rock formation (walkable tops at R) that runs out past the bounds into the cliff.
-  rockBox(kit, -58.5, -2, -13, -40, R, 13, { flatTop: true, amp: 0.45, skip: ['x-'] });
+  rockBox(kit, -58.5, -2, -13, -40, R, 13, { flatTop: true, amp: 0.45, skip: ['x-'], fins: 0.5 });
   for (const s of [-1, 1]) {
-    rockBox(kit, -58.5, -2, s > 0 ? 13 : -30, -49, R, s > 0 ? 30 : -13, { flatTop: true, amp: 0.4, skip: ['x-', s > 0 ? 'z-' : 'z+'] });
+    rockBox(kit, -58.5, -2, s > 0 ? 13 : -30, -49, R, s > 0 ? 30 : -13, { flatTop: true, amp: 0.4, skip: ['x-', s > 0 ? 'z-' : 'z+'], fins: 0.5 });
     // Path ramp down to the forecourt: sloped snow top + rocky side.
     const za = s * 30;
     const zb = s * 38;
@@ -169,9 +169,9 @@ export function buildWest(kit: ObsKit, root: THREE.Object3D, rnd: () => number, 
   kit.section = 'west.yard';
   // Under-ridge boulders, the rib, the forecourt outcrop (collision boxes, all covered by rock).
   for (const s of [-1, 1]) {
-    rockBox(kit, -42, -0.3, s > 0 ? 20 : -25, -34, 3.2, s > 0 ? 25 : -20, { amp: 0.55, crest: 0.6, color: ROCK });
-    rockBox(kit, -28, -0.3, s > 0 ? 7 : -27, -23, OBS.ribTop, s > 0 ? 27 : -7, { amp: 0.55, crest: 0.7, seg: 1.1, color: ROCK });
-    rockBox(kit, -31, -0.3, s > 0 ? 30.5 : -40.5, -25, OBS.outcropTop, s > 0 ? 40.5 : -30.5, { amp: 0.55, crest: 0.8, color: ROCK_DARK });
+    rockBox(kit, -42, -0.3, s > 0 ? 20 : -25, -34, 3.2, s > 0 ? 25 : -20, { amp: 0.55, crest: 0.6, color: ROCK, fins: 0.7, seg: 1 });
+    rockBox(kit, -28, -0.3, s > 0 ? 7 : -27, -23, OBS.ribTop, s > 0 ? 27 : -7, { amp: 0.6, crest: 0.9, seg: 0.85, color: ROCK, fins: 0.9 });
+    rockBox(kit, -31, -0.3, s > 0 ? 30.5 : -40.5, -25, OBS.outcropTop, s > 0 ? 40.5 : -30.5, { amp: 0.55, crest: 0.8, color: ROCK_DARK, fins: 0.75, seg: 1 });
     // Glowing lichen on the shaded (west) feet of the rocks.
     lichen(kit, -28.6, 0, s * 12, 1.8, ENV.glowChartreuse, rnd);
     lichen(kit, -42.6, 0, s * 23.5, 1.5, ENV.glowSoftPink, rnd);

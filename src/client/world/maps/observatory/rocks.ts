@@ -46,6 +46,12 @@ export interface RockOpts {
   skip?: string[];
   /** Noise frequency. */
   freq?: number;
+  /**
+   * Vertical fins / gullies (0..1): the side displacement follows a noise stretched
+   * vertically, and recessed vertices are baked darker — reads as wind-cut crags
+   * rather than a lumpy box.
+   */
+  fins?: number;
 }
 
 /** Faceted rock mass covering the box [x0,x1]×[y0,y1]×[z0,z1]. */
@@ -63,6 +69,8 @@ export function rockBox(kit: ObsKit, x0: number, y0: number, z0: number, x1: num
   const hx = w / 2, hy = h / 2, hz = d / 2;
   const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, cz = (z0 + z1) / 2;
   const e = 1e-4;
+  const fins = o.fins ?? 0;
+  const ao = new Float32Array(p.count * 3);
   for (let i = 0; i < p.count; i++) {
     let vx = p.getX(i), vy = p.getY(i), vz = p.getZ(i);
     const wx = vx + cx, wy = vy + cy, wz = vz + cz;
@@ -70,7 +78,13 @@ export function rockBox(kit: ObsKit, x0: number, y0: number, z0: number, x1: num
     const onBottom = vy < -hy + e;
     const n1 = noise3(wx * freq, wy * freq, wz * freq);
     const n2 = noise3(wx * freq * 3.1 + 7, wy * freq * 3.1, wz * freq * 3.1 - 3);
-    const k = amp * (0.25 + 0.6 * n1 + 0.3 * n2);
+    // Fins: noise along the face, stretched ×6 vertically (gullies run down the crag).
+    const fin = smooth01((noise3(wx * 0.38 + 11, wy * 0.065, wz * 0.38 - 5) - 0.25) * 2);
+    const lump = 0.25 + 0.6 * n1 + 0.3 * n2;
+    const k = amp * (lump * (1 - fins) + (0.12 + 1.05 * fin + 0.25 * n2) * fins);
+    // Baked cavity: recessed vertices (gullies, strata undercuts) darker.
+    const cav = onTop ? 1 : 0.5 + 0.5 * Math.min(1, k / (amp * 0.95));
+    ao[i * 3] = ao[i * 3 + 1] = ao[i * 3 + 2] = cav;
     // Outward direction from the face(s) this vertex lies on.
     let dx = Math.abs(vx) > hx - e ? Math.sign(vx) : 0;
     let dz = Math.abs(vz) > hz - e ? Math.sign(vz) : 0;
@@ -90,6 +104,7 @@ export function rockBox(kit: ObsKit, x0: number, y0: number, z0: number, x1: num
     // Back to world space (the box was built around the origin).
     p.setXYZ(i, vx + cx, vy + cy, vz + cz);
   }
+  g.setAttribute('color', new THREE.Float32BufferAttribute(ao, 3));
   const flat = g.toNonIndexed();
   g.dispose();
   // Drop skipped faces (triangles whose normal points along a skipped axis).
@@ -98,8 +113,10 @@ export function rockBox(kit: ObsKit, x0: number, y0: number, z0: number, x1: num
   if (o.skip?.length) {
     const pos = flat.attributes.position as THREE.BufferAttribute;
     const nor = flat.attributes.normal as THREE.BufferAttribute;
+    const colA = flat.attributes.color as THREE.BufferAttribute;
     const keepP: number[] = [];
     const keepN: number[] = [];
+    const keepC: number[] = [];
     for (let i = 0; i < pos.count; i += 3) {
       const nx = nor.getX(i), nz = nor.getZ(i);
       const tag = Math.abs(nx) > 0.8 ? (nx > 0 ? 'x+' : 'x-') : Math.abs(nz) > 0.8 ? (nz > 0 ? 'z+' : 'z-') : '';
@@ -107,16 +124,19 @@ export function rockBox(kit: ObsKit, x0: number, y0: number, z0: number, x1: num
       for (let k = 0; k < 3; k++) {
         keepP.push(pos.getX(i + k), pos.getY(i + k), pos.getZ(i + k));
         keepN.push(nor.getX(i + k), nor.getY(i + k), nor.getZ(i + k));
+        keepC.push(colA.getX(i + k), colA.getY(i + k), colA.getZ(i + k));
       }
     }
     flat.dispose();
     geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(keepP, 3));
     geo.setAttribute('normal', new THREE.Float32BufferAttribute(keepN, 3));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(keepC, 3));
   }
   const col = o.color ?? ROCK;
   const top = y1;
   kit.add('rock', geo, col, {
+    vc: true,
     shade: (x, y, z, nx, ny) => {
       let s = 0.55 + 0.45 * smooth01((y - y0) / Math.max(1, h * 0.6));
       if (ny < -0.3) s *= 0.6;
@@ -139,9 +159,8 @@ function smooth01(t: number): number {
 
 /** A loose boulder (visual) — faceted icosahedron squashed onto the ground. */
 export function boulder(kit: ObsKit, x: number, y: number, z: number, r: number, rnd: () => number, color = ROCK): void {
-  const g0 = new THREE.IcosahedronGeometry(r, kit.low ? 0 : 1);
-  const g = g0.toNonIndexed();
-  g0.dispose();
+  // Polyhedron geometries are already non-indexed (every face owns its vertices).
+  const g = new THREE.IcosahedronGeometry(r, kit.low ? 0 : 1);
   const p = g.attributes.position as THREE.BufferAttribute;
   const cache = new Map<string, number>();
   for (let i = 0; i < p.count; i++) {

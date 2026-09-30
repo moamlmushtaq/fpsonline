@@ -76,9 +76,9 @@ export const GANTRY_CATWALK = 4.8;
  * (|x| ≤ mainHalfW, centred on z = −mainZ) overlaps the corner walls
  * (cornerX0 ≤ |x| ≤ cornerX1, centred on z = −cornerZ); all 1 m thick, h tall.
  */
+export const GANTRY_BAFFLE = { mainZ: 37.5, mainHalfW: 11, cornerZ: 40.5, cornerX0: 9.5, cornerX1: 24, h: 4.5 } as const;
 /** The broken grate in the deck over the trench junction (x0..x1, |z| ≤ hz): wide enough to drop through cleanly. */
 export const GANTRY_GRATE = { x0: -4.6, x1: -1.8, hz: 1.4 } as const;
-export const GANTRY_BAFFLE = { mainZ: 37.5, mainHalfW: 11, cornerZ: 40.5, cornerX0: 9.5, cornerX1: 24, h: 4.5 } as const;
 
 const D = GANTRY_DECK;
 const k = new MapKit();

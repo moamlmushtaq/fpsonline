@@ -231,6 +231,10 @@ function buildHall(kit: ObsKit, rnd: () => number, decor: number): void {
     kit.add('sign', quad(-3.4, G - 0.17, s * (HE - 0.012), 4.4, 0.22, 0, -s, rect('hazard', 2)), '#ffffff', { flat: true });
     kit.add('sign', quad(3.4, G - 0.17, s * (HE - 0.012), 4.4, 0.22, 0, -s, rect('hazard', 2)), '#ffffff', { flat: true });
     kit.add('sign', quad(s * (HE - 0.012), G - 0.17, 0, 2.6, 0.22, -s, 0, rect('hazard', 2)), '#ffffff', { flat: true });
+    // Joists + an edge beam under the strip (the soffit reads as steelwork, not a flat slab).
+    const [ja, jb] = s > 0 ? [HE, HH] : [-HH, -HE];
+    kit.add('interiorMetal', box(-HH, G - 0.56, s > 0 ? HE : -HE - 0.22, HH, G - 0.3, s > 0 ? HE + 0.22 : -HE), STEEL_IN, { snow: 0, shade: (_x, _y, _z, _nx, ny) => (ny < -0.5 ? 0.62 : 0.85) });
+    for (let x = -9.1; x <= 9.11; x += 1.4) kit.add('interiorMetal', box(x - 0.06, G - 0.5, ja, x + 0.06, G - 0.3, jb), '#8c8479', { flat: true, snow: 0 });
     // Cantilever brackets under the N/S strips (no posts in the aisle).
     for (let x = -8.5; x <= 8.5; x += 2.8) {
       kit.add('interiorMetal', beam(x, 1.9, s * (HH - 0.05), x, G - 0.3, s * (HE + 0.25), 0.12), STEEL_IN, { flat: true, snow: 0 });
@@ -314,6 +318,26 @@ function buildHall(kit: ObsKit, rnd: () => number, decor: number): void {
   kit.add('paint', box(SX - 0.09, 0.95, 0.31, SX + 0.09, 0.955, 0.61), '#efe6d6', { flat: true, snow: 0 });
   kit.add('glow', box(SX - 0.06, 1.2, 0.8, SX + 0.06, 1.24, 1.0), '#ffb3c7', { flat: true, k: 2.2 });
   kit.add('pool', quad(-PW - 0.02, 1.4, 0, 2.6, 1.4, -1, 0), ENV.glowGold, { k: 0.3, flat: true });
+  // Podium N/S faces (seen from the door axes): drive-room hatch, the declination
+  // drive panel, a brass band and conduits climbing to the mount.
+  for (const s of [-1, 1]) {
+    const f = s * PH;
+    const zb = (d0: number, d1: number): [number, number] => (s > 0 ? [f + d0, f + d1] : [f - d1, f - d0]);
+    let [a, b] = zb(0, 0.05);
+    kit.add('interiorMetal', box(-0.75, 0.12, a, 0.75, 2.05, b), '#34302c', { flat: true, snow: 0 });
+    [a, b] = zb(0.05, 0.07);
+    kit.add('interiorMetal', box(-0.65, 0.2, a, 0.65, 1.97, b), '#8e968a', { snow: 0, shade: (_x, y) => 0.75 + 0.25 * Math.min(1, y / 1.6) });
+    [a, b] = zb(0.07, 0.13);
+    kit.add('gloss', box(0.4, 1.0, a, 0.48, 1.25, b), '#c7a364', { flat: true, snow: 0 });
+    kit.add('sign', quad(0, 1.8, f + s * 0.075, 1.12, 0.14, 0, s, rect('stencil', 2)), '#ffffff', { flat: true });
+    [a, b] = zb(0, 0.06);
+    kit.add('interiorMetal', box(1.3, 0.95, a, 2.9, 1.85, b), '#55585c', { flat: true, snow: 0 });
+    kit.add('sign', quad(2.1, 1.4, f + s * 0.065, 1.45, 0.72, 0, s, rect('dials', 2)), '#ffffff', { flat: true });
+    kit.add('glow', box(2.72, 1.72, a, 2.8, 1.78, b + 0.01), s > 0 ? ENV.glowChartreuse : ENV.glowSoftPink, { k: 2.4, flat: true });
+    [a, b] = zb(0, 0.03);
+    kit.add('gloss', box(-PW, 2.75, a, PH, 2.88, b), '#c7a364', { flat: true, snow: 0 });
+    for (const x of [-2.55, -2.3]) kit.add('interiorMetal', cylAB(x, 0, f + s * 0.07, x, G - 0.35, f + s * 0.07, 0.045, 0.045, 6), '#6d7076', { flat: true, snow: 0 });
+  }
 
   kit.section = 'dome.story';
   // Star charts pinned under the gallery; the chalkboard of orbital math.

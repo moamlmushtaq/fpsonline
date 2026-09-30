@@ -84,6 +84,32 @@ describe('observatory layout', () => {
     expect(Math.abs(len(0) - len(1))).toBeLessThan(3);
   });
 
+  it('zones are balanced: each team walks within ±15 % of the other to every zone, and the lanes are comparable', () => {
+    // Walking distance until the path first enters the capture cylinder (what the capture race is about).
+    const walk = (team: number, z: (typeof map.zones)[number]): number => {
+      const sp = teamSpawns.filter((s) => s.team === team);
+      const inside = (q: { x: number; y: number; z: number }): boolean => Math.hypot(q.x - z.center.x, q.z - z.center.z) <= z.radius && q.y >= z.center.y - 0.5 && q.y <= z.center.y + z.height;
+      let total = 0;
+      for (const s of sp) {
+        const p = nav.findPath(s.pos, z.center)!;
+        let prev = s.pos;
+        for (const q of p.points) {
+          total += Math.hypot(q.x - prev.x, q.y - prev.y, q.z - prev.z);
+          prev = q;
+          if (inside(q)) break;
+        }
+      }
+      return total / sp.length;
+    };
+    const perZone = map.zones.map((z) => [walk(0, z), walk(1, z)] as const);
+    for (const [i, [a, b]] of perZone.entries()) {
+      expect(Math.abs(a - b) / Math.min(a, b), `zone ${map.zones[i].id}: ${a.toFixed(1)} vs ${b.toFixed(1)} m`).toBeLessThan(0.15);
+    }
+    // No lane is a detour: the farthest zone is at most 1.5× the nearest (A / C flank lanes vs the B centre).
+    const avg = perZone.map(([a, b]) => (a + b) / 2);
+    expect(Math.max(...avg) / Math.min(...avg)).toBeLessThan(1.5);
+  });
+
   it('the telescope hall blocks straight door-to-door lines; the gallery rings the hall', () => {
     // N door ↔ S door and E door ↔ W door at head height.
     expect(world.segmentClear(0, 1.6, 11, 0, 1.6, -11, 'sight')).toBe(false);

@@ -531,8 +531,9 @@ export class GameHud implements Hud {
         c.localTeam = s.localTeam;
         const mine = (s.localTeam === 1 ? 1 : 0) as Team;
         const theirs = (mine === 0 ? 1 : 0) as Team;
-        this.teamA.wrap.style.setProperty('--tc', teamColors(mine).primary);
-        this.teamB.wrap.style.setProperty('--tc', teamColors(theirs).primary);
+        // CSS variables (set by the App from teamColors()) so a colour-blind switch applies live.
+        this.teamA.wrap.style.setProperty('--tc', `var(--team${mine}, ${teamColors(mine).primary})`);
+        this.teamB.wrap.style.setProperty('--tc', `var(--team${theirs}, ${teamColors(theirs).primary})`);
         c.scoreA = c.scoreB = c.barA = c.barB = -1;
       }
       const mine = s.localTeam === 1 ? 1 : 0;

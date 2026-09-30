@@ -72,6 +72,8 @@ class NetSim {
     if (m.type === 'matchStart') {
       this.start = m;
       this.predictor = new Predictor(worldForMap(getMap(m.config.map)), m.you);
+      // Like ClientMatch: report the match view as loaded so the countdown runs.
+      this.clientSend({ type: 'loaded' });
     } else if (m.type === 'snap' && this.predictor) this.onSnap(m);
   }
 

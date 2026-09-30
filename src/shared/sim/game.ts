@@ -52,7 +52,7 @@ import { clamp, forwardFromAngles, hash32, lerp, mulberry32, pick, q2, randInt }
 import { cloneMoveState, createMoveState, eyeHeight, playerHeight } from '../movement';
 import { botName } from '../names';
 import { CollisionWorld } from '../physics';
-import type { ScoreboardRow, SnapshotMsg } from '../protocol';
+import type { RangeAction, ScoreboardRow, SnapshotMsg } from '../protocol';
 import type {
   BotDifficulty,
   GameConfig,
@@ -71,6 +71,7 @@ import type {
 import {
   BTN_FIRE,
   BTN_THROW,
+  PRIMARY_WEAPON_IDS,
   TEAM_NONE,
 } from '../types';
 import { WEAPONS, damageAt } from '../weapons';
@@ -137,6 +138,11 @@ export class GameSim {
 
   private phase: MatchPhase;
   private phaseTicks = 0;
+  /**
+   * Set by the Room while a human who was sent matchStart is still loading the map:
+   * the pre-match countdown then waits (bounded by the Room) so nobody misses the start.
+   */
+  holdCountdown = false;
   private liveTicks = 0;
   private events: RoutedEvent[] = [];
   private nextId = 1;
@@ -160,7 +166,7 @@ export class GameSim {
     this.world = worldForMap(map);
     this.zones = config.mode === 'control' || config.mode === 'range' ? new ZoneSystem(map.zones) : null;
     this.range = config.mode === 'range' ? new RangeSim(map.targets ?? []) : null;
-    this.pickups = new PickupSystem(config.mode === 'range' ? [] : map.pickups);
+    this.pickups = new PickupSystem(map.pickups); // the range has its own Sunspear pedestal
     this.phase = config.countdown > 0 ? 'countdown' : 'live';
   }
 
@@ -365,14 +371,31 @@ export class GameSim {
     return this.players.map((p) => ({ ...p.ident }));
   }
 
-  /** Training range remote commands. */
-  rangeCommand(action: 'reset' | 'difficulty', value?: number): void {
+  /**
+   * Training range remote commands. 'weapon' / 'throwable' (additive, range
+   * rack) re-equip the given player immediately without touching the saved loadout.
+   */
+  rangeCommand(action: RangeAction, value?: number, playerId?: number): void {
     if (!this.range) return;
     if (action === 'reset') {
       this.range.reset();
       for (const p of this.players) p.stats = emptyStats();
       this.zones?.reset();
     } else if (action === 'difficulty') this.range.setSpeed(value ?? 1);
+    else if (action === 'weapon' || action === 'throwable') {
+      const p = playerId !== undefined ? this.player(playerId) : this.players.find((x) => !x.ident.isBot);
+      const i = Math.floor(Number(value));
+      if (!p || !Number.isFinite(i)) return;
+      const cur = p.pendingLoadout ?? p.ident.loadout;
+      if (action === 'weapon') {
+        const primary = PRIMARY_WEAPON_IDS[i];
+        if (!primary) return;
+        this.setLoadout(p.ident.id, { ...cur, primary });
+      } else {
+        if (i !== 0 && i !== 1) return;
+        this.setLoadout(p.ident.id, { ...cur, throwable: i === 0 ? 'grenade' : 'smoke' });
+      }
+    }
   }
 
   // ── Events ────────────────────────────────────────────────────────────────
@@ -430,6 +453,7 @@ export class GameSim {
   }
 
   private stepPhase(): void {
+    if (this.phase === 'countdown' && this.holdCountdown) return;
     this.phaseTicks++;
     if (this.phase === 'countdown') {
       if (this.phaseTicks >= this.config.countdown * SIM_HZ) this.setPhase('live');
@@ -521,7 +545,7 @@ export class GameSim {
         if (tr.head) shooter.stats.headshots++;
         if (kill) shooter.stats.kills++;
         shooter.stats.damage += dmg;
-        this.emit({ t: 'target', id: tr.target.id, head: tr.head, kill, dmg: Math.round(dmg), dist: tr.target.def.distance }, shooter.ident.id);
+        this.emit({ t: 'target', id: tr.target.id, head: tr.head, kill, dmg: Math.round(dmg), dist: tr.target.def.distance, w: w.id, s: cmd.seq }, shooter.ident.id);
       }
       impacts.push(imp);
     }
@@ -679,7 +703,7 @@ export class GameSim {
         if (d > GRENADE_RADIUS) continue;
         const dmg = lerp(GRENADE_DAMAGE, GRENADE_MIN_DAMAGE, clamp(d / GRENADE_RADIUS, 0, 1));
         const kill = this.range.damage(t, dmg, this.tick);
-        this.emit({ t: 'target', id: t.id, head: false, kill, dmg: Math.round(dmg), dist: t.def.distance }, owner.ident.id);
+        this.emit({ t: 'target', id: t.id, head: false, kill, dmg: Math.round(dmg), dist: t.def.distance, w: 'grenade' }, owner.ident.id);
       }
     }
   }

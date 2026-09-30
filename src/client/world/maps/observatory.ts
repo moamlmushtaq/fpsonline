@@ -28,6 +28,7 @@ import type { DecorBuilder, DecorContext, MapDecor, MapRuntimeState, ShowcasePos
 import type { Team } from '../../../shared/types';
 import { ENV } from '../../engine/palette';
 import type { BackdropOptions } from '../map-builder';
+import { OBS } from '../../../shared/maps/observatory';
 import { ATLAS_H, ATLAS_W, paintAtlas } from './observatory/atlas';
 import { buildBackdrop } from './observatory/backdrop';
 import { buildCompounds } from './observatory/compounds';
@@ -94,6 +95,32 @@ const buildObservatory: DecorBuilder = (ctx: DecorContext): MapDecor => {
   const pennantTime = west.pennants?.mat.userData.uTime;
   let stars = 0;
 
+  // ── Shelter: the builder's snow particles follow the camera everywhere; fade them
+  // out inside the dorm / huts / arcades (a trickle still falls through the dome slit). ──
+  let weather: THREE.Points | null = null;
+  let weatherBase = 0;
+  let weatherLookup = 0;
+  let shelter = 0;
+  const findWeather = (): void => {
+    let top: THREE.Object3D = root;
+    while (top.parent) top = top.parent;
+    const w = top.getObjectByName('weather.snow');
+    weather = w instanceof THREE.Points ? w : null;
+    const u = (weather?.material as THREE.ShaderMaterial | undefined)?.uniforms?.uOpacity;
+    if (!u) weather = null;
+    else weatherBase = (weather!.userData.obsBaseOpacity as number | undefined) ?? (weather!.userData.obsBaseOpacity = u.value as number);
+  };
+  const DM = OBS.dorm;
+  const shelterAt = (p: THREE.Vector3): number => {
+    const ax = Math.abs(p.x), az = Math.abs(p.z);
+    if (ax < 10 && az < 10 && p.y < 14) return 0.8; // telescope hall (open slit)
+    if (p.y > DM.h + 0.2) return 0;
+    if (p.x > DM.x0 && p.x < DM.x1 && az < DM.z) return 1; // dormitory
+    if (p.x > -34 && p.x < -28 && az < 3) return 1; // spectrograph hut
+    if (az < 1.9 && ax > 12 && ax < 24.5) return 0.65; // glazed arcades
+    return 0;
+  };
+
   const update = (dt: number, s: MapRuntimeState): void => {
     const t = s.time;
     const cam = s.camera;
@@ -123,15 +150,23 @@ const buildObservatory: DecorBuilder = (ctx: DecorContext): MapDecor => {
     back.moon.position.copy(cam.position).addScaledVector(back.moonDir, back.moonDist);
     back.moon.quaternion.copy(cam.quaternion);
     (back.moon.material as THREE.MeshBasicMaterial).opacity = 0.55 + stars * 0.45;
+    // Snow shelter (lookup retried at most once a second if the builder rebuilds its weather).
+    if ((!weather || !weather.parent) && t >= weatherLookup) {
+      weatherLookup = t + 1;
+      findWeather();
+    }
+    shelter += (shelterAt(cam.position) - shelter) * Math.min(1, dt * 5);
+    if (weather) (weather.material as THREE.ShaderMaterial).uniforms.uOpacity.value = weatherBase * (1 - shelter);
     // Launch Control finale.
     const launch = devLaunchTeam !== null ? { team: devLaunchTeam, t } : s.rocketLaunch;
     back.rocket.update(dt, launch, t);
   };
 
   const showcase = (kind: 'intro' | 'outro' | 'keyart'): ShowcasePose | undefined => {
-    // Key art: from above the east rim, the dome in full alpenglow against the
-    // blue-violet sky, the moon and the first stars over the ridge.
-    if (kind === 'keyart') return { pos: { x: 62, y: 12, z: 20 }, target: { x: 0, y: 9, z: -2 }, fov: 56 };
+    // Key art: from over the north-east rim with the last light at our back — the
+    // dome in full alpenglow with its slit open on the telescope, the signal array
+    // and the snow peaks behind, the tram terminal glowing at the far end.
+    if (kind === 'keyart') return { pos: { x: 64, y: 19, z: -30 }, target: { x: 0, y: 7.5, z: 5 }, fov: 47 };
     // Intro: the whole summit, the dome, the pylon and the launch butte against the last light.
     if (kind === 'intro') return { pos: { x: -84, y: 30, z: 70 }, target: { x: 4, y: 4, z: -2 }, fov: 50 };
     // Outro: over the station deck, the ropeway and cabin No. 7 lead the eye to the launch.
@@ -140,6 +175,8 @@ const buildObservatory: DecorBuilder = (ctx: DecorContext): MapDecor => {
   };
 
   const dispose = (): void => {
+    if (weather) (weather.material as THREE.ShaderMaterial).uniforms.uOpacity.value = weatherBase;
+    weather = null;
     back.rocket.dispose();
     for (const o of back.owned) o.dispose();
     if (west.pennants) {

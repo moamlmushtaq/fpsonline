@@ -56,7 +56,7 @@
 //         vans 2.2 · carports 2.55 · bungalow roofs 2.95 · house upper floors /
 //         balconies 2.7 · house roofs 5.1 · garages 5 · mall galleries & bridge
 //         3.2 · mall walls 8 (decor roof 8.7, glass vault peak 12.3) · picnic
-//         tables 0.78 · wreck 3.2 · pergolas 4.4 · pylon 12.6.
+//         tables 0.78 · wreck 3.2 · alley screens 3.6 / 3.9 · pergolas 4.4 · pylon 12.6.
 // SIGHT   Ground-level lines ≤ ~70 m, and only as slivers through two doors of
 //         the mall; nothing runs spawn-exit to spawn-exit or roof to roof across
 //         the map (tests/shared/map-pastel.test.ts pins the known lanes shut).
@@ -142,9 +142,11 @@ m = k.mark();
 k.box(-47.5, 0.2, 7.4, -30, 4.4, 7.6, 'foliage', 'hidden', { walkThrough: true });
 // Camper van parked at the curb before the intersection (jump-mantle roof).
 k.box(31.2, 0, 7.5, 33.4, 2.2, 12.5, 'metal', 'hidden');
-// Bus shelter (east) and loading-dock screen (west): break the alley diagonals.
-k.box(22, 0, 6, 29.5, 2.6, 6.4, 'metal', 'hidden');
-k.box(-29.5, 0, 6, -22, 2.6, 6.4, 'concrete', 'breeze', { color: C_SAND });
+// Bus shelter (east, with its rooftop billboard) and loading-dock screen (west):
+// break the alley diagonals. 3.6 / 3.9 m so the corner carport roofs have no line
+// through the side alleys and the mall doors to the far lot (was ~96 m).
+k.box(22, 0, 6, 29.5, 3.9, 6.4, 'metal', 'hidden');
+k.box(-29.5, 0, 6, -22, 3.6, 6.4, 'concrete', 'breeze', { color: C_SAND });
 // Garage rows closing the corners between the mall and the houses: the parking
 // lots feed the mall; the alleys connect the lanes at mid.
 k.box(-30, 0, 12, -15, 5.0, 15.6, 'plaster', 'house', { color: C_BLUE });

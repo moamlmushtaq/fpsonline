@@ -12,7 +12,7 @@
 import { DEFAULT_RATING, SIM_HZ, SNAPSHOT_EVERY_TICKS } from '../constants';
 import type { MapDef } from '../maps/types';
 import { ratingDelta } from '../progression';
-import type { ScoreboardRow } from '../protocol';
+import type { RangeAction, ScoreboardRow } from '../protocol';
 import { GameSim } from '../sim/game';
 import type { BotDifficulty, CosmeticSelection, GameConfig, GameEvent, Loadout, MatchResults, Platform, PlayerIdentity, Team } from '../types';
 import type { HostConnection } from './host-core';
@@ -38,6 +38,8 @@ export interface RoomMember {
   pending: GameEvent[];
   /** matchStart was sent. */
   started: boolean;
+  /** The client reported that it finished loading the match ('loaded'). */
+  loaded: boolean;
 }
 
 export interface RoomOptions {
@@ -55,6 +57,11 @@ export interface RoomOptions {
 export const BOT_RATING: Record<BotDifficulty, number> = { recruit: 1000, veteran: 1100, elite: 1250 };
 
 const MAX_CMDS_PER_MSG = 16;
+/**
+ * Longest the pre-match countdown waits (in total) for humans still loading the map.
+ * Bounded so one slow or silent client can't hold a room hostage.
+ */
+export const LOAD_HOLD_MAX_TICKS = 20 * SIM_HZ;
 
 export class Room {
   readonly id: number;
@@ -69,6 +76,8 @@ export class Room {
   completed = false;
   private readonly recordMatch?: (token: string, rating: number) => void;
   private readonly log: (...a: unknown[]) => void;
+  /** Ticks the countdown has been held for loading humans so far. */
+  private loadHoldTicks = 0;
 
   constructor(opts: RoomOptions) {
     this.id = opts.id;
@@ -136,7 +145,7 @@ export class Room {
   }
 
   private admit(client: RoomClient, playerId: number): RoomMember {
-    const m: RoomMember = { client, playerId, pending: [], started: false };
+    const m: RoomMember = { client, playerId, pending: [], started: false, loaded: false };
     this.members.set(client.conn.id, m);
     return m;
   }
@@ -181,6 +190,24 @@ export class Room {
     if (this.members.size === 0) this.closed = true;
   }
 
+  /** The member finished loading the match view. */
+  markLoaded(connId: string): void {
+    const m = this.members.get(connId);
+    if (m) m.loaded = true;
+  }
+
+  /** Should the countdown wait this tick for a human who is still loading? */
+  private holdForLoading(): boolean {
+    if (this.sim.currentPhase !== 'countdown' || this.loadHoldTicks >= LOAD_HOLD_MAX_TICKS) return false;
+    for (const m of this.members.values()) {
+      if (m.started && !m.loaded) {
+        this.loadHoldTicks++;
+        return true;
+      }
+    }
+    return false;
+  }
+
   input(connId: string, cmds: unknown): void {
     const m = this.members.get(connId);
     if (!m || !Array.isArray(cmds)) return;
@@ -192,15 +219,17 @@ export class Room {
     if (m) this.sim.setLoadout(m.playerId, loadout);
   }
 
-  rangeCommand(connId: string, action: 'reset' | 'difficulty', value?: number): void {
-    if (!this.members.has(connId) || this.config.mode !== 'range') return;
-    this.sim.rangeCommand(action, value);
+  rangeCommand(connId: string, action: RangeAction, value?: number): void {
+    const m = this.members.get(connId);
+    if (!m || this.config.mode !== 'range') return;
+    this.sim.rangeCommand(action, value, m.playerId);
   }
 
   /** One simulation tick + networking. */
   step(): void {
     if (this.closed) return;
     this.announce();
+    this.sim.holdCountdown = this.holdForLoading();
     this.sim.step();
     const events = this.sim.drainEvents();
     if (events.length) {

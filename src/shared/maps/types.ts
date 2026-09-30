@@ -79,6 +79,11 @@ export interface TargetDef {
   period?: number;
   /** Distance label for stats (meters). */
   distance: number;
+  /**
+   * Pop-up target (additive, training range): stands for `up` seconds, lies
+   * down for `down` seconds (not hittable), cycle shifted by `offset` seconds.
+   */
+  popup?: { up: number; down: number; offset?: number };
 }
 
 /** One signature lighting mood per map. Colors are hex strings. */

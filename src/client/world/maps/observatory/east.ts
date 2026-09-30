@@ -189,6 +189,47 @@ function buildDorm(kit: ObsKit, rnd: () => number, decor: number): void {
     }
     kit.add('interiorWood', box(x1 - 0.9, 2.05, s > 0 ? 9.4 : -14.5, x1 - 0.5, H - 0.04, s > 0 ? 14.5 : -9.4), '#b48d68', { flat: true, snow: 0 });
     kit.add('sign', quad(29, 1.8, s * (Z - 0.52), 0.9, 0.9, 0, -s, rect(s > 0 ? 'chart2' : 'chart1', 2)), '#ffffff', { flat: true });
+    // Partition (bunk-wing side): the crew's pinboard, parkas on their pegs, snow boots, a wall clock.
+    const pf = s * 5.4; // face plane
+    const zz = (d0: number, d1: number): [number, number] => (s > 0 ? [pf + d0, pf + d1] : [pf - d1, pf - d0]);
+    {
+      const [a, b] = zz(0, 0.05);
+      kit.add('interiorWood', box(26.5, 1.15, a, 28.5, 2.25, b), '#6b5240', { flat: true, snow: 0 });
+      const [c, d] = zz(0.05, 0.06);
+      kit.add('interiorFabric', box(26.58, 1.23, c, 28.42, 2.17, d), '#b0875e', { flat: true, snow: 0 });
+      kit.add('sign', quad(27.05, 1.72, pf + s * 0.075, 0.72, 0.72, 0, s, rect(s > 0 ? 'chart1' : 'chart2', 2)), '#ffffff', { flat: true });
+      kit.add('sign', quad(27.95, 1.85, pf + s * 0.075, 0.48, 0.48, 0, s, rect('calendar', 2)), '#ffffff', { flat: true });
+      for (const [x, y, w, h, c2] of [
+        [27.9, 1.42, 0.3, 0.2, ENV.bone],
+        [28.22, 1.5, 0.2, 0.26, ENV.pastelYellow],
+        [26.78, 2.05, 0.22, 0.16, ENV.pastelPink],
+      ] as const) {
+        kit.add('interior', quad(x, y, pf + s * 0.07, w, h, 0, s), c2, { flat: true, snow: 0 });
+      }
+    }
+    {
+      const [a, b] = zz(0, 0.08);
+      kit.add('interiorWood', box(29.0, 1.78, a, 30.9, 1.9, b), '#8a6a4c', { flat: true, snow: 0 });
+      const parkas = [ENV.terracottaFaded, ENV.pastelBlue, ENV.sage];
+      for (let i = 0; i < 3; i++) {
+        const x = 29.35 + i * 0.6;
+        const [p0, p1] = zz(0.03, s > 0 ? 0.24 : 0.22);
+        kit.add('interiorFabric', rbox(x - 0.24, 0.92, p0, x + 0.24, 1.84, p1, 0.08, 2), parkas[(i + (s > 0 ? 0 : 1)) % 3], { snow: 0, shade: (_x, y) => 0.72 + 0.28 * Math.min(1, (y - 0.9) / 0.9) });
+        kit.add('interiorFabric', sphere(x, 1.86, pf + s * 0.14, 0.17, 8, 6, 0.8), '#ecdcc4', { flat: true, snow: 0 }); // fur hood
+        const [q0, q1] = zz(0.04, 0.34);
+        if (i !== 1) kit.add('interiorFabric', rbox(x - 0.16, 0, q0, x + 0.16, 0.26, q1, 0.05), '#4a4038', { flat: true, snow: 0 });
+      }
+      // Wall clock (stopped at 7:40, the evening the station was abandoned).
+      const cz = pf + s * 0.04;
+      kit.add('gloss', cylAB(29.95, 2.78, pf, 29.95, 2.78, cz, 0.24, 0.24, 18), '#34302c', { flat: true, snow: 0 });
+      kit.add('gloss', cylAB(29.95, 2.78, cz, 29.95, 2.78, cz + s * 0.005, 0.21, 0.21, 18), ENV.bone, { flat: true, snow: 0 });
+      const hand = (ang: number, len: number, t: number): void => {
+        const m = new THREE.Matrix4().makeRotationZ(ang).setPosition(29.95, 2.78, cz + s * 0.012);
+        kit.add('paint', box(-t / 2, 0, -0.004, t / 2, len, 0.004), '#1f1e22', { flat: true, snow: 0 }, m);
+      };
+      hand(-(40 / 60) * Math.PI * 2 * s, 0.17, 0.018);
+      hand(-((7 + 40 / 60) / 12) * Math.PI * 2 * s, 0.11, 0.028);
+    }
   }
   void decor;
 }

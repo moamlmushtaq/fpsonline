@@ -26,6 +26,17 @@ export interface RangeBest {
   score: number;
   accuracy: number;
   headshots: number;
+  // Additive personal bests kept by the Training Range stats panel (all optional).
+  /** Best accuracy of a session with at least 20 shots (0..1). */
+  bestAccuracy?: number;
+  /** Longest run of consecutive hits. */
+  bestStreak?: number;
+  /** Most targets down in one session. */
+  mostTargets?: number;
+  /** Fastest single time-to-eliminate per distance band ("10", "25"…) in seconds. */
+  ttk?: Record<string, number>;
+  /** Fastest tutorial completion (s). */
+  tutorial?: number;
 }
 
 export interface LocalProfile extends StoredProfile {
@@ -127,6 +138,20 @@ function sanitizeLoadout(l: unknown): Loadout {
   };
 }
 
+function sanitizeRangeBest(rb: Partial<RangeBest>): RangeBest {
+  const out: RangeBest = { score: finite(rb.score, 0, 0), accuracy: finite(rb.accuracy, 0, 0, 1), headshots: finite(rb.headshots, 0, 0) };
+  if (rb.bestAccuracy !== undefined) out.bestAccuracy = finite(rb.bestAccuracy, 0, 0, 1);
+  if (rb.bestStreak !== undefined) out.bestStreak = finite(rb.bestStreak, 0, 0, 1e6);
+  if (rb.mostTargets !== undefined) out.mostTargets = finite(rb.mostTargets, 0, 0, 1e6);
+  if (rb.tutorial !== undefined) out.tutorial = finite(rb.tutorial, 0, 0, 3600);
+  if (rb.ttk && typeof rb.ttk === 'object') {
+    const ttk: Record<string, number> = {};
+    for (const [k, v] of Object.entries(rb.ttk)) if (/^\d{1,3}$/.test(k) && typeof v === 'number' && Number.isFinite(v) && v >= 0) ttk[k] = Math.min(60, v);
+    out.ttk = ttk;
+  }
+  return out;
+}
+
 /** Accepts both LocalProfile and server StoredProfile shapes. */
 function sanitizeProfile(raw: unknown, base: LocalProfile = defaultProfile()): LocalProfile {
   if (!raw || typeof raw !== 'object') return base;
@@ -159,7 +184,7 @@ function sanitizeProfile(raw: unknown, base: LocalProfile = defaultProfile()): L
     lastPlayedDay: typeof p.lastPlayedDay === 'string' ? p.lastPlayedDay : base.lastPlayedDay,
     rangeBest:
       rb && typeof rb === 'object'
-        ? { score: finite(rb.score, 0, 0), accuracy: finite(rb.accuracy, 0, 0, 1), headshots: finite(rb.headshots, 0, 0) }
+        ? sanitizeRangeBest(rb)
         : rb === null
           ? null
           : base.rangeBest,
@@ -317,7 +342,8 @@ export class ProfileStore {
     let rangeBest = p.rangeBest;
     if (results.mode === 'range') {
       const accuracy = stats.shots > 0 ? stats.hits / stats.shots : 0;
-      if (!rangeBest || stats.score > rangeBest.score) rangeBest = { score: stats.score, accuracy, headshots: stats.headshots };
+      // Keep the panel's extra personal bests (spread) when the session score improves.
+      if (!rangeBest || stats.score > rangeBest.score) rangeBest = { ...(rangeBest ?? {}), score: stats.score, accuracy, headshots: stats.headshots };
     }
 
     const application = { xp, before, after, unlocks, won, draw, mvp, stats, ratingBefore, ratingAfter };

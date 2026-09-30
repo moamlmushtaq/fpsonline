@@ -157,6 +157,14 @@ describe('pastel map', () => {
     expect(clear({ x: -50, y: 2.95 + EYE_HEIGHT, z: 22 }, { x: 50, y: 2.95 + EYE_HEIGHT, z: 22 })).toBe(false);
     // Carport roof → carport roof over the back-lot pergolas.
     expect(clear({ x: -50, y: 2.55 + EYE_HEIGHT, z: 29 }, { x: 50, y: 2.55 + EYE_HEIGHT, z: 29 })).toBe(false);
+    // Corner carport roofs → through the side alleys + mall doors → the far lot
+    // by the enemy exit (was 85–96 m; closed by the 3.6 / 3.9 m alley screens).
+    for (const sz of [1, -1]) {
+      expect(clear({ x: -54, y: 2.55 + EYE_HEIGHT, z: 27 * sz }, { x: 22, y: EYE_HEIGHT, z: -34 * sz })).toBe(false);
+      expect(clear({ x: -54, y: 2.55 + EYE_HEIGHT, z: -29 * sz }, { x: 17, y: EYE_HEIGHT, z: 32 * sz })).toBe(false);
+      expect(clear({ x: -14, y: EYE_HEIGHT, z: -29 * sz }, { x: 52, y: 2.55 + EYE_HEIGHT, z: 27 * sz })).toBe(false);
+      expect(clear({ x: -9, y: 1.3 + EYE_HEIGHT, z: -24 * sz }, { x: 52, y: 2.55 + EYE_HEIGHT, z: 27 * sz })).toBe(false);
+    }
   });
 
   it('the east lane bends through the intersection around the crashed van', () => {

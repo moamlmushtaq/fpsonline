@@ -31,6 +31,7 @@ import type {
   RoomSettingsMsg,
   ServerMsg,
 } from '../protocol';
+import { RANGE_ACTIONS } from '../protocol';
 import type { BotDifficulty, CosmeticSelection, Lang, MapId, ModeId, Platform, Team } from '../types';
 import { MAP_IDS, MODE_IDS, PVP_MAP_IDS, TEAM_NONE } from '../types';
 import { Matchmaker, mapsCompatible, ratingBand, type QueueEntry } from './matchmaker';
@@ -228,8 +229,12 @@ export class HostCore {
         c.loadout = sanitizeLoadout(msg.loadout);
         c.room?.setLoadout(c.conn.id, c.loadout);
         return;
+      case 'loaded':
+        c.room?.markLoaded(c.conn.id);
+        return;
       case 'range':
-        if (c.room && (msg.action === 'reset' || msg.action === 'difficulty')) {
+        // RANGE_ACTIONS: reset | difficulty | weapon | throwable (weapon/throwable added for the range rack).
+        if (c.room && RANGE_ACTIONS.includes(msg.action)) {
           const v = Number(msg.value);
           c.room.rangeCommand(c.conn.id, msg.action, Number.isFinite(v) ? v : undefined);
         }

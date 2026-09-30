@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { PROTOCOL_VERSION, QUEUE_BOT_FILL_AFTER, ROOM_CODE_LENGTH } from '../../src/shared/constants';
 import { HostCore, type AccountHooks, type HostConnection } from '../../src/shared/host/host-core';
 import { Matchmaker } from '../../src/shared/host/matchmaker';
+import { LOAD_HOLD_MAX_TICKS } from '../../src/shared/host/room';
 import type { ClientMsg, HelloMsg, ServerMsg } from '../../src/shared/protocol';
 import { cloneCombatState, stepPlayer } from '../../src/shared/combat';
 import { SIM_DT } from '../../src/shared/constants';
@@ -118,6 +119,33 @@ describe('HostCore', () => {
     h.send(a, { type: 'leave' });
     h.advance(50);
     expect(h.host.roomCount).toBe(0);
+  });
+
+  it('the countdown waits for humans still loading the match (bounded)', () => {
+    const h = new Harness(new HostCore({ kind: 'local', seed: 3 }));
+    const a = h.join('a', 'Loader');
+    h.send(a, { type: 'queue', mode: 'tdm', map: 'gantry', botDifficulty: 'recruit', kind: 'bots' });
+    const countdown = a.last('matchStart')!.config.countdown;
+    expect(countdown).toBeGreaterThan(0);
+    // Still loading: the countdown does not run.
+    h.advance((countdown + 2) * 1000);
+    expect(a.last('snap')!.clock.phase).toBe('countdown');
+    expect(a.last('snap')!.clock.phaseLeft).toBeCloseTo(countdown, 5);
+    // Loaded: the full countdown plays out, then the match is live.
+    h.send(a, { type: 'loaded' });
+    h.advance((countdown - 0.5) * 1000);
+    expect(a.last('snap')!.clock.phase).toBe('countdown');
+    h.advance(1000);
+    expect(a.last('snap')!.clock.phase).toBe('live');
+
+    // A client that never reports 'loaded' (old build, stuck tab) can't hold the room forever.
+    const h2 = new Harness(new HostCore({ kind: 'local', seed: 4 }));
+    const b = h2.join('b', 'Silent');
+    h2.send(b, { type: 'queue', mode: 'tdm', map: 'gantry', botDifficulty: 'recruit', kind: 'bots' });
+    h2.advance(15_000);
+    expect(b.last('snap')!.clock.phase).toBe('countdown');
+    h2.advance((LOAD_HOLD_MAX_TICKS / 60 - 15 + countdown + 0.5) * 1000);
+    expect(b.last('snap')!.clock.phase).toBe('live');
   });
 
   it('solo queue starts the training range with the tutorial flag; leaving returns results', () => {

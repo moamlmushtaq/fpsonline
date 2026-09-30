@@ -12,7 +12,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type * as THREE from 'three';
-import type { Announcer, AudioSystem, Hud, I18n } from '../contracts';
+import type { Announcer, AudioSystem, Hud, I18n, InputSystem } from '../contracts';
 import type { MapDef } from '../../shared/maps/types';
 import type { SnapshotMsg } from '../../shared/protocol';
 import type { RangeSummary } from '../../shared/sim/range';
@@ -87,4 +87,22 @@ export interface MatchApi {
   keyLabel(action: string): string;
   /** Registers another extension. */
   use(ext: MatchExtension): void;
+
+  // ── Additive (Training Range + tutorial) ──────────────────────────────────
+  /** The input hub (pressed/down for station interaction, skip-hold, device glyphs). */
+  readonly input: InputSystem;
+  /** The world scene (null until the map view is built): extensions may add world markers. */
+  readonly scene: THREE.Scene | null;
+  /** True while the player is in live first-person control (no intro/death camera, not paused). */
+  readonly controllable: boolean;
+  /** InputCmd.seq of the most recent local command (matches 'target' events' `s`). */
+  readonly localSeq: number;
+  /** Range rack: equip PRIMARY_WEAPON_IDS[index] immediately (range only). */
+  setRangeWeapon(index: number): void;
+  /** Range: equip a throwable (0 = grenade, 1 = smoke) immediately (range only). */
+  setRangeThrowable(index: number): void;
+  /** Contextual HUD prompt shown when no pickup prompt applies (null clears). */
+  setPrompt(text: string | null): void;
+  /** Leaves the match without a results screen, then opens the menu or starts quick play. */
+  exit(next: 'menu' | 'quickplay'): void;
 }

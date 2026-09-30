@@ -413,7 +413,7 @@ describe('GameSim', () => {
     const slot = sim.player(p.id)!.combat.slots[0];
     expect(slot.reserve).toBeGreaterThan(0);
     d.step(2 * SIM_HZ);
-    expect(sim.range!.targets.every((x) => x.alive)).toBe(true);
+    expect(sim.range!.targets.every((x) => x.alive || x.def.popup)).toBe(true); // pop-up targets cycle down on their own
     expect(sim.player(p.id)!.alive).toBe(true);
     expect(sim.player(p.id)!.stats.shots).toBeGreaterThan(0);
   });

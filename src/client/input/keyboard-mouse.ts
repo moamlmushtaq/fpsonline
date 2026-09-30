@@ -63,6 +63,7 @@ export class KeyboardMouse {
     window.addEventListener('blur', this.releaseAll);
     document.addEventListener('visibilitychange', this.onVisibility);
     document.addEventListener('pointerlockerror', this.onLockError);
+    document.addEventListener('pointerlockchange', this.onLockChange);
   }
 
   get pointerLocked(): boolean {
@@ -107,6 +108,15 @@ export class KeyboardMouse {
 
   private readonly onLockError = (): void => {
     this.lockFailed = true;
+  };
+
+  /**
+   * The first request asks for raw (unadjustedMovement) deltas; where that isn't supported
+   * the browser fires pointerlockerror before the plain retry succeeds. A lock that did
+   * engage proves pointer lock works: leave the drag-to-look fallback.
+   */
+  private readonly onLockChange = (): void => {
+    if (this.pointerLocked) this.lockFailed = false;
   };
 
   private typing(e: Event): boolean {
@@ -194,5 +204,6 @@ export class KeyboardMouse {
     window.removeEventListener('blur', this.releaseAll);
     document.removeEventListener('visibilitychange', this.onVisibility);
     document.removeEventListener('pointerlockerror', this.onLockError);
+    document.removeEventListener('pointerlockchange', this.onLockChange);
   }
 }

@@ -122,10 +122,28 @@ export interface PingMsg {
   t: number;
 }
 
-/** Training range: reset stats / targets. */
+/**
+ * The client finished loading the match (map view built, shaders ready) and is showing it.
+ * Sent once after matchStart. The host holds the pre-match countdown until every human in
+ * the room has loaded (bounded), so slow devices don't miss the start of the match.
+ */
+export interface LoadedMsg {
+  type: 'loaded';
+}
+
+/**
+ * Training range: reset stats / targets, target speed ('difficulty', value =
+ * speed multiplier). Additive, backward compatible: 'weapon' swaps the primary
+ * at the firing-line rack (value = index into PRIMARY_WEAPON_IDS) and
+ * 'throwable' swaps the throwable (value 0 = grenade, 1 = smoke); both apply
+ * immediately in the range only and never touch the saved loadout.
+ */
+export type RangeAction = 'reset' | 'difficulty' | 'weapon' | 'throwable';
+export const RANGE_ACTIONS: readonly RangeAction[] = ['reset', 'difficulty', 'weapon', 'throwable'];
+
 export interface RangeCmdMsg {
   type: 'range';
-  action: 'reset' | 'difficulty';
+  action: RangeAction;
   value?: number;
 }
 
@@ -142,7 +160,8 @@ export type ClientMsg =
   | InputMsg
   | LoadoutMsg
   | PingMsg
-  | RangeCmdMsg;
+  | RangeCmdMsg
+  | LoadedMsg;
 
 // ── Host → Client ───────────────────────────────────────────────────────────
 

@@ -77,6 +77,15 @@ export function buildCompounds(kit: ObsKit, rnd: () => number, decor: number): v
     buildYardDressing(kit, s);
     // Summit map boards + signs (inside the yard, on the baffles).
     kit.add('sign', quad(0, 1.6, s * (45.6 + 0.02), 1.6, 1.6, 0, s, rect('map', 2)), '#ffffff', { flat: true });
+    // A hooded lamp washes the map board: the first warm thing a spawning player sees.
+    {
+      const zf = s * 45.6;
+      const zo = (d: number): number => zf + s * d;
+      kit.add('metal', box(-0.55, 2.62, Math.min(zo(0), zo(0.42)), 0.55, 2.74, Math.max(zo(0), zo(0.42))), '#34302c', { flat: true });
+      kit.add('glow', box(-0.45, 2.56, Math.min(zo(0.05), zo(0.38)), 0.45, 2.62, Math.max(zo(0.05), zo(0.38))), ENV.glowGold, { k: 3, flat: true });
+      kit.add('pool', quad(0, 1.7, zo(0.03), 2.6, 2.2, 0, s), ENV.glowGold, { k: 0.38, flat: true });
+      kit.add('pool', floorQuad(0, 0.045, zo(1.8), 4.2, 3.4), ENV.glowGold, { k: 0.5, flat: true });
+    }
     // Station sign over the centre gate (facing the map; a solid board behind it for the yard side).
     kit.add('sign', quad(0, 5.0, s * 41.72, 6.4, 0.8, 0, -s, rect(s > 0 ? 'signTerminal' : 'signQuarters', 2)), '#ffffff', { flat: true });
     kit.add('metal', box(-3.3, 4.55, Math.min(s * 41.75, s * 41.95), 3.3, 5.45, Math.max(s * 41.75, s * 41.95)), '#34302c', { flat: true });
@@ -127,7 +136,8 @@ function buildYardDressing(kit: ObsKit, s: 1 | -1): void {
     const zf = s * 45.62;
     kit.add('metal', box(x - 0.2, 2.55, Math.min(zf, zf + s * 0.22), x + 0.2, 2.72, Math.max(zf, zf + s * 0.22)), '#34302c', { flat: true });
     kit.add('glow', box(x - 0.15, 2.48, Math.min(zf, zf + s * 0.19), x + 0.15, 2.55, Math.max(zf, zf + s * 0.19)), ENV.glowGold, { k: 2.6, flat: true });
-    kit.add('pool', floorQuad(x, 0.04, s * 47.2, 3.6, 3.2), ENV.glowGold, { k: 0.34, flat: true });
+    kit.add('pool', floorQuad(x, 0.04, s * 47.4, 4.6, 4), ENV.glowGold, { k: 0.5, flat: true });
+    kit.add('pool', quad(x, 1.8, s * 45.63, 3.2, 2.2, 0, s), ENV.glowGold, { k: 0.22, flat: true });
   }
   // Platform edge stripe along the building front.
   kit.add('sign', floorQuad(0, y, s * 59.4, 28, 0.36, rect('hazard', 2), s > 0 ? 0 : Math.PI), '#ffffff', { flat: true });
@@ -376,6 +386,41 @@ function buildCourtyards(kit: ObsKit, rnd: () => number, decor: number): void {
       kit.add('wood', box(8.6, 0.6, a, 9, 2.6, b), '#8a6a4c', { base: 0 });
       kit.add('wood', box(4, 2.45, a, 9, 2.6, b), '#8a6a4c', { flat: true });
       kit.add('fabric', rbox(6.5, 0.6, a - 0.02, 9.02, 2.5, b + 0.02, 0.2, 2), ENV.pastelBlue, { base: 0.6 });
+    }
+    // Tracks in the snow from the centre gate round the porch to the snowcat (S: cleated
+    // tread marks) / the fuel sled (N: two runner grooves) — who parked here, and how.
+    {
+      const curve = new THREE.CatmullRomCurve3(
+        [
+          [0, 41.6],
+          [-6.8, 39.4],
+          [-7.4, 33.5],
+          [-6.2, 29.2],
+          [-8.6, 23.6],
+          [-11.2, 20.4],
+          [-12.6, 18.5],
+        ].map(([x, z]) => new THREE.Vector3(x, 0, s * z)),
+        false,
+        'centripetal',
+      );
+      const len = curve.getLength();
+      const step = s > 0 ? 0.62 : 1.1;
+      const n = Math.floor(len / step);
+      const tan = new THREE.Vector3();
+      const pt = new THREE.Vector3();
+      for (let i = 0; i < n; i++) {
+        const u = (i + 0.5) / n;
+        curve.getPointAt(u, pt);
+        curve.getTangentAt(u, tan);
+        const yaw = Math.atan2(tan.x, tan.z);
+        const px = tan.z, pz = -tan.x; // perpendicular (unit)
+        for (const side of [-1, 1]) {
+          const off = s > 0 ? 1.07 : 2.1;
+          const w = s > 0 ? 0.8 : 0.16;
+          const d = s > 0 ? 0.42 : step + 0.02;
+          kit.add('paint', floorQuad(pt.x + px * off * side, 0.018, pt.z + pz * off * side, w, d, undefined, yaw), s > 0 ? '#c3c5d3' : '#cfd1dc', { flat: true, snow: 0 });
+        }
+      }
     }
     // Drifts; lichen in the shade of the dome base.
     drift(kit, -9, 0, Z(24), 2.5, 1.1, 0.3, 0.4);

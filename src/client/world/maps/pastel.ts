@@ -29,7 +29,7 @@ import { ENV } from '../../engine/palette';
 import type { BackdropOptions } from '../map-builder';
 import { buildBackdrop } from './pastel/backdrop';
 import { buildGround } from './pastel/ground';
-import { bungalow, chapel, cornerHouse, dinerAndGas, garageRow, poolHouse, screenWall, spawnWall, twoStorey } from './pastel/houses';
+import { bungalow, chapel, cornerHouse, dinerAndGas, garageRow, houseLightPools, poolHouse, screenWall, spawnWall, twoStorey } from './pastel/houses';
 import { DecorKit, mix, rgb } from './pastel/kit';
 import { GAL, buildMall } from './pastel/mall';
 import { buildProps } from './pastel/props';
@@ -61,6 +61,7 @@ const build: DecorBuilder = (ctx: DecorContext): MapDecor => {
   twoStorey(kit, signs, -1, 1, styles[1], rng, false);
   twoStorey(kit, signs, 1, -1, styles[2], rng, false);
   twoStorey(kit, signs, -1, -1, styles[3], rng, true);
+  houseLightPools(kit);
   for (const sx of [1, -1]) {
     for (const sz of [1, -1]) {
       bungalow(kit, sx, sz, rng);

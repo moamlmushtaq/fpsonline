@@ -306,7 +306,7 @@ export class ScoreboardView {
       for (const t of order) {
         const col = h('div');
         const th = h('div', { class: 'sb-team-h' }, h('span', { t: `common.team.${t}` }), h('b', { text: String(teamScores[t as 0 | 1] ?? 0) }));
-        th.style.setProperty('--tc', teamColors(t).primary);
+        th.style.setProperty('--tc', `var(--team${t}, ${teamColors(t).primary})`);
         col.append(th, this.table(rows.filter((r) => r.team === t), mode));
         cols.append(col);
       }

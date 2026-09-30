@@ -253,7 +253,11 @@ export class ClientMatch implements MatchContext, MatchApi {
     app.hud.setScale(app.settings.value.hudScale);
     app.hud.setCrosshair(app.settings.value.crosshair, app.settings.value.crosshairColor);
     this.overlays = new MatchOverlays(app.hud.root);
-    if (this.config.mode === 'range') this.range = new RangePanel(app.hud.root);
+    if (this.config.mode === 'range') {
+      // Range stats panel + stations (rack / reset / speed) + floating hit numbers.
+      this.range = new RangePanel(app.hud.root, this);
+      this.use(this.range);
+    }
     this.feedback = new Feedback(this, this.hudBridge, this.range);
 
     // Engine & audio.
@@ -559,6 +563,8 @@ export class ClientMatch implements MatchContext, MatchApi {
     if (inMatchScreen && !this.flow.started) {
       app.engine.setScene(view.map.scene, this.camera);
       this.flow.startIntro(this.phaseLeft());
+      // The host holds the pre-match countdown until we are actually showing the match.
+      this.send({ type: 'loaded' });
     }
 
     // ── Look (every frame, zero latency) ──
@@ -696,7 +702,7 @@ export class ClientMatch implements MatchContext, MatchApi {
     const inGameplay = app.ui.current === 'match' && !app.isPaused;
     const fpLive = this.director.mode === 'fp' || this.director.mode === 'intro';
     if (app.input.device === 'kbm' && !app.input.pointerLocked && inGameplay && fpLive && this.predictor.alive) b.prompt = app.i18n.t('match.clickToEngage');
-    else b.prompt = b.pickupPrompt();
+    else b.prompt = b.pickupPrompt() ?? this.extPrompt;
     const size = app.engine.size;
     const vw = window.innerWidth || size.width;
     const vh = window.innerHeight || size.height;
@@ -803,6 +809,46 @@ export class ClientMatch implements MatchContext, MatchApi {
 
   use(ext: MatchExtension): void {
     this.extensions.push(ext);
+  }
+
+  // Additive MatchApi members (Training Range + tutorial).
+  private extPrompt: string | null = null;
+
+  get input() {
+    return this.app.input;
+  }
+
+  get scene(): THREE.Scene | null {
+    return this.view?.map.scene ?? null;
+  }
+
+  get controllable(): boolean {
+    return this.predictor.alive && this.director.mode === 'fp' && !this.app.isPaused && this.app.ui.current === 'match';
+  }
+
+  get localSeq(): number {
+    return this.local.seq;
+  }
+
+  setRangeWeapon(index: number): void {
+    if (this.config.mode === 'range') this.send({ type: 'range', action: 'weapon', value: index });
+  }
+
+  setRangeThrowable(index: number): void {
+    if (this.config.mode === 'range') this.send({ type: 'range', action: 'throwable', value: index });
+  }
+
+  setPrompt(text: string | null): void {
+    this.extPrompt = text;
+  }
+
+  /** Leaves without the results screen (tutorial "Play now" / "Keep practicing" never needs one). */
+  exit(next: 'menu' | 'quickplay'): void {
+    if (this.leaving) return;
+    this.leaving = true;
+    this.send({ type: 'leave' });
+    this.finish(null);
+    if (next === 'quickplay') window.setTimeout(() => void this.app.quickPlay('tdm'), 0);
   }
 
   // ═══ Lifecycle ═══════════════════════════════════════════════════════════

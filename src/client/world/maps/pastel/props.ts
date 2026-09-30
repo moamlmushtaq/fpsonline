@@ -412,9 +412,15 @@ function hedge(kit: DecorKit, x0: number, z0: number, x1: number, z1: number, h:
 }
 
 function busShelter(kit: DecorKit, signs: Signs, sz: number): void {
-  // Collision back panel x 22..29.5, z 6..6.4 (2.6 m). Faces the cross street.
+  // Collision back panel x 22..29.5, z 6..6.4 (3.9 m: shelter 2.6 m + rooftop
+  // billboard). Faces the cross street.
   const zb = 6.2 * sz;
   kit.box('paint', 22, 0, Math.min(zb - 0.2, zb + 0.2), 29.5, 2.6, Math.max(zb - 0.2, zb + 0.2), K.mint, 0.04);
+  // Rooftop billboard: the mall's grand-opening ad, both faces, on a bone
+  // frame that fills the collision up to 3.9 m (no invisible wall above).
+  kit.box('paint', 22, 2.78, Math.min(zb - 0.2, zb + 0.2), 29.5, 3.9, Math.max(zb - 0.2, zb + 0.2), K.bone, 0.03, { ao: 0 });
+  kit.box('paint', 21.95, 3.86, Math.min(zb - 0.23, zb + 0.23), 29.55, 3.96, Math.max(zb - 0.23, zb + 0.23), K.terra, 0.02, { ao: 0 });
+  signs.board.quad2(REGION.banner, new THREE.Vector3(25.75, 3.34, zb), 7.0, 0.88, new THREE.Vector3(0, 0, 1), 0.205);
   const zr0 = 6.4 * sz;
   const zr1 = 4.2 * sz;
   kit.box('paint', 21.8, 2.6, Math.min(zr0, zr1), 29.7, 2.78, Math.max(zr0, zr1), K.bone, 0.05, { ao: 0 });

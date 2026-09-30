@@ -408,13 +408,14 @@ export class HostCore {
     }
     if (!best) return false;
     const c = e.client;
-    c.queued = false;
-    this.sendQueueStatus(c, 'found', (this.nowMs - e.since) / 1000, best.humanCount + 1, best.config.maxPlayers);
     c.room = best;
     if (!best.dropIn(c)) {
       c.room = null;
       return false;
     }
+    // Only report 'found' once the slot is really taken (a failed drop-in keeps searching).
+    c.queued = false;
+    this.sendQueueStatus(c, 'found', (this.nowMs - e.since) / 1000, best.humanCount, best.config.maxPlayers);
     best.announce();
     return true;
   }

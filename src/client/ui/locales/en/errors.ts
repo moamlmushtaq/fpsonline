@@ -1,0 +1,23 @@
+// Errors and connection problems (English). errors.<ErrorCode> mirrors protocol.ts.
+export default {
+  'errors.room_not_found': 'No room with that code. Check it and try again.',
+  'errors.room_full': 'That room is full.',
+  'errors.room_started': 'That room has already started its match.',
+  'errors.not_host': 'Only the host can do that.',
+  'errors.bad_protocol': 'Your game is out of date. Reload to update.',
+  'errors.server_full': 'The server is full right now. Try again in a moment.',
+  'errors.offline_unavailable': 'Private rooms need a connection to the game server.',
+  'errors.kicked': 'You were removed from the match.',
+  'errors.generic': 'Something went wrong.',
+  'errors.connectionLost': 'Connection lost.',
+  'errors.connectFailed': 'Could not reach the game server.',
+  'errors.fallbackBots': 'Server unreachable — starting a bot match instead.',
+  'errors.onlineOnly': 'This needs a connection to the game server.',
+  'errors.notReady': 'That part of the game is still being wired up.',
+  'errors.invalidCode': 'Room codes are 5 letters.',
+  'errors.webgl.title': 'Graphics unavailable',
+  'errors.webgl.body': 'HALCYON FRONT needs WebGL. Enable hardware acceleration in your browser settings, or try a current version of Chrome, Edge, Firefox or Safari.',
+  'errors.crash.title': 'Signal lost',
+  'errors.crash.body': 'Something went wrong. Reloading usually fixes it — your progress is saved.',
+  'errors.contextLost': 'The graphics device was reset. Restoring…',
+} satisfies Record<string, string>;

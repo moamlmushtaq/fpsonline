@@ -1,0 +1,23 @@
+# Keep the build context small and free of local state / secrets.
+.git
+.gitignore
+.dockerignore
+node_modules
+dist
+data
+artifacts
+test-results
+playwright-report
+.vite
+.cache
+coverage
+tests
+*.log
+.DS_Store
+.env
+.env.*
+.idea
+.vscode
+Dockerfile
+fly.toml
+render.yaml

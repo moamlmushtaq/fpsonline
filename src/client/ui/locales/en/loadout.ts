@@ -1,0 +1,22 @@
+// Loadout screen (English).
+export default {
+  'loadout.title': 'Loadout',
+  'loadout.subtitle': 'Changes apply on your next deployment',
+  'loadout.primary': 'Primary',
+  'loadout.sidearm': 'Sidearm',
+  'loadout.throwable': 'Throwable',
+  'loadout.pickup': 'Map pickup',
+  'loadout.stat.damage': 'Damage',
+  'loadout.stat.fireRate': 'Fire rate',
+  'loadout.stat.range': 'Range',
+  'loadout.stat.mobility': 'Mobility',
+  'loadout.stat.control': 'Control',
+  'loadout.sidearmNote': 'Always carried. Swap to it for a fast finish.',
+  'loadout.pickupNote': 'Found at the heart of each map. Charges, then fires a searing beam.',
+  'loadout.onePerLife': 'One per life',
+  'loadout.mag': '{n} rounds',
+  'loadout.rpm': '{n} rpm',
+  'loadout.equip': 'Equip',
+  'loadout.equipped': 'Equipped',
+  'loadout.skin': 'Skin',
+} satisfies Record<string, string>;

@@ -1,0 +1,21 @@
+// Lore tips and gameplay hints shown on the loading screen (English).
+export default {
+  'tips.1': 'The Halcyon Accord built forty launch towers in eleven years. Three still answer the countdown.',
+  'tips.2': 'Slide out of a sprint to drop under fire — then mantle straight onto the ledge ahead.',
+  'tips.3': 'The Bloom never planted the glowing vines. They simply stopped cutting them back.',
+  'tips.4': 'Health returns after a few seconds out of combat. Break line of sight and breathe.',
+  'tips.5': 'Gantry\'s tower was last fueled in 2061. The countdown clock never stopped.',
+  'tips.6': 'Headshots with the Longline end a fight in one clean shot. Aim for the visor line.',
+  'tips.7': 'Pastel was a showcase suburb: "Tomorrow, delivered." The mall still plays its jingle.',
+  'tips.8': 'Swapping to the Pulse is faster than any reload. Finish the fight, then reload.',
+  'tips.9': 'Observatory\'s great telescope still tracks the old orbital stations, one by one.',
+  'tips.10': 'A smoke canister blocks sightlines for thirteen seconds. Use it to cross the open ground.',
+  'tips.11': 'In Launch Control, the winning team launches the last rocket. Everyone watches.',
+  'tips.12': 'The Sunspear appears at the heart of every map. Listen for its hum.',
+  'tips.13': 'Red arcs at the edge of your screen point toward the shooter. Turn, or take cover.',
+  'tips.14': 'Halcyon armor is fired ceramic — light, cool in the sun, and it shatters like porcelain.',
+  'tips.15': 'Footsteps and reloads carry direction and distance. Headphones help.',
+  'tips.16': 'Everything you unlock is cosmetic. Skill is the only advantage here.',
+  'tips.17': 'The old radio in the backyards has played the same song since the evacuation.',
+  'tips.18': 'Crouching tightens your spread. Standing still tightens it more.',
+} satisfies Record<string, string>;

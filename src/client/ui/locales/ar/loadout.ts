@@ -1,0 +1,22 @@
+// شاشة العتاد (العربية).
+export default {
+  'loadout.title': 'العتاد',
+  'loadout.subtitle': 'تُطبَّق التغييرات عند انتشارك التالي',
+  'loadout.primary': 'السلاح الرئيسي',
+  'loadout.sidearm': 'السلاح الجانبي',
+  'loadout.throwable': 'المقذوف',
+  'loadout.pickup': 'سلاح الخريطة',
+  'loadout.stat.damage': 'الضرر',
+  'loadout.stat.fireRate': 'معدل الإطلاق',
+  'loadout.stat.range': 'المدى',
+  'loadout.stat.mobility': 'الحركة',
+  'loadout.stat.control': 'التحكم',
+  'loadout.sidearmNote': 'يرافقك دائمًا. بدّل إليه لحسمٍ سريع.',
+  'loadout.pickupNote': 'يوجد في قلب كل خريطة. يُشحن ثم يطلق شعاعًا لاهبًا.',
+  'loadout.onePerLife': 'واحد لكل حياة',
+  'loadout.mag': 'السعة: {n}',
+  'loadout.rpm': '{n} طلقة/د',
+  'loadout.equip': 'تجهيز',
+  'loadout.equipped': 'مُجهَّز',
+  'loadout.skin': 'الطلاء',
+} satisfies Record<string, string>;

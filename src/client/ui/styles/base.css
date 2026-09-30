@@ -1,0 +1,453 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   HALCYON FRONT — base layer: reset, app frame, typography helpers, keyframes,
+   fatal overlays and the rotate-device prompt.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #120f0d;
+  color: var(--c-text);
+  font-family: var(--f-ui);
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+  touch-action: manipulation;
+}
+
+body {
+  position: fixed;
+  inset: 0;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+input,
+textarea {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+h1,
+h2,
+h3,
+h4,
+p {
+  margin: 0;
+}
+
+#game {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  outline: none;
+  touch-action: none;
+}
+
+#ui {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+  isolation: isolate;
+}
+
+/* Layers are click-through; screens opt back in (the match screen stays
+   click-through so the canvas and touch controls receive input). */
+#ui > .layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Focus: visible for keyboard/gamepad only. */
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 3px;
+}
+
+::selection {
+  background: var(--c-accent-soft);
+  color: var(--c-text);
+}
+
+/* Thin warm scrollbars inside scrolling panels. */
+.scroll {
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--c-line) transparent;
+  -webkit-overflow-scrolling: touch;
+}
+
+.scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.scroll::-webkit-scrollbar-thumb {
+  background: var(--c-line);
+  border-radius: 6px;
+}
+
+.scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Icons */
+.ic {
+  width: 1.25em;
+  height: 1.25em;
+  flex: none;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.wic {
+  height: 1em;
+  width: 2.67em;
+  flex: none;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+[dir='rtl'] .ic [data-flip] {
+  transform: scaleX(-1);
+  transform-origin: center;
+  transform-box: fill-box;
+}
+
+/* Typography helpers */
+.mono,
+.num {
+  font-family: var(--f-mono);
+  font-variant-numeric: tabular-nums;
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+.caps {
+  text-transform: uppercase;
+  letter-spacing: var(--track-caps);
+}
+
+.dim {
+  color: var(--c-text-dim);
+}
+
+.faint {
+  color: var(--c-text-faint);
+}
+
+.accent {
+  color: var(--c-accent);
+}
+
+.eyebrow {
+  font-size: 0.72rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  color: var(--c-text-dim);
+}
+
+html[lang='ar'] .eyebrow {
+  letter-spacing: 0;
+  font-size: 0.8rem;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* ── Keyframes ───────────────────────────────────────────────────────────── */
+
+@keyframes hf-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes hf-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes hf-rise {
+  from {
+    opacity: 0;
+    transform: translateY(0.9rem);
+  }
+}
+
+@keyframes hf-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(calc(3.5rem * var(--dir)));
+  }
+}
+
+@keyframes hf-slide-in-back {
+  from {
+    opacity: 0;
+    transform: translateX(calc(-3.5rem * var(--dir)));
+  }
+}
+
+@keyframes hf-slide-out {
+  to {
+    opacity: 0;
+    transform: translateX(calc(-2.5rem * var(--dir)));
+  }
+}
+
+@keyframes hf-slide-out-back {
+  to {
+    opacity: 0;
+    transform: translateX(calc(2.5rem * var(--dir)));
+  }
+}
+
+@keyframes hf-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+
+@keyframes hf-scale-out {
+  to {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
+@keyframes hf-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes hf-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@keyframes hf-sheen {
+  from {
+    transform: translateX(-120%) skewX(-18deg);
+  }
+  to {
+    transform: translateX(260%) skewX(-18deg);
+  }
+}
+
+@keyframes hf-breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* Stagger children: elements with .stg animate in with a per-index delay (--i). */
+.stg {
+  animation: hf-rise var(--t-slow) var(--ease) both;
+  animation-delay: calc(var(--i, 0) * 45ms + 60ms);
+}
+
+/* ── Fatal overlays (WebGL missing, crash) ───────────────────────────────── */
+
+.fatal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: max(var(--gutter), var(--safe-t)) max(var(--gutter), var(--safe-r)) max(var(--gutter), var(--safe-b)) max(var(--gutter), var(--safe-l));
+  background:
+    radial-gradient(120% 90% at 50% 110%, rgba(214, 120, 70, 0.35), transparent 60%),
+    linear-gradient(180deg, #1c1a24 0%, #2a2230 45%, #4a3036 100%);
+  animation: hf-fade-in var(--t-slow) var(--ease) both;
+  pointer-events: auto;
+}
+
+.fatal__card {
+  width: min(34rem, 100%);
+  padding: var(--sp-6);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-lg);
+  background: var(--c-panel-strong);
+  box-shadow: var(--shadow-panel);
+  text-align: start;
+  animation: hf-rise var(--t-slow) var(--ease) both;
+}
+
+.fatal__mark {
+  width: 3rem;
+  height: 3rem;
+  margin-bottom: var(--sp-4);
+  color: var(--c-accent);
+}
+
+.fatal__title {
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  margin-bottom: var(--sp-3);
+}
+
+.fatal__body {
+  color: var(--c-text-dim);
+  line-height: 1.55;
+  margin-bottom: var(--sp-5);
+}
+
+.fatal__detail {
+  font-family: var(--f-mono);
+  font-size: 0.72rem;
+  color: var(--c-text-faint);
+  max-height: 6rem;
+  overflow: auto;
+  margin-bottom: var(--sp-5);
+  white-space: pre-wrap;
+  direction: ltr;
+  text-align: left;
+}
+
+.fatal__actions {
+  display: flex;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+}
+
+/* ── Rotate prompt (phones held in portrait) ─────────────────────────────── */
+
+.rotate-prompt {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: none;
+  place-items: center;
+  text-align: center;
+  padding: var(--gutter);
+  background: linear-gradient(180deg, #221d24, #3a2a2c);
+  pointer-events: auto;
+}
+
+.rotate-prompt__phone {
+  width: 3.4rem;
+  height: 5.6rem;
+  margin: 0 auto var(--sp-5);
+  border: 1.5px solid var(--c-text);
+  border-radius: 0.8rem;
+  position: relative;
+  animation: hf-rotate-phone 2.4s var(--ease) infinite;
+}
+
+.rotate-prompt__phone::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 0.4rem;
+  width: 1rem;
+  height: 2px;
+  margin-left: -0.5rem;
+  border-radius: 2px;
+  background: var(--c-accent);
+}
+
+.rotate-prompt h2 {
+  font-size: 1.4rem;
+  font-weight: 700;
+  margin-bottom: var(--sp-2);
+}
+
+.rotate-prompt p {
+  color: var(--c-text-dim);
+}
+
+@keyframes hf-rotate-phone {
+  0%,
+  20% {
+    transform: rotate(0deg);
+  }
+  55%,
+  100% {
+    transform: rotate(-90deg);
+  }
+}
+
+@media (orientation: portrait) and (pointer: coarse) and (max-width: 900px) {
+  .rotate-prompt {
+    display: grid;
+  }
+}
+
+/* ── Reduced motion ──────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+body.reduced-motion *,
+body.reduced-motion *::before,
+body.reduced-motion *::after {
+  animation-duration: 1ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 1ms !important;
+}

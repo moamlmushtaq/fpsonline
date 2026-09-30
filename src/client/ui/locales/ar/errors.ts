@@ -1,0 +1,23 @@
+// الأخطاء ومشكلات الاتصال (العربية).
+export default {
+  'errors.room_not_found': 'لا توجد غرفة بهذا الرمز. تحقّق منه وحاول مجددًا.',
+  'errors.room_full': 'هذه الغرفة ممتلئة.',
+  'errors.room_started': 'بدأت مباراة هذه الغرفة بالفعل.',
+  'errors.not_host': 'المضيف وحده يستطيع فعل ذلك.',
+  'errors.bad_protocol': 'نسختك من اللعبة قديمة. أعد التحميل للتحديث.',
+  'errors.server_full': 'الخادم ممتلئ حاليًا. حاول بعد لحظات.',
+  'errors.offline_unavailable': 'تتطلب الغرف الخاصة اتصالًا بخادم اللعبة.',
+  'errors.kicked': 'تمت إزالتك من المباراة.',
+  'errors.generic': 'حدث خطأ ما.',
+  'errors.connectionLost': 'انقطع الاتصال.',
+  'errors.connectFailed': 'تعذّر الوصول إلى خادم اللعبة.',
+  'errors.fallbackBots': 'الخادم غير متاح — ستبدأ مباراة ضد الآليين بدلًا من ذلك.',
+  'errors.onlineOnly': 'يتطلب هذا اتصالًا بخادم اللعبة.',
+  'errors.notReady': 'هذا الجزء من اللعبة قيد التجهيز.',
+  'errors.invalidCode': 'رمز الغرفة مكوّن من 5 أحرف.',
+  'errors.webgl.title': 'الرسوميات غير متاحة',
+  'errors.webgl.body': 'تحتاج HALCYON FRONT إلى WebGL. فعّل تسريع العتاد في إعدادات المتصفح، أو جرّب إصدارًا حديثًا من Chrome أو Edge أو Firefox أو Safari.',
+  'errors.crash.title': 'فُقدت الإشارة',
+  'errors.crash.body': 'حدث خطأ ما. غالبًا ما تحلّ إعادة التحميل المشكلة — وتقدّمك محفوظ.',
+  'errors.contextLost': 'أُعيد ضبط جهاز الرسوميات. جارٍ الاستعادة…',
+} satisfies Record<string, string>;

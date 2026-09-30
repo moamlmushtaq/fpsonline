@@ -1,0 +1,31 @@
+# HALCYON FRONT — Render.com Blueprint (https://render.com/docs/blueprint-spec)
+# One Node web service: static client + WebSocket game server + accounts API.
+#
+# Notes
+#  • Do NOT set NODE_ENV=production here: Render applies env vars to the build
+#    too, and `npm ci` would then skip the dev dependencies Vite needs.
+#  • The free plan has an ephemeral filesystem and sleeps after ~15 min idle:
+#    accounts (data/accounts.json) reset on every deploy/restart. For persistent
+#    accounts use a paid plan and uncomment the disk below (DATA_DIR points at it).
+services:
+  - type: web
+    name: halcyon-front
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: TRUST_PROXY
+        value: "1"
+      - key: PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD
+        value: "1"
+      # - key: DATA_DIR
+      #   value: /var/data
+    # disk:
+    #   name: halcyon-data
+    #   mountPath: /var/data
+    #   sizeGB: 1

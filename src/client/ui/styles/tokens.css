@@ -1,0 +1,117 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   HALCYON FRONT — design tokens.
+   Colors mirror src/client/engine/palette.ts (UI + team sets). Team colors are
+   re-written at runtime by the App when the colorblind mode changes.
+   The root font size scales with the viewport (designed at 1280×720 = 16px), so
+   the whole interface is resolution independent like a console UI.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* palette.UI */
+  --c-text: #f3ece0;
+  --c-text-dim: rgba(243, 236, 224, 0.62);
+  --c-text-faint: rgba(243, 236, 224, 0.38);
+  --c-line: rgba(243, 236, 224, 0.22);
+  --c-line-soft: rgba(243, 236, 224, 0.1);
+  --c-line-strong: rgba(243, 236, 224, 0.46);
+  --c-panel: rgba(24, 22, 20, 0.56);
+  --c-panel-strong: rgba(22, 20, 18, 0.8);
+  --c-panel-solid: #1b1917;
+  --c-panel-raise: rgba(243, 236, 224, 0.06);
+  --c-accent: #f0b35b;
+  --c-accent-hi: #f8cc80;
+  --c-accent-deep: #c9812f;
+  --c-accent-soft: rgba(240, 179, 91, 0.16);
+  --c-accent-line: rgba(240, 179, 91, 0.55);
+  --c-ink: #1d1712;
+  --c-good: #b9e07a;
+  --c-danger: #ff5a5f;
+  --c-headshot: #ffd166;
+  --c-xp: #f6d58e;
+  --c-shadow: #3b4150;
+
+  /* team colors (palette.teamColors, colorblind-aware; overwritten at runtime) */
+  --team0: #ff8a3d;
+  --team0-light: #ffc08e;
+  --team1: #20d0c2;
+  --team1-light: #98efe6;
+  --team1-secondary: #9b5cf6;
+  --team2: #ff5a5f;
+  --team2-light: #ffb0b0;
+
+  /* type */
+  --f-latin: 'Space Grotesk', 'IBM Plex Sans Arabic', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --f-arabic: 'IBM Plex Sans Arabic', 'Space Grotesk', system-ui, sans-serif;
+  --f-ui: var(--f-latin);
+  --f-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  --track-caps: 0.14em;
+  --track-label: 0.06em;
+
+  /* spacing (rem-based, scales with the viewport) */
+  --sp-1: 0.25rem;
+  --sp-2: 0.5rem;
+  --sp-3: 0.75rem;
+  --sp-4: 1rem;
+  --sp-5: 1.5rem;
+  --sp-6: 2rem;
+  --sp-7: 3rem;
+
+  /* radii & lines */
+  --r-xs: 6px;
+  --r-sm: 8px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-pill: 999px;
+  --hair: 1px;
+
+  /* motion */
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-in: cubic-bezier(0.5, 0, 0.8, 0.3);
+  --t-fast: 160ms;
+  --t-med: 280ms;
+  --t-slow: 380ms;
+  --dir: 1; /* 1 in LTR, -1 in RTL — used for directional motion */
+
+  /* surfaces */
+  --blur: blur(16px) saturate(1.15);
+  --shadow-panel: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 24px 60px -28px rgba(0, 0, 0, 0.65);
+  --glow-accent: 0 0 0 1px rgba(240, 179, 91, 0.5), 0 0 24px -4px rgba(240, 179, 91, 0.45);
+
+  /* safe areas */
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+  --gutter: clamp(14px, 3.2vw, 56px);
+
+  --hud-scale: 1;
+
+  color-scheme: dark;
+}
+
+html {
+  /* 16px at 1280×720; proportional up to 4K, never below 12px on phones. */
+  font-size: clamp(12px, min(1.25vw, 2.22vh), 40px);
+}
+
+html[dir='rtl'] {
+  --dir: -1;
+}
+
+html[lang='ar'] {
+  --f-ui: var(--f-arabic);
+  --track-caps: 0;
+  --track-label: 0;
+}
+
+/* Low quality / weak devices: no backdrop blur (expensive on mobile GPUs). */
+body.q-low {
+  --blur: none;
+  --c-panel: rgba(24, 22, 20, 0.84);
+}
+
+@media (max-height: 540px) {
+  :root {
+    --gutter: clamp(12px, 2.6vw, 28px);
+  }
+}

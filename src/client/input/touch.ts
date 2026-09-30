@@ -56,7 +56,8 @@ export const DEFAULT_TOUCH_LAYOUT: Readonly<Record<string, { x: number; y: numbe
   swap: { x: 0.9, y: 0.21, s: 1 },
   throw: { x: 0.79, y: 0.4, s: 1 },
   interact: { x: 0.675, y: 0.47, s: 1 },
-  pause: { x: 0.04, y: 0.1, s: 1 },
+  // Below the vitals (touch HUD puts health top-left), above the thumb's joystick zone.
+  pause: { x: 0.035, y: 0.31, s: 1 },
   stick: { x: 0.17, y: 0.68, s: 1 },
 };
 

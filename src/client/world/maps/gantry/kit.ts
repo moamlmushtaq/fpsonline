@@ -96,9 +96,14 @@ export class DecorKit {
     PIPE_DETAIL = this.low ? 0.6 : 1;
   }
 
-  /** Radial segment count scaled by quality. */
-  seg(n: number): number {
+  /** Segment count for THREE geometries built directly (not through the shape helpers). */
+  segRaw(n: number): number {
     return Math.max(6, Math.round(n * (this.low ? 0.55 : 1)));
+  }
+
+  /** Radial segment count for hero shapes (the shape helpers apply the Low factor 0.6 on top → ≈ 0.55 overall). */
+  seg(n: number): number {
+    return Math.max(10, Math.round(n * (this.low ? 0.92 : 1)));
   }
 
   /**
@@ -180,12 +185,15 @@ export class DecorKit {
       this.owned.push(mm);
       return mm;
     };
-    const std = (rough: number, metal: number, extra: THREE.MeshStandardMaterialParameters = {}): THREE.Material =>
-      own(
-        this.low
-          ? new THREE.MeshLambertMaterial({ vertexColors: true, side: extra.side, map: extra.map ?? null, transparent: extra.transparent, opacity: extra.opacity ?? 1 })
-          : new THREE.MeshStandardMaterial({ vertexColors: true, roughness: rough, metalness: metal, ...extra }),
-      );
+    const std = (rough: number, metal: number, extra: THREE.MeshStandardMaterialParameters = {}): THREE.Material => {
+      if (!this.low) return own(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: rough, metalness: metal, ...extra }));
+      // Lambert on Low: pass only the parameters that are actually set (three warns on undefined).
+      const p: THREE.MeshLambertMaterialParameters = { vertexColors: true, map: extra.map ?? null };
+      if (extra.side !== undefined) p.side = extra.side;
+      if (extra.transparent !== undefined) p.transparent = extra.transparent;
+      if (extra.opacity !== undefined) p.opacity = extra.opacity;
+      return own(new THREE.MeshLambertMaterial(p));
+    };
     switch (kind) {
       case 'gloss':
         return std(0.38, 0.35);
@@ -310,7 +318,7 @@ export function cylAB(ax: number, ay: number, az: number, bx: number, by: number
   _a.set(ax, ay, az);
   _b.set(bx, by, bz);
   const len = _a.distanceTo(_b);
-  const g = new THREE.CylinderGeometry(r1, r0, len, seg, 1, open);
+  const g = new THREE.CylinderGeometry(r1, r0, len, lod(seg, 5), 1, open);
   _q.setFromUnitVectors(_up, _b.clone().sub(_a).normalize());
   _m4.compose(_a.clone().add(_b).multiplyScalar(0.5), _q, _s);
   g.applyMatrix4(_m4);
@@ -319,7 +327,7 @@ export function cylAB(ax: number, ay: number, az: number, bx: number, by: number
 
 /** Vertical cylinder standing on (x, y0, z). */
 export function cyl(x: number, y0: number, z: number, r: number, h: number, seg = 12, rTop = r): THREE.BufferGeometry {
-  const g = new THREE.CylinderGeometry(rTop, r, h, seg);
+  const g = new THREE.CylinderGeometry(rTop, r, h, lod(seg, 6));
   g.translate(x, y0 + h / 2, z);
   return g;
 }
@@ -337,7 +345,7 @@ export function beam(ax: number, ay: number, az: number, bx: number, by: number,
 }
 
 export function sphere(x: number, y: number, z: number, r: number, ws = 16, hs = 10, sy = 1): THREE.BufferGeometry {
-  const g = new THREE.SphereGeometry(r, ws, hs);
+  const g = new THREE.SphereGeometry(r, lod(ws, 5), lod(hs, 3));
   if (sy !== 1) g.scale(1, sy, 1);
   g.translate(x, y, z);
   return g;
@@ -347,14 +355,19 @@ export function sphere(x: number, y: number, z: number, r: number, ws = 16, hs =
 export function lathe(profile: [number, number][], seg: number, x = 0, y = 0, z = 0): THREE.BufferGeometry {
   const g = new THREE.LatheGeometry(
     profile.map(([r, yy]) => new THREE.Vector2(r, yy)),
-    seg,
+    lod(seg, 6),
   );
   g.translate(x, y, z);
   return g;
 }
 
-/** Tessellation factor for pipes (set by DecorKit from the quality preset). */
+/** Tessellation factor for pipes and round props (set by DecorKit from the quality preset). */
 let PIPE_DETAIL = 1;
+
+/** Segment count scaled by the quality tessellation factor (never below `min`). */
+function lod(seg: number, min: number): number {
+  return PIPE_DETAIL >= 1 ? seg : Math.max(min, Math.round(seg * PIPE_DETAIL));
+}
 
 /** Pipe along a polyline with rounded bends. */
 export function pipe(points: [number, number, number][], r: number, seg = 8, bend = 0.6): THREE.BufferGeometry {
@@ -439,6 +452,87 @@ export function floorQuad(cx: number, y: number, cz: number, w: number, d: numbe
   g.rotateX(-Math.PI / 2);
   if (rotY) g.rotateY(rotY);
   g.translate(cx, y, cz);
+  return g;
+}
+
+/** A baked point of light for litShade(): position, radius (m), strength, warm tint (0 = neutral, 1 = sodium). */
+export interface BakedLight {
+  x: number;
+  y: number;
+  z: number;
+  r: number;
+  k: number;
+  warm?: number;
+}
+
+/**
+ * Vertex shading that bakes light pools into the vertex colors (fake GI):
+ * `ambient` everywhere (interiors < 1 read darker than the sunlit world), plus
+ * a smooth falloff around each light that brightens past 1 and warms the hue.
+ * Returns a ShadeFn plus a per-vertex warm factor consumer (see litColor).
+ */
+export function litShade(ambient: number, lights: readonly BakedLight[]): ShadeFn {
+  return (x, y, z) => {
+    let s = ambient;
+    for (const l of lights) {
+      const d2 = ((x - l.x) ** 2 + (y - l.y) ** 2 + (z - l.z) ** 2) / (l.r * l.r);
+      if (d2 < 1) {
+        const f = 1 - d2;
+        s += l.k * f * f;
+      }
+    }
+    return s;
+  };
+}
+
+/**
+ * A tessellated floor slab (top face only) at height y whose vertex colors
+ * carry baked light pools; `cell` ≈ tessellation size in meters.
+ */
+export function litFloor(kit: DecorKit, x0: number, z0: number, x1: number, z1: number, y: number, color: string, ambient: number, lights: readonly BakedLight[], cell = 1.5, kind: Kind = 'concrete'): void {
+  const nx = Math.max(1, Math.round(Math.abs(x1 - x0) / cell));
+  const nz = Math.max(1, Math.round(Math.abs(z1 - z0) / cell));
+  const g = new THREE.PlaneGeometry(Math.abs(x1 - x0), Math.abs(z1 - z0), nx, nz);
+  g.rotateX(-Math.PI / 2);
+  g.translate((x0 + x1) / 2, y, (z0 + z1) / 2);
+  kit.add(kind, g, color, { shade: litShade(ambient, lights) });
+}
+
+/**
+ * A tessellated wall liner (one face) with baked light pools: the plane sits at
+ * `plane` on the axis of its normal ('x+' faces +X …), spans a0..a1 along the
+ * other horizontal axis and y0..y1 vertically.
+ */
+export function litWall(kit: DecorKit, n: 'x+' | 'x-' | 'z+' | 'z-', plane: number, a0: number, a1: number, y0: number, y1: number, color: string, ambient: number, lights: readonly BakedLight[], cell = 1.5, kind: Kind = 'concrete'): void {
+  const w = Math.abs(a1 - a0);
+  const h = Math.abs(y1 - y0);
+  const g = new THREE.PlaneGeometry(w, h, Math.max(1, Math.round(w / cell)), Math.max(1, Math.round(h / cell)));
+  const ry = n === 'x+' ? Math.PI / 2 : n === 'x-' ? -Math.PI / 2 : n === 'z-' ? Math.PI : 0;
+  g.rotateY(ry);
+  const c = (a0 + a1) / 2;
+  if (n[0] === 'x') g.translate(plane, (y0 + y1) / 2, c);
+  else g.translate(c, (y0 + y1) / 2, plane);
+  // Darker toward the floor (contact AO) on top of the baked lights.
+  const lit = litShade(ambient, lights);
+  kit.add(kind, g, color, { shade: (x, y, z, nx, ny, nz) => lit(x, y, z, nx, ny, nz) * (0.78 + 0.22 * Math.min(1, (y - y0) / 1.2)) });
+}
+
+/** Flat painted floor chevron (arrow head) pointing along rotY (0 = −Z), `w` wide. */
+export function chevron(x: number, y: number, z: number, w: number, rotY: number): THREE.BufferGeometry {
+  const sh = new THREE.Shape();
+  const h = w * 0.55;
+  const t = w * 0.2;
+  sh.moveTo(0, h / 2);
+  sh.lineTo(w / 2, -h / 2);
+  sh.lineTo(w / 2 - t, -h / 2);
+  sh.lineTo(0, h / 2 - t * 1.3);
+  sh.lineTo(-w / 2 + t, -h / 2);
+  sh.lineTo(-w / 2, -h / 2);
+  sh.closePath();
+  const g = new THREE.ShapeGeometry(sh);
+  g.rotateX(-Math.PI / 2); // shape +y → world −z
+  g.rotateY(rotY);
+  g.translate(x, y, z);
   return g;
 }
 

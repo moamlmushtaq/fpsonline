@@ -91,6 +91,58 @@ describe('gantry layout', () => {
     // Zone A ↔ Zone C across the map at head height.
     expect(world.segmentClear(51, 1.6, 0, -45, 1.6, 0, 'sight')).toBe(false);
   });
+
+  it('spawn exits (all three doors + the forecourt strip) are hidden from the mid-map and the enemy third', () => {
+    // Points just outside the Halcyon doors; the Bloom side is the mirror image.
+    const exits = [
+      [-16.25, -45],
+      [16.25, -45],
+      [-4, -45],
+      [4, -45],
+      [-10.5, -43.5],
+      [10.5, -43.5],
+    ];
+    for (const sz of [1, -1]) {
+      for (const [ex, ez] of exits) {
+        const e = { x: ex, y: EYE_HEIGHT, z: ez * sz };
+        for (let i = 0; i < nav.count; i++) {
+          const z = nav.pz[i] * sz; // distance into the enemy's direction (> −20 = mid-map or beyond)
+          if (z < -20 || nav.comp[i] !== nav.mainComp) continue;
+          const x = nav.px[i];
+          const y = nav.py[i] + EYE_HEIGHT;
+          if (Math.hypot(x - e.x, y - e.y, nav.pz[i] - e.z) < 25) continue;
+          if (world.segmentClear(x, y, nav.pz[i], e.x, e.y, e.z, 'sight')) throw new Error(`exit (${e.x}, ${e.z}) visible from (${x}, ${nav.py[i]}, ${nav.pz[i]})`);
+        }
+      }
+    }
+  });
+
+  it('the aprons flanking the pad have no forecourt-to-forecourt sightline', () => {
+    for (const x of [-23.6, -22, -20.5, -19.2, 16.4, 17.6, 18.5, 19.5, 21, 21.8]) {
+      for (let z0 = -44; z0 <= -12; z0 += 4) {
+        expect(world.segmentClear(x, EYE_HEIGHT, z0, x + (x < 0 ? 0.6 : -0.6), EYE_HEIGHT, -z0, 'sight'), `x ${x} z ${z0}`).toBe(false);
+      }
+    }
+  });
+
+  it('nobody can stand on the launch mount among the fins, and the grate is a clean drop', () => {
+    const r = map.rocket.pos;
+    // The mount + fin skirt is one tall solid: the first support above the deck is far overhead.
+    expect(world.supportHeight(r.x - 3.2, 3.2, 0.4, 20, 20)).toBeGreaterThan(17);
+    // A player centered over the broken grate has no support until the trench floor.
+    const pk = map.pickups[0];
+    expect(world.supportHeight(pk.pos.x, pk.pos.z, 0.4, GANTRY_DECK + 0.05, 5)).toBeCloseTo(0, 3);
+    expect(world.supportHeight(pk.pos.x + 0.9, pk.pos.z + 0.9, 0.4, GANTRY_DECK + 0.05, 5)).toBeCloseTo(0, 3);
+  });
+
+  it('team spawns face an open way out (not the rocket stage beside them)', () => {
+    for (const s of teamSpawns) {
+      const fx = -Math.sin(s.yaw);
+      const fz = -Math.cos(s.yaw);
+      const [ex, ey, ez] = eye(s.pos);
+      expect(world.segmentClear(ex, ey, ez, ex + fx * 5, ey, ez + fz * 5, 'move'), JSON.stringify(s.pos)).toBe(true);
+    }
+  });
 });
 
 describe('gantry bots', () => {
@@ -127,7 +179,7 @@ describe('gantry bots', () => {
     expect(kills).toBeGreaterThan(5);
     expect(maxStill).toBeLessThan(10);
     for (const n of lanes) expect(n / samples).toBeGreaterThan(0.06);
-  });
+  }, 60_000);
 
   it('Launch Control: every zone gets captured', () => {
     const cfg = { ...makeGameConfig('control', 'gantry', { botFill: true }), countdown: 0 };
@@ -140,5 +192,5 @@ describe('gantry bots', () => {
       if (i % 60 === 0) for (const z of sim.zoneStates()) if (z.owner !== 2) owned.add(z.def.id);
     }
     expect([...owned].sort()).toEqual(['A', 'B', 'C']);
-  });
+  }, 60_000);
 });

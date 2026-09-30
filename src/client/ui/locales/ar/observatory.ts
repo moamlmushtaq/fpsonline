@@ -1,0 +1,21 @@
+// Observatory map strings (Arabic): zones, landmarks and named areas.
+export default {
+  'observatory.zone.A': 'مصفوفة الإشارات',
+  'observatory.zone.B': 'قاعة التلسكوب',
+  'observatory.zone.C': 'برج الكابلات',
+  'observatory.landmark.dome': 'قبة التلسكوب',
+  'observatory.landmark.array': 'مصفوفة الإشارات',
+  'observatory.landmark.pylon': 'برج الكابلات',
+  'observatory.landmark.rocket': 'هضبة الإطلاق',
+  'observatory.landmark.sun': 'آخر الضوء',
+  'observatory.area.terminal': 'المحطة العليا للتلفريك',
+  'observatory.area.quarters': 'مساكن الشتاء',
+  'observatory.area.gallery': 'الشرفة الدائرية',
+  'observatory.area.podium': 'منصة التلسكوب',
+  'observatory.area.ridge': 'ممر الحافة',
+  'observatory.area.yard': 'الساحة أسفل الحافة',
+  'observatory.area.spectrograph': 'كوخ المطياف',
+  'observatory.area.dorm': 'مهجع الراصدين',
+  'observatory.area.deck': 'منصة المحطة',
+  'observatory.area.arcade': 'الرواق الزجاجي',
+} satisfies Record<string, string>;

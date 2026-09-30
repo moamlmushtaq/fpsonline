@@ -13,10 +13,14 @@
 //   signs.ts     one canvas atlas for every sign / poster / screen
 //   water.ts     ankle-deep flood water shader
 //
-// Budget (high): ~20 draw calls of merged static decor + curtains, water,
-// signs, light shafts (2 each), rocket (~10), birds, beacon. Low: no shafts,
-// ~40% props/vines, Lambert materials, smaller textures, rocket pulled inside
-// the 260 m far plane.
+// Budget (high): 16 merged static batches + curtains, water, signs (2),
+// light shafts (2 each), rocket (~10), birds, beacon — ~50 decor meshes,
+// ~200k decor triangles; the whole frame stays ≈ 90 draw calls / 325k tris.
+// Medium/high add one unshadowed warm point light in the atrium (the Sunrise
+// sculpture "glows"). Low: no shafts, no point light, ~40% props / vines /
+// tufts, Lambert materials, half-res atlas, rocket pulled inside the 260 m far
+// plane (≈ 47 draw calls / 90k tris).
+// Dev only: preview.html?…&t=12&launch=6 previews the Launch Control finale.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as THREE from 'three';
@@ -25,7 +29,7 @@ import { ENV } from '../../engine/palette';
 import type { BackdropOptions } from '../map-builder';
 import { buildBackdrop } from './pastel/backdrop';
 import { buildGround } from './pastel/ground';
-import { bungalow, chapel, cornerHouse, dinerAndGas, garageRow, poolHouse, screenWall, twoStorey } from './pastel/houses';
+import { bungalow, chapel, cornerHouse, dinerAndGas, garageRow, poolHouse, screenWall, spawnWall, twoStorey } from './pastel/houses';
 import { DecorKit, mix, rgb } from './pastel/kit';
 import { GAL, buildMall } from './pastel/mall';
 import { buildProps } from './pastel/props';
@@ -71,6 +75,7 @@ const build: DecorBuilder = (ctx: DecorContext): MapDecor => {
     screenWall(kit, signs, -54, -36, z0, z1, 2.8, true);
     screenWall(kit, signs, 36, 54, z0, z1, 2.8, true);
     screenWall(kit, signs, -26, 26, z0, z1, 3.2, false);
+    spawnWall(kit, signs, sz, rng);
     screenWall(kit, signs, -29.5, -22, Math.min(6 * sz, 6.4 * sz), Math.max(6 * sz, 6.4 * sz), 2.6, true);
   }
   chapel(kit, signs, rng);
@@ -123,13 +128,23 @@ const build: DecorBuilder = (ctx: DecorContext): MapDecor => {
     [
       { x0: -47.5, z0: 7.5, x1: -30, z1: 7.5, y0: 0.2, y1: 4.4 },
       { x0: -47.5, z0: -7.5, x1: -30, z1: -7.5, y0: 0.2, y1: 4.4 },
-      { x0: -23.9, z0: 27, x1: -23.9, z1: 40, y0: 0.2, y1: 3.6 },
-      { x0: 23.9, z0: 27, x1: 23.9, z1: 40, y0: 0.2, y1: 3.6 },
-      { x0: -23.9, z0: -40, x1: -23.9, z1: -27, y0: 0.2, y1: 3.6 },
-      { x0: 23.9, z0: -40, x1: 23.9, z1: -27, y0: 0.2, y1: 3.6 },
+      { x0: -23.9, z0: 27, x1: -23.9, z1: 40, y0: 0.2, y1: 4.4 },
+      { x0: 23.9, z0: 27, x1: 23.9, z1: 40, y0: 0.2, y1: 4.4 },
+      { x0: -23.9, z0: -40, x1: -23.9, z1: -27, y0: 0.2, y1: 4.4 },
+      { x0: 23.9, z0: -40, x1: 23.9, z1: -27, y0: 0.2, y1: 4.4 },
     ],
     rng,
   );
+
+  // Warm bounce in the atrium: the Sunrise sculpture's glowing buds light the
+  // flood water, escalators and bridge soffit (one unshadowed point light,
+  // medium/high only — Low keeps the look through emissives + bloom).
+  if (!kit.low) {
+    const bounce = new THREE.PointLight('#ffc98a', 26, 21, 2);
+    bounce.position.set(0, 2.3, 0);
+    bounce.name = 'pastel.atriumBounce';
+    kit.add(bounce);
+  }
 
   const back = buildBackdrop(kit, def, rng);
   const staticCalls = kit.build();
@@ -167,9 +182,11 @@ const build: DecorBuilder = (ctx: DecorContext): MapDecor => {
     (window as unknown as { __pastelDecor?: unknown }).__pastelDecor = { staticCalls, meshes, shafts: mall.shafts.length, tris, total: Object.values(tris).reduce((a, b) => a + b, 0) };
   }
 
+  // Outro frames the launch over the town: aim ~52 m (× scale) up the rocket so
+  // the whole 7 s climb and pitch-over stays in frame.
   const rocketTarget = (): THREE.Vector3 => {
     const p = back.rocket.root.position;
-    return new THREE.Vector3(p.x, p.y + 30 * back.rocket.root.scale.x, p.z);
+    return new THREE.Vector3(p.x, p.y + 52 * back.rocket.root.scale.x, p.z);
   };
 
   return {
@@ -179,10 +196,13 @@ const build: DecorBuilder = (ctx: DecorContext): MapDecor => {
       back.update(dt, s);
     },
     showcase(kind): ShowcasePose | undefined {
-      if (kind === 'keyart') return { pos: { x: 12, y: 1.7, z: -37 }, target: { x: -3, y: 8, z: 0 }, fov: 52 };
-      if (kind === 'intro') return { pos: { x: 26, y: 24, z: 58 }, target: { x: -2, y: 5, z: 2 }, fov: 55 };
+      // Key art: the STARLIGHT pylon and the sun-struck south facade (sunburst
+      // mural, glass vault, rooftop letters) with long golden shadows.
+      if (kind === 'keyart') return { pos: { x: 16, y: 1.8, z: 33 }, target: { x: -16, y: 8.5, z: 0 }, fov: 60 };
+      // Intro: the whole suburb from the south-east, rocket on the horizon.
+      if (kind === 'intro') return { pos: { x: 50, y: 30, z: 56 }, target: { x: -8, y: 2, z: -8 }, fov: 58 };
       const t = rocketTarget();
-      return { pos: { x: -14, y: 11, z: 26 }, target: { x: t.x, y: t.y, z: t.z }, fov: 40 };
+      return { pos: { x: -6, y: 14, z: 30 }, target: { x: t.x, y: t.y, z: t.z }, fov: 56 };
     },
     dispose(): void {
       back.dispose();

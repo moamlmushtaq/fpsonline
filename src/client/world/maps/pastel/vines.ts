@@ -20,6 +20,7 @@ const STEM = rgb('#6f7a55');
 const STEM_DARK = rgb('#55603f');
 const LEAF = rgb(ENV.olive);
 const LEAF_LIGHT = rgb(ENV.sage);
+const SUNLIT = rgb(ENV.pastelYellow);
 const GLOWS = [ENV.glowChartreuse, ENV.glowGold, ENV.glowSoftPink] as const;
 
 export function glowColor(rng: () => number, k = 1): RGB {
@@ -251,14 +252,22 @@ export function buildCurtains(kit: DecorKit, lib: MaterialLibrary, specs: Curtai
       kit.box('wood', x - n.x * 0.7 - 0.05, c.y1 + 0.25, z - n.z * 0.7 - 0.05, x + n.x * 0.7 + 0.05, c.y1 + 0.4, z + n.z * 0.7 + 0.05, wood, 0.02, { ao: 0 });
     }
     kit.box('wood', Math.min(c.x0, c.x1) - 0.1, c.y1 + 0.1, Math.min(c.z0, c.z1) - 0.1, Math.max(c.x0, c.x1) + 0.1, c.y1 + 0.25, Math.max(c.z0, c.z1) + 0.1, wood, 0.02, { ao: 0 });
-    // Leafy crown along the beam + a few 3D strands in front.
-    const crowns = Math.round(len / 1.6);
+    // Sun-caught leafy mounds tumbling over the beam (lit sage tops, glowing
+    // buds underneath) + a few 3D strands in front.
+    const crowns = Math.round(len / 1.1);
     for (let i = 0; i < crowns; i++) {
-      const t = (i + 0.5) / crowns;
+      const t = (i + 0.2 + rng() * 0.6) / crowns;
       const x = c.x0 + (c.x1 - c.x0) * t;
       const z = c.z0 + (c.z1 - c.z0) * t;
-      kit.ball('foliage', x, c.y1 + 0.35, z, 0.9, 0.35, 0.7, mix(LEAF, LEAF_LIGHT, rng()), 1, { drift: 0.2 });
-      for (const side of [-1, 1]) if (rng() < 0.6) hangingVine(kit, new THREE.Vector3(x + n.x * 0.16 * side, c.y1 + 0.2, z + n.z * 0.16 * side), (c.y1 - c.y0) * (0.4 + rng() * 0.5), rng, 1.2);
+      // Irregular, overlapping mounds (never a tidy row of balls).
+      if (rng() < 0.25) continue;
+      const r = 0.3 + rng() * rng() * 0.55;
+      const col = mix(mix(LEAF_LIGHT, SUNLIT, 0.25 + rng() * 0.3), LEAF, rng() * 0.25);
+      kit.ball('foliage', x + n.x * (rng() - 0.5) * 0.5, c.y1 + 0.3 + rng() * 0.15, z + n.z * (rng() - 0.5) * 0.5, r * 1.15, r * 0.85, r, col, 1, {
+        drift: 0.25,
+        shade: (_x, _y, _z, _nx, ny) => (ny > 0.2 ? 1.12 : ny < -0.3 ? 0.9 : 1),
+      });
+      for (const side of [-1, 1]) if (rng() < 0.6) hangingVine(kit, new THREE.Vector3(x + n.x * 0.16 * side, c.y1 + 0.2, z + n.z * 0.16 * side), (c.y1 - c.y0) * (0.35 + rng() * 0.5), rng, 1.2);
     }
   }
   const g = new THREE.BufferGeometry();

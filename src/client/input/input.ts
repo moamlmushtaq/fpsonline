@@ -332,6 +332,23 @@ export class Input implements InputSystem {
     return this.km.pointerLocked;
   }
 
+  /**
+   * Debug / e2e input injection (?debug=1 → __HF.simulateInput). `actions`
+   * are held (true) or released (false) until changed; `look` is a one-off
+   * delta in radians (+dx = turn right, +dy = look up). Only while gameplay
+   * input is active, like real input.
+   */
+  simulate(actions: Partial<Record<Action, boolean>>, look?: { dx: number; dy: number }): void {
+    for (const [a, down] of Object.entries(actions) as [Action, boolean | undefined][]) {
+      if (!this.states[a] || down === undefined) continue;
+      this.setSource(a, KBM, !!down);
+    }
+    if (look && this.active) {
+      this.lookRadX += Number(look.dx) || 0;
+      this.lookRadY += Number(look.dy) || 0;
+    }
+  }
+
   setAimState(adsAmount: number, zoom: number): void {
     this.adsAmount = Math.max(0, Math.min(1, Number.isFinite(adsAmount) ? adsAmount : 0));
     this.zoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;

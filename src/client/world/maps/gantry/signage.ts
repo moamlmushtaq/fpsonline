@@ -42,6 +42,8 @@ export const R = {
   stencilHangar: { x: 512, y: 896, w: 512, h: 64 },
   stencilStation: { x: 0, y: 960, w: 512, h: 64 },
   plaque: { x: 512, y: 960, w: 512, h: 64 },
+  stencilDeluge: { x: 1024, y: 896, w: 512, h: 64 },
+  stencilService: { x: 1024, y: 960, w: 512, h: 64 },
 } satisfies Record<string, Region>;
 
 export type RegionName = keyof typeof R;
@@ -515,10 +517,15 @@ function drawScreens(c: C2D, r: Region): void {
   for (let i = 0; i < 4; i++) {
     const x = r.x + 8 + i * 126;
     const y = r.y + 10;
-    c.fillStyle = '#2a1d10';
+    // Phosphor glow: a warm amber field brightest at the tube's centre.
+    const glow = c.createRadialGradient(x + 58, y + 54, 8, x + 58, y + 54, 78);
+    glow.addColorStop(0, '#8a5d26');
+    glow.addColorStop(0.7, '#5a3a18');
+    glow.addColorStop(1, '#2e1f10');
+    c.fillStyle = glow;
     c.fillRect(x, y, 116, 108);
-    c.strokeStyle = 'rgba(255,211,140,0.85)';
-    c.lineWidth = 2;
+    c.strokeStyle = 'rgba(255,226,170,0.95)';
+    c.lineWidth = 3;
     c.beginPath();
     if (i === 0) {
       for (let k = 0; k <= 40; k++) {
@@ -589,6 +596,8 @@ export function paintAtlas(c: C2D, w: number, h: number): void {
   stencil(c, R.stencilHangar, 'HANGAR 1 · AUTHORIZED ONLY', '#efe6d6', INK, 28, 10);
   stencil(c, R.stencilStation, 'NO ENTRY · DISH IN MOTION', '#c9dcc1', INK, 28, 11);
   stencil(c, R.plaque, 'FROM HERE WE REACHED THE SKY', '#8e877b', '#efe6d6', 24, 12);
+  stencil(c, R.stencilDeluge, 'DELUGE WATER · SOUND SUPPRESSION', '#9fb4be', INK, 24, 13);
+  stencil(c, R.stencilService, 'L1 SERVICE · AUTHORIZED ONLY', '#cfc4b0', INK, 26, 14);
   drawFacadeHalcyon(c, R.facadeHalcyon);
   drawMural(c, R.mural);
   drawFacadeStation(c, R.facadeStation);

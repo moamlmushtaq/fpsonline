@@ -70,7 +70,7 @@ export function buildBackdrop(kit: DecorKit, rnd: () => number, root: THREE.Grou
   ] as [number, number, number, number, string][]) {
     kit.add('paint', cyl(x, 0, z, r, h, kit.seg(28)), col, { shade: (_x, y) => 0.7 + 0.3 * Math.min(1, y / h) });
     kit.add('paint', cyl(x, h, z, r, 1.2, kit.seg(28), r * 0.86), col);
-    const b = new THREE.CylinderGeometry(r + 0.05, r + 0.05, 0.8, kit.seg(28), 1, true);
+    const b = new THREE.CylinderGeometry(r + 0.05, r + 0.05, 0.8, kit.segRaw(28), 1, true);
     b.translate(x, h * 0.7, z);
     kit.add('paint', b, ENV.terracottaFaded, { flat: true });
     kit.add('metal', box(x + r - 0.1, 0, z - 0.4, x + r + 0.4, h + 1, z + 0.4), '#9a9b98');

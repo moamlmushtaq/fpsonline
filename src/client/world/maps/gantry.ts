@@ -79,7 +79,8 @@ const buildGantry: DecorBuilder = (ctx: DecorContext): MapDecor => {
   let wasLaunching = false;
 
   // ── Blinking aviation beacons (tower mast, hammerhead tips, crane, boat) ──
-  const beaconMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(ENV.glowGold) });
+  const beaconBase = new THREE.Color(ENV.glowGold);
+  const beaconMat = new THREE.MeshBasicMaterial({ color: beaconBase.clone() });
   const beaconGeo = [
     sphere(-9.5, 76.3, 0, 0.35, 8, 6),
     sphere(-21.8, 66.6, 0, 0.3, 8, 6),
@@ -100,8 +101,9 @@ const buildGantry: DecorBuilder = (ctx: DecorContext): MapDecor => {
     const anchors = [
       ...pad.shaftAnchors,
       ...farm.shafts,
-      { pos: new THREE.Vector3(-6, 21.5, -53), dir: new THREE.Vector3(-0.55, -0.82, 0.16).normalize(), length: 22, radius: 3.2, color: '#ffd9ad', intensity: 0.7 },
-      { pos: new THREE.Vector3(8, 21.5, -56), dir: new THREE.Vector3(-0.55, -0.82, 0.16).normalize(), length: 22, radius: 2.6, color: '#ffd9ad', intensity: 0.55 },
+      // Sunset streaming through the hangar's east clerestory, across the spawn hall.
+      { pos: new THREE.Vector3(18.2, 15.6, -59.0), dir: new THREE.Vector3(-0.95, -0.19, 0.24).normalize(), length: 36, radius: 1.5, color: '#ffc995', intensity: 0.75 },
+      { pos: new THREE.Vector3(18.2, 15.6, -55.4), dir: new THREE.Vector3(-0.95, -0.19, 0.24).normalize(), length: 36, radius: 1.5, color: '#ffc995', intensity: 0.6 },
     ];
     for (const a of anchors) {
       const s = createLightShaft({ pos: a.pos, dir: a.dir, length: a.length, radius: a.radius, color: a.color, intensity: a.intensity });
@@ -166,7 +168,7 @@ const buildGantry: DecorBuilder = (ctx: DecorContext): MapDecor => {
     gulls.update(t);
     // Beacons: slow double-blink; the countdown board hums and flickers.
     const ph = t % 2.2;
-    beaconMat.color.set(ENV.glowGold).multiplyScalar(ph < 0.14 || (ph > 0.3 && ph < 0.42) ? 3.4 : 0.25);
+    beaconMat.color.copy(beaconBase).multiplyScalar(ph < 0.14 || (ph > 0.3 && ph < 0.42) ? 3.4 : 0.25);
     if (signGlow) {
       const f = 0.92 + 0.08 * Math.sin(t * 13.0) * Math.sin(t * 2.7) + (Math.sin(t * 0.9) > 0.985 ? -0.35 : 0);
       signGlow.color.setScalar(f);
@@ -176,9 +178,14 @@ const buildGantry: DecorBuilder = (ctx: DecorContext): MapDecor => {
 
   const showcase = (kind: 'intro' | 'outro' | 'keyart'): ShowcasePose | undefined => {
     const rx = GANTRY_ROCKET.x;
-    if (kind === 'keyart') return { pos: { x: -21.5, y: 2.1, z: -41 }, target: { x: rx - 2, y: 20, z: 0 }, fov: 52 };
-    if (kind === 'intro') return { pos: { x: -74, y: 30, z: 58 }, target: { x: 8, y: 10, z: -8 }, fov: 52 };
-    return { pos: { x: -17, y: 6.5, z: 40 }, target: { x: rx, y: GANTRY_DECK + 26, z: 0 }, fov: 58 };
+    if (kind === 'keyart') return { pos: { x: -17, y: 2, z: -36 }, target: { x: rx - 1, y: 21, z: 0 }, fov: 52 };
+    // Intro: the whole site from the south-west — Halcyon's hangar below, the
+    // tank farm's lamp islands, the pad and tower, the docks and the sea beyond.
+    if (kind === 'intro') return { pos: { x: -70, y: 34, z: -64 }, target: { x: 10, y: 4, z: 10 }, fov: 52 };
+    // Outro (launch finale): low in Halcyon's yard, looking up past the hangar
+    // corner — wide enough that the climb and its smoke column stay in frame
+    // for the whole 7 s outro, the sunset raking the rocket from the right.
+    return { pos: { x: -40, y: 5, z: -52 }, target: { x: rx, y: 46, z: 0 }, fov: 64 };
   };
 
   const dispose = (): void => {

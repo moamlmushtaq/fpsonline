@@ -184,8 +184,11 @@ export function buildDocks(kit: DecorKit, rnd: () => number, root: THREE.Group, 
   kit.add('paint', box(47.05, 0.6, -0.95, 52.95, 1.1, -0.65), '#9fb4be');
   kit.add('paint', box(47.05, 0.6, 0.65, 52.95, 1.1, 0.95), '#9fb4be');
   for (const x of [47.05, 49.4, 51.5]) kit.add('paint', box(x, 0.6, -0.95, x + 1.4, 1.1, 0.95), '#8ea3ad');
-  for (const x of [47.4, 52.6]) for (const z of [-0.8, 0.8]) kit.add('metal', box(x - 0.2, 0, z - 0.15, x + 0.2, 0.6, z + 0.15), STEEL_DARK);
-  kit.add('metal', box(49.6, 1.1, -0.2, 50.4, 1.6, 0.2), STEEL_DARK);
+  // Resting on timber dunnage the full length: reads as the solid 1.1 m cover it is.
+  for (const z of [-0.95, 0.35]) kit.add('wood', box(47.0, 0, z, 53.0, 0.6, z + 0.6), '#8c7660');
+  kit.add('wood', box(47.1, 0, -0.35, 52.9, 0.5, 0.35), '#6e5a4a');
+  for (const x of [47.4, 52.6]) for (const z of [-0.8, 0.8]) kit.add('metal', boxC(x, 1.12, z, 0.3, 0.06, 0.3), STEEL_DARK, { flat: true });
+  kit.add('metal', box(49.6, 1.1, -0.2, 50.4, 1.22, 0.2), STEEL_DARK);
 
   // ── Container door ends + corner castings ─────────────────────────────────
   for (const s of solids) {
@@ -257,19 +260,17 @@ export function buildDocks(kit: DecorKit, rnd: () => number, root: THREE.Group, 
   root.add(sock);
 
   // ── Quay edge, pier, seawall ──────────────────────────────────────────────
-  kit.add('concrete', box(55.55, -0.02, -46, 56.05, 0.04, 46), '#e9dfc7', { flat: true });
-  kit.add('concrete', box(55.98, PY, -46, 56.08, -0.02, 46), '#9d9587', { base: PY });
-  for (let z = -40; z <= 40; z += 10) {
+  kit.add('concrete', box(55.55, -0.02, -60, 56.05, 0.04, 60), '#e9dfc7', { flat: true });
+  kit.add('concrete', box(55.98, PY, -60, 56.08, -0.02, 60), '#9d9587', { base: PY });
+  for (let z = -50; z <= 50; z += 10) {
     for (let y = PY + 0.25; y < 0; y += 0.32) kit.add('metal', box(56.08, y, z - 0.25, 56.14, y + 0.04, z + 0.25), STEEL_DARK, { flat: true });
   }
   // Seawall face under the pier and quay ends (x ≥ 64), dark, wet at the foot.
   kit.add('concrete', box(64, -6, -60, 64.6, PY, 60), '#8e877b', { shade: (_x, y) => (y < -2.6 ? 0.55 : 0.8 + 0.2 * Math.min(1, (y + 2.6) / 1.5)) });
-  kit.add('concrete', box(64, PY, -60, 64.6, 0, -46), '#9d9587');
-  kit.add('concrete', box(64, PY, 46, 64.6, 0, 60), '#9d9587');
   // Piles along the pier's sea edge, bollards, tyre fenders.
-  for (let z = -45; z <= 45; z += 3) {
+  for (let z = -57; z <= 57; z += 3) {
     kit.add('wood', cyl(64.2, -5, z, 0.22, 3.7, 8), '#6e5a4a');
-    if ((z + 45) % 9 === 0) {
+    if ((z + 57) % 9 === 0) {
       kit.add('metal', lathe([[0.02, 0], [0.3, 0], [0.26, 0.45], [0.36, 0.55], [0.36, 0.62], [0.02, 0.62]], 10, 63.85, PY, z), '#4a433d');
       const tyre = new THREE.TorusGeometry(0.42, 0.16, 6, 14);
       tyre.rotateY(Math.PI / 2);
@@ -277,7 +278,7 @@ export function buildDocks(kit: DecorKit, rnd: () => number, root: THREE.Group, 
       kit.add('paint', tyre, '#2d2a28', { flat: true });
     }
   }
-  kit.add('metal', box(63.7, PY, -46, 63.95, PY + 0.2, 46), '#6e5a4a', { flat: true });
+  kit.add('metal', box(63.7, PY, -60, 63.95, PY + 0.2, 60), '#6e5a4a', { flat: true });
   // Pier net crates (x 60..62, z ±[13, 15], h 1.2): nets heaped on crates, floats.
   for (const s of [-1, 1]) {
     kit.add('wood', rbox(60.02, PY, s * 13.02, 61.98, PY + 1.15, s * 14.98, 0.05), '#b39a7f');

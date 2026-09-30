@@ -69,7 +69,7 @@ export function buildGround(kit: DecorKit, rnd: () => number, decor: number): vo
     g.scale(1, 0.7 + rnd() * 0.3, 1);
     g.rotateX(-Math.PI / 2);
     g.translate(x, 0.008, z);
-    kit.add('paint', g, '#6d655d', { flat: true });
+    kit.add('paint', g, '#8b8176', { flat: true });
   }
   for (const [x, z] of [
     [-12, -20],

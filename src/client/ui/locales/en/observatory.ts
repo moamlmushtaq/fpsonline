@@ -1,0 +1,21 @@
+// Observatory map strings (English): zones, landmarks and named areas.
+export default {
+  'observatory.zone.A': 'Signal Array',
+  'observatory.zone.B': 'Telescope Hall',
+  'observatory.zone.C': 'Cable Pylon',
+  'observatory.landmark.dome': 'Telescope Dome',
+  'observatory.landmark.array': 'Signal Array',
+  'observatory.landmark.pylon': 'Cable Pylon',
+  'observatory.landmark.rocket': 'Launch Mesa',
+  'observatory.landmark.sun': 'Last Light',
+  'observatory.area.terminal': 'Upper Tram Terminal',
+  'observatory.area.quarters': 'Winter Quarters',
+  'observatory.area.gallery': 'Gallery Ring',
+  'observatory.area.podium': 'Telescope Podium',
+  'observatory.area.ridge': 'Ridge Path',
+  'observatory.area.yard': 'Under-Ridge Yard',
+  'observatory.area.spectrograph': 'Spectrograph Hut',
+  'observatory.area.dorm': 'Observers’ Dormitory',
+  'observatory.area.deck': 'Station Deck',
+  'observatory.area.arcade': 'Glass Arcade',
+} satisfies Record<string, string>;

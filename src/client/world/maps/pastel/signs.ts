@@ -44,6 +44,11 @@ export const REGION = {
   openNeon: [256, 1248, 256, 128],
   starlightNeon: [512, 1248, 1024, 192],
   breeze: [0, 1664, 384, 384],
+  cosmoSign: [256, 1376, 256, 288],
+  marquee: [512, 1440, 512, 128],
+  // Spawn screen-wall murals (spawn-facing sides).
+  muralH: [384, 1664, 1664, 192],
+  muralB: [384, 1856, 1664, 192],
 } as const satisfies Record<string, readonly [number, number, number, number]>;
 
 export type RegionName = keyof typeof REGION;
@@ -279,6 +284,25 @@ function drawAtlas(ctx: Ctx): void {
     ctx.textAlign = 'left';
     fitText(ctx, 'YOU ARE HERE', x + 92, y + 331, 140, 20, 'bold');
     ctx.textAlign = 'center';
+  }
+
+  muralHalcyon(ctx);
+  muralMoonbeam(ctx);
+  cosmoRoadSign(ctx);
+  // ── Chapel letter-board marquee ──
+  {
+    const [x, y, w, h] = REGION.marquee;
+    ctx.fillStyle = CREAM;
+    rr(ctx, x + 2, y + 2, w - 4, h - 4, 12);
+    ctx.fill();
+    ctx.fillStyle = '#34302c';
+    ctx.fillRect(x + 14, y + 14, w - 28, h - 28);
+    ctx.fillStyle = CREAM;
+    fitText(ctx, 'SUNDAY 10 AM', x + w / 2, y + 36, w - 60, 26, 'bold', 5);
+    fitText(ctx, 'POTLUCK AFTER SERVICE', x + w / 2, y + 64, w - 60, 22, 'bold', 4);
+    ctx.fillStyle = MUSTARD;
+    fitText(ctx, 'ALL WELCOME · BRING A DISH', x + w / 2, y + 92, w - 60, 18, 'bold', 3);
+    weather(ctx, x, y, w, h, 61, 0.18);
   }
 
   // ── MOON BASE HOME KITS posters ──
@@ -587,6 +611,315 @@ function drawAtlas(ctx: Ctx): void {
     star(ctx, x + w - 70, y + 50, 40, 4, 0.2);
     ctx.fill();
   }
+}
+
+/** The toppled 'Mister Cosmo' roadside sign (now standing on its edge in the wreck). */
+function cosmoRoadSign(ctx: Ctx): void {
+  const [x, y, w, h] = REGION.cosmoSign;
+  ctx.save();
+  ctx.fillStyle = ENV.pastelPink;
+  rr(ctx, x + 6, y + 6, w - 12, h - 12, 34);
+  ctx.fill();
+  ctx.strokeStyle = CREAM;
+  ctx.lineWidth = 8;
+  rr(ctx, x + 16, y + 16, w - 32, h - 32, 26);
+  ctx.stroke();
+  // Cone with a ringed planet scoop.
+  const cx = x + w / 2;
+  ctx.fillStyle = MUSTARD;
+  ctx.beginPath();
+  ctx.moveTo(cx - 38, y + h * 0.42);
+  ctx.lineTo(cx, y + h * 0.78);
+  ctx.lineTo(cx + 38, y + h * 0.42);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(154,106,79,0.6)';
+  ctx.lineWidth = 3;
+  for (let i = -2; i <= 2; i++) {
+    ctx.beginPath();
+    ctx.moveTo(cx + i * 15 - 10, y + h * 0.43);
+    ctx.lineTo(cx + i * 6, y + h * 0.7);
+    ctx.stroke();
+  }
+  ctx.fillStyle = CREAM;
+  ctx.beginPath();
+  ctx.arc(cx, y + h * 0.36, 44, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = TERRA;
+  ctx.lineWidth = 7;
+  ctx.beginPath();
+  ctx.ellipse(cx, y + h * 0.36, 70, 16, -0.3, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = INK;
+  ctx.save();
+  ctx.translate(cx, y + h * 0.12);
+  ctx.transform(1, 0, -0.16, 1, 0, 0);
+  fitText(ctx, 'Mister Cosmo', 0, 0, w - 50, 40, 'bold italic');
+  ctx.restore();
+  ctx.fillStyle = TERRA;
+  fitText(ctx, 'SOFT SERVE', cx, y + h * 0.85, w - 60, 28, '900', 4);
+  ctx.fillStyle = INK;
+  fitText(ctx, 'OUT OF THIS WORLD · 15¢', cx, y + h * 0.92, w - 60, 15, 'bold', 1);
+  weather(ctx, x, y, w, h, 29, 0.2);
+  ctx.restore();
+}
+
+/** Rolling hill band across a region (painted mural helper). */
+function hills(ctx: Ctx, x: number, y: number, w: number, h: number, base: number, amp: number, freq: number, phase: number, color: string): void {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(x, y + h);
+  for (let i = 0; i <= 64; i++) {
+    const t = i / 64;
+    ctx.lineTo(x + w * t, y + h * base - Math.sin(t * Math.PI * freq + phase) * h * amp - Math.sin(t * Math.PI * freq * 2.3 + phase * 1.7) * h * amp * 0.35);
+  }
+  ctx.lineTo(x + w, y + h);
+  ctx.closePath();
+  ctx.fill();
+}
+
+/** Little modernist house silhouettes on a ridge (flat / butterfly roofs). */
+function roofline(ctx: Ctx, x: number, y: number, w: number, h: number, n: number, seed: number): void {
+  const cols = [ENV.pastelPink, ENV.pastelMint, ENV.pastelYellow, ENV.pastelBlue, CREAM];
+  for (let i = 0; i < n; i++) {
+    const cx = x + (w * (i + 0.5)) / n + Math.sin(i * 7.1 + seed) * w * 0.012;
+    const hw = w * (0.018 + ((i * 31 + seed) % 7) * 0.002);
+    const hh = h * (0.12 + ((i * 17 + seed) % 5) * 0.012);
+    const gy = y + h * 0.66 - Math.sin((i / n) * Math.PI * 2 + seed) * h * 0.03;
+    ctx.fillStyle = cols[(i + seed) % cols.length];
+    ctx.fillRect(cx - hw, gy - hh, hw * 2, hh);
+    ctx.fillStyle = (i + seed) % 2 ? TERRA_F : CREAM;
+    ctx.beginPath();
+    if ((i + seed) % 3 === 0) {
+      ctx.moveTo(cx - hw * 1.2, gy - hh - h * 0.035);
+      ctx.lineTo(cx, gy - hh);
+      ctx.lineTo(cx + hw * 1.2, gy - hh - h * 0.035);
+      ctx.lineTo(cx + hw * 1.2, gy - hh + 3);
+      ctx.lineTo(cx - hw * 1.2, gy - hh + 3);
+    } else ctx.rect(cx - hw * 1.15, gy - hh - 5, hw * 2.3, 6);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(62,53,48,0.55)';
+    ctx.fillRect(cx - hw * 0.5, gy - hh * 0.62, hw * 0.4, hh * 0.3);
+    ctx.beginPath();
+    ctx.arc(cx + hw * 0.45, gy - hh * 0.5, hh * 0.13, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+/** Halcyon spawn wall: 'HALCYON HEIGHTS — A BRIGHTER TOMORROW' community mural. */
+function muralHalcyon(ctx: Ctx): void {
+  const [x, y, w, h] = REGION.muralH;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, w, h);
+  ctx.clip();
+  const sky = ctx.createLinearGradient(0, y, 0, y + h);
+  sky.addColorStop(0, '#a9c9da');
+  sky.addColorStop(0.55, '#f1d3bd');
+  sky.addColorStop(1, '#f4dcae');
+  ctx.fillStyle = sky;
+  ctx.fillRect(x, y, w, h);
+  // Rising sun with rings + rays (left third).
+  const sx = x + w * 0.16;
+  const sy = y + h * 0.78;
+  ctx.save();
+  ctx.translate(sx, sy);
+  for (let i = 0; i < 18; i++) {
+    const a = Math.PI + (i / 17) * Math.PI;
+    ctx.fillStyle = i % 2 ? 'rgba(239,220,166,0.75)' : 'rgba(233,195,181,0.7)';
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.arc(0, 0, h * 1.1, a - 0.045, a + 0.045);
+    ctx.closePath();
+    ctx.fill();
+  }
+  for (const [r, c] of [
+    [0.62, TERRA_F],
+    [0.5, MUSTARD],
+    [0.38, ENV.pastelPink],
+    [0.26, CREAM],
+  ] as const) {
+    ctx.fillStyle = c;
+    ctx.beginPath();
+    ctx.arc(0, 0, h * r, Math.PI, 0);
+    ctx.fill();
+  }
+  ctx.restore();
+  // Rocket arcing up on the right with a dotted trail.
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,248,235,0.9)';
+  ctx.setLineDash([8, 10]);
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.moveTo(x + w * 0.74, y + h * 0.7);
+  ctx.quadraticCurveTo(x + w * 0.8, y + h * 0.5, x + w * 0.9, y + h * 0.16);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.translate(x + w * 0.9, y + h * 0.16);
+  ctx.rotate(0.55);
+  ctx.fillStyle = CREAM;
+  rr(ctx, -9, -30, 18, 50, 9);
+  ctx.fill();
+  ctx.fillStyle = TERRA;
+  ctx.beginPath();
+  ctx.moveTo(-9, 12);
+  ctx.lineTo(-19, 26);
+  ctx.lineTo(-9, 20);
+  ctx.moveTo(9, 12);
+  ctx.lineTo(19, 26);
+  ctx.lineTo(9, 20);
+  ctx.fill();
+  ctx.fillStyle = MUSTARD;
+  ctx.beginPath();
+  ctx.moveTo(-6, 22);
+  ctx.lineTo(0, 40);
+  ctx.lineTo(6, 22);
+  ctx.fill();
+  ctx.restore();
+  // Hills + a row of little modernist houses.
+  hills(ctx, x, y, w, h, 0.72, 0.06, 3, 0.4, '#c9dcc1');
+  roofline(ctx, x + w * 0.3, y, w * 0.42, h, 9, 2);
+  hills(ctx, x, y, w, h, 0.8, 0.05, 4.5, 1.9, '#a3ad8f');
+  hills(ctx, x, y, w, h, 0.9, 0.03, 6, 0.7, '#d9c7a7');
+  // Title.
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(62,53,48,0.18)';
+  fitText(ctx, 'HALCYON HEIGHTS', x + w * 0.515 + 4, y + h * 0.3 + 4, w * 0.42, 76, '900', 10);
+  ctx.fillStyle = TERRA;
+  fitText(ctx, 'HALCYON HEIGHTS', x + w * 0.515, y + h * 0.3, w * 0.42, 76, '900', 10);
+  ctx.fillStyle = INK;
+  fitText(ctx, 'A BRIGHTER TOMORROW  ·  EST. 1972', x + w * 0.515, y + h * 0.56, w * 0.36, 26, 'bold', 6);
+  // Racing stripes top + bottom.
+  for (const [yy, c] of [
+    [0, TERRA_F],
+    [8, MUSTARD],
+    [h - 14, MUSTARD],
+    [h - 6, TERRA_F],
+  ] as const) {
+    ctx.fillStyle = c;
+    ctx.fillRect(x, y + yy, w, 6);
+  }
+  weather(ctx, x, y, w, h, 41, 0.2);
+  // Flaked paint where the render has let go.
+  for (let i = 0; i < 40; i++) {
+    const fx = x + ((i * 389) % w);
+    const fy = y + ((i * 131) % h);
+    ctx.fillStyle = 'rgba(214,202,180,0.85)';
+    ctx.beginPath();
+    ctx.ellipse(fx, fy, 3 + (i % 5) * 2, 2 + (i % 3), (i % 7) * 0.4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+/** Bloom spawn wall (diner lot): a faded 'MOONBEAM DINER · EAT UNDER THE STARS'
+ *  dusk mural (light enough to read in the wall's permanent shade), half
+ *  reclaimed by painted-over glowing vines. */
+function muralMoonbeam(ctx: Ctx): void {
+  const [x, y, w, h] = REGION.muralB;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, w, h);
+  ctx.clip();
+  const sky = ctx.createLinearGradient(0, y, 0, y + h);
+  sky.addColorStop(0, '#7f9cb4');
+  sky.addColorStop(0.55, '#e3b8ab');
+  sky.addColorStop(1, '#f1d4a6');
+  ctx.fillStyle = sky;
+  ctx.fillRect(x, y, w, h);
+  // Stars + crescent moon.
+  for (let i = 0; i < 90; i++) {
+    const px = x + ((i * 457) % w);
+    const py = y + ((i * 97) % Math.floor(h * 0.6));
+    ctx.fillStyle = `rgba(255,243,214,${0.35 + (i % 4) * 0.15})`;
+    if (i % 9 === 0) {
+      star(ctx, px, py, 7, 4, 0.3);
+      ctx.fill();
+    } else ctx.fillRect(px, py, 2.5, 2.5);
+  }
+  ctx.fillStyle = '#f3ecdf';
+  ctx.beginPath();
+  ctx.arc(x + w * 0.2, y + h * 0.38, h * 0.26, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#8aa3b8';
+  ctx.beginPath();
+  ctx.arc(x + w * 0.2 + h * 0.1, y + h * 0.33, h * 0.23, 0, Math.PI * 2);
+  ctx.fill();
+  // Horizon: desert mesas + the streamline diner with a saucer roof.
+  hills(ctx, x, y, w, h, 0.78, 0.05, 2.5, 2.2, '#b58f7f');
+  const dx = x + w * 0.52;
+  const dy = y + h * 0.78;
+  ctx.fillStyle = ENV.pastelMint;
+  rr(ctx, dx - w * 0.09, dy - h * 0.2, w * 0.18, h * 0.2, 18);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255,227,161,0.95)';
+  for (let i = 0; i < 6; i++) ctx.fillRect(dx - w * 0.08 + i * w * 0.027, dy - h * 0.15, w * 0.02, h * 0.08);
+  ctx.fillStyle = CREAM;
+  ctx.beginPath();
+  ctx.ellipse(dx, dy - h * 0.22, w * 0.12, h * 0.05, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#ffe3a1';
+  ctx.beginPath();
+  ctx.ellipse(dx, dy - h * 0.27, w * 0.035, h * 0.05, 0, Math.PI, 0);
+  ctx.fill();
+  // Finned car parked out front.
+  ctx.fillStyle = ENV.pastelPink;
+  ctx.beginPath();
+  ctx.moveTo(dx + w * 0.11, dy);
+  ctx.lineTo(dx + w * 0.11, dy - h * 0.07);
+  ctx.lineTo(dx + w * 0.14, dy - h * 0.13);
+  ctx.lineTo(dx + w * 0.18, dy - h * 0.13);
+  ctx.lineTo(dx + w * 0.21, dy - h * 0.07);
+  ctx.lineTo(dx + w * 0.23, dy - h * 0.11);
+  ctx.lineTo(dx + w * 0.23, dy);
+  ctx.fill();
+  ctx.fillStyle = '#2d2724';
+  for (const wx of [0.135, 0.205]) {
+    ctx.beginPath();
+    ctx.arc(dx + w * wx, dy, h * 0.035, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  hills(ctx, x, y, w, h, 0.86, 0.02, 5, 0.3, '#c99a82');
+  // Title in neon-script style.
+  ctx.save();
+  ctx.translate(x + w * 0.8, y + h * 0.36);
+  ctx.transform(1, 0, -0.18, 1, 0, 0);
+  ctx.fillStyle = 'rgba(62,53,48,0.25)';
+  fitText(ctx, 'Moonbeam', 4, 4, w * 0.26, 84, 'bold italic');
+  ctx.fillStyle = '#fff1cf';
+  fitText(ctx, 'Moonbeam', 0, 0, w * 0.26, 84, 'bold italic');
+  ctx.restore();
+  ctx.fillStyle = TERRA;
+  fitText(ctx, 'EAT UNDER THE STARS', x + w * 0.8, y + h * 0.66, w * 0.25, 24, 'bold', 6);
+  weather(ctx, x, y, w, h, 53, 0.24);
+  // The Bloom have let the vines finish the painting: tendrils + glowing buds.
+  let sd = 7;
+  const rnd = (): number => {
+    sd = (sd * 16807) % 2147483647;
+    return sd / 2147483647;
+  };
+  for (let v = 0; v < 26; v++) {
+    const left = v % 2 === 0;
+    const vx = left ? x + rnd() * w * 0.35 : x + w * 0.62 + rnd() * w * 0.38;
+    ctx.strokeStyle = 'rgba(111,122,85,0.95)';
+    ctx.lineWidth = 3 + rnd() * 3;
+    ctx.beginPath();
+    ctx.moveTo(vx, y);
+    const len = h * (0.35 + rnd() * 0.65);
+    ctx.bezierCurveTo(vx + (rnd() - 0.5) * 60, y + len * 0.3, vx + (rnd() - 0.5) * 60, y + len * 0.7, vx + (rnd() - 0.5) * 40, y + len);
+    ctx.stroke();
+    for (let l = 0; l < 7; l++) {
+      const t = rnd();
+      ctx.fillStyle = rnd() < 0.7 ? 'rgba(163,173,143,0.95)' : 'rgba(125,133,102,0.95)';
+      ctx.beginPath();
+      ctx.ellipse(vx + (rnd() - 0.5) * 30, y + len * t, 6 + rnd() * 5, 3 + rnd() * 3, rnd() * Math.PI, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = rnd() < 0.65 ? '#c6f06b' : '#ffe3a1';
+    ctx.beginPath();
+    ctx.arc(vx + (rnd() - 0.5) * 20, y + len * (0.5 + rnd() * 0.5), 3 + rnd() * 2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
 }
 
 export interface SignSet {

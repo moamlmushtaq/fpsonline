@@ -480,6 +480,9 @@ export class App {
     this.endSession();
     this.launching = true;
     try {
+      // First launch within the discovery window: wait for the probe (≤ 2.5 s) instead of
+      // silently starting a bot match while the server is actually reachable.
+      if (kind !== 'local' && this.net.status === 'connecting') await this.net.settled();
       if (kind === 'online' || (kind === 'auto' && this.net.status === 'online')) {
         if (this.net.status !== 'online') {
           this.ui.toast('errors.onlineOnly', 'error');
@@ -616,10 +619,9 @@ export class App {
     if (this.match) return;
     const { map, mode } = start.config;
     this.audio.ui('matchFound');
-    if (this.ui.baseScreen !== 'loading') await this.ui.show('loading', { map, mode });
     const t0 = performance.now();
-    // Release the renderer before the match claims it with its own scene.
-    this.menuScene?.deactivate();
+    // Create the match (and its transport subscription) immediately: snapshots and events
+    // that arrive while the loading screen animates in must not be lost.
     let match: ClientMatch;
     try {
       match = new ClientMatch(this, s.transport, start);
@@ -632,6 +634,10 @@ export class App {
     }
     this.match = match;
     this.paused = false;
+    if (this.ui.baseScreen !== 'loading') await this.ui.show('loading', { map, mode });
+    // Release the renderer before the match claims it with its own scene.
+    this.menuScene?.deactivate();
+    if (this.match !== match) return;
     // Optional readiness/progress hooks a richer ClientMatch may expose.
     const hooks = match as unknown as { ready?: Promise<unknown>; loadProgress?: number };
     const loading = this.ui.screen<LoadingScreen>('loading');

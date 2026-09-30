@@ -14,7 +14,7 @@ import * as THREE from 'three';
 import { ENV } from '../../../engine/palette';
 import { type DecorKit, type RGB, mix, rgb } from './kit';
 import { REGION, type SignBatch } from './signs';
-import { drapedVine, glowColor, hangingVine } from './vines';
+import { climbingVine, drapedVine, glowColor, hangingVine } from './vines';
 
 const K = {
   bone: rgb(ENV.bone),
@@ -102,7 +102,9 @@ function car(kit: DecorKit, cx: number, cz: number, len: number, wid: number, h:
 }
 
 function iceCreamVan(kit: DecorKit, signs: Signs, rng: () => number): void {
-  // Collision: x 31..42.8, z ±1.2, 3.2 tall. Van body x 33.6..41.6, debris the rest.
+  // Collision: x 29.6..44, z ±1.2, 3.2 tall — the wreck seals the street and
+  // both sidewalks. Van body x 33.6..41.6; the roadside sign, freezer and
+  // crates fill the west end, the crushed porch of the corner house the east.
   const x0 = 33.6;
   const x1 = 41.6;
   const cz = 0;
@@ -132,19 +134,30 @@ function iceCreamVan(kit: DecorKit, signs: Signs, rng: () => number): void {
     kit.geo('paint', g, new THREE.Matrix4().makeRotationY(tilt).setPosition(wx, 0.4, wz), K.tire, { drift: 0.05 });
     g.dispose();
   }
-  // Debris filling the rest of the blocking volume: the toppled roadside
-  // sign leaning on the van, a chest freezer on its side, stacked crates, the
-  // snapped porch post and a fallen streetlight.
-  kit.boxE('paint', new THREE.Vector3(32.05, 1.45, 0), new THREE.Euler(0, 0, -0.32), new THREE.Vector3(0.14, 3.2, 2.35), mix(K.pink, K.bone, 0.4), 0.03);
-  signs.board.quad(REGION.cone, new THREE.Vector3(31.95, 1.5, 0), 1.9, 2.85, new THREE.Vector3(-0.95, 0.31, 0).normalize());
-  kit.boxE('paint', new THREE.Vector3(32.9, 0.55, 0.55), new THREE.Euler(0, 0.2, Math.PI / 2), new THREE.Vector3(1.1, 1.3, 1.0), mix(K.bone, K.blue, 0.3), 0.08);
-  kit.box('wood', 31.2, 0, -1.15, 32.3, 0.85, -0.1, K.wood, 0.03);
-  kit.box('wood', 31.3, 0.85, -1.05, 32.2, 1.6, -0.2, K.woodDark, 0.03);
-  kit.boxE('wood', new THREE.Vector3(42.2, 1.4, 0), new THREE.Euler(0.2, 0, 0.5), new THREE.Vector3(0.18, 3.2, 2.2), K.wood, 0.02);
-  kit.tube('chrome', new THREE.Vector3(42.6, 0.2, -1.6), new THREE.Vector3(34.5, 3.1, 0.6), 0.09, K.boneShade, 6);
+  // West end (x 29.6..33.6): the toppled "Mister Cosmo" roadside sign stands on
+  // its edge against the van (it faces the intersection), a chest freezer on its
+  // side and a stack of soda crates.
+  kit.boxE('paint', new THREE.Vector3(30.05, 1.62, 0), new THREE.Euler(0, 0, -0.08), new THREE.Vector3(0.16, 3.25, 2.38), mix(K.pink, K.bone, 0.4), 0.04);
+  signs.board.quad(REGION.cosmoSign, new THREE.Vector3(29.95, 1.62, 0), 2.3, 2.6, new THREE.Vector3(-1, 0.08, 0).normalize());
+  kit.box('chrome', 30.1, 0, -1.25, 30.3, 0.5, -0.95, K.chrome, 0, { ao: 0.2 });
+  kit.box('chrome', 30.1, 0, 0.95, 30.3, 0.5, 1.25, K.chrome, 0, { ao: 0.2 });
+  kit.boxE('paint', new THREE.Vector3(31.3, 0.55, 0.45), new THREE.Euler(0, 0.12, Math.PI / 2), new THREE.Vector3(1.1, 1.3, 1.45), mix(K.bone, K.blue, 0.3), 0.08);
+  kit.box('wood', 30.4, 0, -1.18, 31.5, 0.85, -0.12, K.wood, 0.03);
+  kit.box('wood', 30.5, 0.85, -1.1, 31.4, 1.6, -0.2, K.woodDark, 0.03);
+  kit.box('wood', 32.2, 0, -1.18, 33.5, 1.1, 0.2, mix(K.wood, K.sand, 0.3), 0.03);
+  for (let i = 0; i < 6; i++) kit.cyl('paint', 30.6 + (i % 3) * 0.28, 1.6, -0.95 + Math.floor(i / 3) * 0.3, 0.05, 0.05, 0.22, i % 2 ? K.terraF : K.mint, 6);
+  // East end (x 41.6..44): the van's nose buried in the corner-house porch —
+  // collapsed porch roof, snapped posts and planks heaped against the house.
+  kit.boxE('wood', new THREE.Vector3(43.05, 1.75, 0), new THREE.Euler(0, 0, 0.3), new THREE.Vector3(0.2, 3.5, 2.5), K.wood, 0.02);
+  kit.boxE('wood', new THREE.Vector3(43.6, 1.55, -0.35), new THREE.Euler(0.15, 0, -0.22), new THREE.Vector3(0.16, 3.1, 1.6), mix(K.wood, K.bone, 0.3), 0.02);
+  kit.boxE('wood', new THREE.Vector3(42.3, 1.3, 0.2), new THREE.Euler(0.25, 0, 0.55), new THREE.Vector3(0.18, 3.0, 2.2), K.woodDark, 0.02);
+  kit.box('wood', 42.9, 0, -1.2, 44, 0.9, 1.2, mix(K.woodDark, K.sand, 0.3), 0.04);
+  for (let i = 0; i < 5; i++) kit.boxE('wood', new THREE.Vector3(42.4 + rng() * 1.4, 0.95 + rng() * 1.6, (rng() - 0.5) * 2.1), new THREE.Euler(rng(), rng() * Math.PI, rng()), new THREE.Vector3(0.1, 0.1, 1.6 + rng()), mix(K.wood, K.bone, rng() * 0.5), 0);
+  // Fallen streetlight across the roof.
+  kit.tube('chrome', new THREE.Vector3(43.6, 0.2, -1.6), new THREE.Vector3(34.5, 3.1, 0.6), 0.09, K.boneShade, 6);
   kit.ball('paint', 34.3, 3.15, 0.65, 0.35, 0.35, 0.35, K.bone, 1);
   // Spilled cones / pops on the road + glowing vine over the wreck.
-  for (let i = 0; i < 10; i++) kit.boxR('paint', 30 + rng() * 3, 0.06, -2.5 + rng() * 5, 0.25, 0.08, 0.1, rng() * Math.PI, mix(K.mustard, K.pink, rng()), 0);
+  for (let i = 0; i < 12; i++) kit.boxR('paint', 28.4 + rng() * 5.5, 0.06, (rng() < 0.5 ? -1 : 1) * (1.35 + rng() * 1.5), 0.25, 0.08, 0.1, rng() * Math.PI, mix(K.mustard, K.pink, rng()), 0);
   drapedVine(kit, new THREE.Vector3(34, 3.05, -1.2), new THREE.Vector3(41, 3.05, 1.2), -0.05, rng, 4);
 }
 
@@ -196,12 +209,16 @@ function pool(kit: DecorKit, rng: () => number): void {
     [-38.8, 9.8, -0.1],
     [-35.2, -9.6, 3.0],
   ] as const) lounger(kit, x, z, ry);
-  kit.cyl('chrome', -41.6, 0, 10, 0.03, 0.03, 2.3, K.chrome, 5);
+  // Umbrella table tucked in the lee of the cabana (off the deck walkway: it
+  // has no collision, so it stays out of the lanes).
+  const ux = -50.6;
+  const uz = 8.2;
+  kit.cyl('chrome', ux, 0, uz, 0.03, 0.03, 2.3, K.chrome, 5);
   const um = new THREE.ConeGeometry(1.5, 0.5, 8, 1, true);
-  kit.geo('fabric', um, new THREE.Matrix4().makeTranslation(-41.6, 2.2, 10), K.terraF, { drift: 0.1 });
-  kit.geo('fabric', um, new THREE.Matrix4().makeTranslation(-41.6, 2.2, 10).multiply(new THREE.Matrix4().makeRotationX(Math.PI)), mix(K.terraF, K.dark, 0.3), { drift: 0.1 });
+  kit.geo('fabric', um, new THREE.Matrix4().makeTranslation(ux, 2.2, uz), K.terraF, { drift: 0.1 });
+  kit.geo('fabric', um, new THREE.Matrix4().makeTranslation(ux, 2.2, uz).multiply(new THREE.Matrix4().makeRotationX(Math.PI)), mix(K.terraF, K.dark, 0.3), { drift: 0.1 });
   um.dispose();
-  kit.cyl('paint', -41.6, 0, 10, 0.55, 0.55, 0.72, K.bone, 12);
+  kit.cyl('paint', ux, 0, uz, 0.55, 0.55, 0.72, K.bone, 12);
   // Inflatable swan deflated in the deep end, beach ball.
   kit.ball('paint', -40.5, deep + 0.12, 2.8, 0.6, 0.12, 0.4, K.bone, 1);
   kit.ball('paint', -36.2, -0.9, -3.5, 0.2, 0.2, 0.2, K.mustard, 1);
@@ -242,26 +259,29 @@ function backyard(kit: DecorKit, signs: Signs, sz: number, rng: () => number, ri
     const a = (i / 6) * Math.PI * 2;
     kit.tube('chrome', new THREE.Vector3(tx + Math.cos(a) * 1.4, 0.85, tz + Math.sin(a) * 1.4), new THREE.Vector3(tx + Math.cos(a) * 1.5, 0, tz + Math.sin(a) * 1.5), 0.03, K.chrome, 4);
   }
-  // Picnic table with lunch boxes (the south one) / a kiddie pool (north).
+  // Picnic table (collision x −36.6..−34.4, z ±23.05..23.95, 0.78 m): lunch
+  // boxes still laid out in the south yard; the north one is overgrown.
+  const px = -35.5;
+  const pz = Z(23.5);
+  kit.box('wood', px - 1.1, 0.72, pz - 0.45, px + 1.1, 0.78, pz + 0.45, K.wood, 0.02);
+  for (const s of [-1, 1]) {
+    kit.box('wood', px - 1.1, 0.42, pz + s * 0.75 - 0.15, px + 1.1, 0.47, pz + s * 0.75 + 0.15, K.wood, 0.02);
+    kit.box('wood', px + s * 0.9 - 0.05, 0, pz - 0.8, px + s * 0.9 + 0.05, 0.72, pz + 0.8, K.woodDark, 0);
+  }
   if (rich) {
-    const px = -35.5;
-    const pz = Z(23.5);
-    kit.box('wood', px - 1.1, 0.72, pz - 0.45, px + 1.1, 0.78, pz + 0.45, K.wood, 0.02);
-    for (const s of [-1, 1]) {
-      kit.box('wood', px - 1.1, 0.42, pz + s * 0.75 - 0.15, px + 1.1, 0.47, pz + s * 0.75 + 0.15, K.wood, 0.02);
-      kit.box('wood', px + s * 0.9 - 0.05, 0, pz - 0.8, px + s * 0.9 + 0.05, 0.72, pz + 0.8, K.woodDark, 0);
-    }
     // Two lunch boxes (tin, pastel) + a thermos + an apple.
     kit.box('paint', px - 0.6, 0.78, pz - 0.18, px - 0.22, 1.02, pz + 0.08, K.blue, 0.03);
     kit.box('paint', px - 0.6, 1.02, pz - 0.18, px - 0.22, 1.05, pz + 0.08, K.terra, 0.01);
     kit.boxR('paint', px + 0.35, 0.9, pz + 0.05, 0.36, 0.24, 0.24, 0.4, K.yellow, 0.03);
     kit.cyl('paint', px + 0.05, 0.78, pz + 0.2, 0.06, 0.06, 0.28, K.terraF, 8);
     kit.ball('paint', px - 0.05, 0.83, pz - 0.2, 0.05, 0.05, 0.05, K.terra, 1);
-    // BBQ kettle.
-    kit.ball('paint', -33.2, 0.85, Z(27.6), 0.36, 0.3, 0.36, K.dark, 1);
+    // BBQ kettle, tucked under the house balcony against the wall.
+    const qx = -30.75;
+    const qz = Z(25.9);
+    kit.ball('paint', qx, 0.85, qz, 0.36, 0.3, 0.36, K.dark, 1);
     for (let i = 0; i < 3; i++) {
       const a = (i / 3) * Math.PI * 2;
-      kit.tube('chrome', new THREE.Vector3(-33.2, 0.7, Z(27.6)), new THREE.Vector3(-33.2 + Math.cos(a) * 0.35, 0, Z(27.6) + Math.sin(a) * 0.35), 0.02, K.chrome, 3);
+      kit.tube('chrome', new THREE.Vector3(qx, 0.7, qz), new THREE.Vector3(qx + Math.cos(a) * 0.35, 0, qz + Math.sin(a) * 0.35), 0.02, K.chrome, 3);
     }
     // Kids' bikes dropped on the lawn.
     bike(kit, -39.2, Z(30.8), 0.6, K.terraF);
@@ -270,8 +290,15 @@ function backyard(kit: DecorKit, signs: Signs, sz: number, rng: () => number, ri
     kit.box('wood', -44.6, 0, Z(13.4) - 0.04, -44.5, 1.2, Z(13.4) + 0.04, K.bone, 0);
     signs.board.quad(REGION.forSale, new THREE.Vector3(-44.55, 1.1, Z(13.4) - sz * 0.05), 0.75, 0.56, new THREE.Vector3(0, 0, -sz));
   } else {
-    kit.cyl('paint', -35.5, 0, Z(24), 1.1, 1.1, 0.28, K.blue, 16);
-    kit.cyl('tile', -35.5, 0.02, Z(24), 0.98, 0.98, 0.2, rgb('#6f95a0'), 16);
+    // A cooler, a toppled soda bottle and a transistor radio, swallowed by vines.
+    kit.box('paint', px + 0.2, 0.78, pz - 0.25, px + 0.75, 1.1, pz + 0.12, mix(K.bone, K.terraF, 0.3), 0.04);
+    kit.box('paint', px + 0.18, 1.1, pz - 0.27, px + 0.77, 1.14, pz + 0.14, K.bone, 0.01);
+    kit.boxR('paint', px - 0.5, 0.86, pz + 0.1, 0.3, 0.16, 0.1, 0.3, K.terraF, 0.02);
+    kit.tube('glass', new THREE.Vector3(px - 0.1, 0.81, pz - 0.15), new THREE.Vector3(px - 0.35, 0.81, pz - 0.3), 0.035, K.mint, 6);
+    drapedVine(kit, new THREE.Vector3(px - 1.2, 0.8, pz - 0.5), new THREE.Vector3(px + 1.2, 0.8, pz + 0.4), -0.1, rng, 3);
+    // Kiddie pool.
+    kit.cyl('paint', -40.5, 0, Z(25.5), 1.1, 1.1, 0.28, K.blue, 16);
+    kit.cyl('tile', -40.5, 0.02, Z(25.5), 0.98, 0.98, 0.2, rgb('#6f95a0'), 16);
     bike(kit, -38.6, Z(30.2), 1.4, K.yellow);
   }
   // Laundry line (small items high up: towels + shirts; no collision).
@@ -292,8 +319,8 @@ function backyard(kit: DecorKit, signs: Signs, sz: number, rng: () => number, ri
   // Garden gnome + birdbath.
   kit.cyl('paint', -44.2, 0, Z(17.2), 0.12, 0.16, 0.35, K.sage, 8);
   kit.cyl('paint', -44.2, 0.35, Z(17.2), 0.0, 0.1, 0.25, K.terra, 8);
-  kit.cyl('concrete', -36.5, 0, Z(16.5), 0.12, 0.2, 0.8, K.boneShade, 10);
-  kit.cyl('concrete', -36.5, 0.8, Z(16.5), 0.5, 0.2, 0.15, K.boneShade, 12);
+  kit.cyl('concrete', -44.1, 0, Z(18.6), 0.12, 0.2, 0.8, K.boneShade, 10);
+  kit.cyl('concrete', -44.1, 0.8, Z(18.6), 0.5, 0.2, 0.15, K.boneShade, 12);
 }
 
 function bike(kit: DecorKit, x: number, z: number, ry: number, col: RGB): void {
@@ -362,7 +389,7 @@ function tree(kit: DecorKit, x: number, z: number, h: number, r: number, rng: ()
     const a = rng() * Math.PI * 2;
     const d = rng() * r * 0.45;
     const s = r * (0.55 + rng() * 0.35);
-    kit.ball('foliage', x + Math.cos(a) * d, h * 0.72 + rng() * h * 0.2, z + Math.sin(a) * d, s, s * 0.72, s, mix(mix(K.sage, K.sand, 0.25), K.olive, rng() * 0.45), 1, { drift: 0.2, shade: (_x, _y, _z, _nx, ny) => (ny < -0.3 ? 0.82 : 1.06) });
+    kit.ball('foliage', x + Math.cos(a) * d, h * 0.72 + rng() * h * 0.2, z + Math.sin(a) * d, s, s * 0.72, s, mix(mix(K.sage, K.sand, 0.35), K.olive, rng() * 0.3), 1, { drift: 0.2, shade: (_x, _y, _z, _nx, ny) => (ny < -0.3 ? 0.9 : ny > 0.4 ? 1.14 : 1.04) });
   }
   if (vines) {
     const n = 3 + Math.floor(rng() * 3);
@@ -391,7 +418,12 @@ function busShelter(kit: DecorKit, signs: Signs, sz: number): void {
   const zr0 = 6.4 * sz;
   const zr1 = 4.2 * sz;
   kit.box('paint', 21.8, 2.6, Math.min(zr0, zr1), 29.7, 2.78, Math.max(zr0, zr1), K.bone, 0.05, { ao: 0 });
-  for (const x of [22.1, 29.4]) kit.box('glass', x - 0.02, 0.2, Math.min(zb, zr1 + 0.3 * sz), x + 0.02, 2.5, Math.max(zb, zr1 + 0.3 * sz), rgb('#cfe0e6'), 0);
+  // Side screens long since smashed out: bare frames (no phantom glass walls).
+  for (const x of [22.1, 29.4]) {
+    kit.box('chrome', x - 0.03, 0, Math.min(zr1 + 0.3 * sz, zr1 + 0.36 * sz), x + 0.03, 2.6, Math.max(zr1 + 0.3 * sz, zr1 + 0.36 * sz), K.chrome, 0);
+    kit.box('chrome', x - 0.03, 2.2, Math.min(zb, zr1 + 0.3 * sz), x + 0.03, 2.26, Math.max(zb, zr1 + 0.3 * sz), K.chrome, 0);
+    kit.box('glass', x - 0.01, 2.26, Math.min(zb, zr1 + 0.3 * sz), x + 0.01, 2.58, Math.max(zb, zr1 + 0.3 * sz), rgb('#cfe0e6'), 0, { drift: 0 });
+  }
   kit.box('wood', 23, 0.42, Math.min(zb - sz * 0.25, zb - sz * 0.7), 28.5, 0.5, Math.max(zb - sz * 0.25, zb - sz * 0.7), K.wood, 0.02);
   signs.board.quad(REGION.poster2, new THREE.Vector3(24.2, 1.45, zb - sz * 0.205), 1.3, 1.95, new THREE.Vector3(0, 0, -sz));
   signs.board.quad(REGION.poster1, new THREE.Vector3(27.2, 1.45, zb - sz * 0.205), 1.3, 1.95, new THREE.Vector3(0, 0, -sz));
@@ -401,21 +433,45 @@ function busShelter(kit: DecorKit, signs: Signs, sz: number): void {
   kit.cyl('paint', 29.9, 2.8, 4.5 * sz, 0.28, 0.28, 0.06, K.terra, 14);
 }
 
-function pylon(kit: DecorKit, signs: Signs, sz: number): void {
-  // Collision base x ±1.3, z 18.5..24.5 (×sz), 3 m. Brick base + two legs + sign.
+function pylon(kit: DecorKit, signs: Signs, sz: number, rng: () => number): void {
+  // Collision: one monolith x ±0.8, z 18.5..24.5 (×sz), 0..12.6 m. A 1970s
+  // terrazzo slab sign: brick plinth, bone shaft with terracotta racing
+  // stripes, the vertical STARLIGHT panel on both long faces, marquee bulbs on
+  // the ends, a capped top carrying the lit star.
   const z0 = Math.min(18.5 * sz, 24.5 * sz);
   const z1 = Math.max(18.5 * sz, 24.5 * sz);
-  kit.box('concrete', -1.3, 0, z0, 1.3, 3.0, z1, mix(K.sand, K.terraF, 0.3), 0.08);
-  kit.box('concrete', -1.36, 2.85, z0 - 0.06, 1.36, 3.05, z1 + 0.06, K.bone, 0.04, { ao: 0 });
-  for (const zz of [z0 + 1.2, z1 - 1.2]) kit.box('concrete', -0.35, 3.0, zz - 0.35, 0.35, 12.6, zz + 0.35, K.bone, 0.08, { ao: 0 });
   const zc = (z0 + z1) / 2;
-  kit.box('paint', -0.28, 4.6, zc - 1.9, 0.28, 12.0, zc + 1.9, K.bone, 0.06, { ao: 0 });
-  for (const s of [-1, 1]) signs.board.quad(REGION.pylon, new THREE.Vector3(s * 0.3, 8.3, zc), 3.4, 7.2, new THREE.Vector3(s, 0, 0));
+  const H = 12.6;
+  kit.box('concrete', -0.8, 0, z0, 0.8, H, z1, K.bone, 0.06, { base: 0, ao: 0.3 });
+  kit.box('concrete', -0.86, 0, z0 - 0.06, 0.86, 1.1, z1 + 0.06, mix(K.sand, K.terraF, 0.45), 0.05, { base: 0, ao: 0.35 });
+  kit.box('plaster', -0.87, 1.1, z0 - 0.07, 0.87, 1.22, z1 + 0.07, K.bone, 0.02, { ao: 0 });
+  // Racing stripes down both long faces + the cap.
+  for (const s of [-1, 1]) {
+    for (const [a, col] of [
+      [z0 + 0.25, K.terra],
+      [z0 + 0.55, K.mustard],
+      [z1 - 0.55, K.mustard],
+      [z1 - 0.25, K.terra],
+    ] as const) kit.box('paint', s * 0.8 - 0.02, 1.22, a - 0.1, s * 0.8 + 0.02, H - 0.35, a + 0.1, col, 0, { ao: 0, drift: 0.06 });
+    signs.board.quad(REGION.pylon, new THREE.Vector3(s * 0.83, 6.9, zc), 3.5, 10.3, new THREE.Vector3(s, 0, 0));
+  }
+  kit.box('plaster', -0.95, H - 0.35, z0 - 0.15, 0.95, H, z1 + 0.15, K.terraF, 0.04, { ao: 0 });
+  kit.box('concrete', -0.3, H, zc - 1.1, 0.3, H + 0.25, zc + 1.1, K.bone, 0.04, { ao: 0 });
+  // Marquee bulbs on the narrow ends (a few still glow on the dead circuit).
+  for (const zEnd of [z0 - 0.01, z1 + 0.01]) {
+    for (let i = 0; i < 9; i++) {
+      const lit = rng() < 0.45;
+      kit.ball(lit ? 'glow' : 'chrome', 0, 2.0 + i * 1.1, zEnd, 0.11, 0.11, 0.06, lit ? rgb(ENV.glowGold, 1.3) : K.chrome, 0, { drift: 0 });
+    }
+  }
   // Star on top (lit).
-  signs.lit.quad2(REGION.pylonStar, new THREE.Vector3(0, 13.9, zc), 2.6, 2.6, new THREE.Vector3(1, 0, 0));
-  signs.lit.quad2(REGION.pylonStar, new THREE.Vector3(0, 13.9, zc), 2.6, 2.6, new THREE.Vector3(0, 0, 1));
-  // Planter tops with glowing overgrowth spilling down the base.
-  for (let i = 0; i < 4; i++) kit.ball('foliage', (i % 2 ? 0.7 : -0.7), 3.3, z0 + 1 + i * 1.3, 0.6, 0.35, 0.7, K.sage, 1);
+  signs.lit.quad2(REGION.pylonStar, new THREE.Vector3(0, H + 1.4, zc), 2.6, 2.6, new THREE.Vector3(1, 0, 0));
+  signs.lit.quad2(REGION.pylonStar, new THREE.Vector3(0, H + 1.4, zc), 2.6, 2.6, new THREE.Vector3(0, 0, 1));
+  // Glowing ivy creeping up the shaded (east) face and over the plinth.
+  climbingVine(kit, new THREE.Vector3(0.82, 0, zc - 1.6), 5.5, new THREE.Vector3(1, 0, 0), rng, 1.3);
+  climbingVine(kit, new THREE.Vector3(0.82, 0, zc + 1.9), 3.2, new THREE.Vector3(1, 0, 0), rng, 1.1);
+  for (let i = 0; i < 5; i++) hangingVine(kit, new THREE.Vector3(0.9, H - 0.4, z0 + 0.6 + i * 1.2), 0.8 + rng() * 2.4, rng, 1.2);
+  for (const s of [-1, 1]) for (let i = 0; i < 3; i++) kit.ball('foliage', s * (0.95 + rng() * 0.2), 0.25, z0 + 0.8 + i * 2.1, 0.45, 0.3, 0.55, mix(K.sage, K.olive, rng() * 0.4), 1, { drift: 0.2 });
 }
 
 // ── Assembly ────────────────────────────────────────────────────────────────
@@ -440,7 +496,7 @@ export function buildProps(kit: DecorKit, signs: Signs, rng: () => number): void
   backyard(kit, signs, -1, rng, false);
   for (const sz of [1, -1]) {
     busShelter(kit, signs, sz);
-    pylon(kit, signs, sz);
+    pylon(kit, signs, sz, rng);
   }
   // Street lamps along the main street (sidewalks) and the parking lots.
   for (const z of [-44, -30, -16, 16, 30, 44]) {

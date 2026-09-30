@@ -6,9 +6,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as THREE from 'three';
-import { GANTRY_DECK as D, GANTRY_L1 as L1, GANTRY_ROCKET } from '../../../../shared/maps/gantry';
+import { GANTRY_DECK as D, GANTRY_GRATE, GANTRY_L1 as L1, GANTRY_ROCKET } from '../../../../shared/maps/gantry';
 import { ENV } from '../../../engine/palette';
-import { box, boxC, beam, cylAB, DecorKit, GREENS, floorQuad, lattice, quad, railing, rbox, sphere, stairs } from './kit';
+import { box, boxC, beam, cylAB, DecorKit, GREENS, floorQuad, lattice, litFloor, pipe, quad, railing, rbox, sphere, stairs, type BakedLight } from './kit';
 import { uvOf } from './signage';
 
 const DARK = '#4b443d';
@@ -104,15 +104,15 @@ export function buildPad(kit: DecorKit, rnd: () => number, root: THREE.Group, de
   // Crawlerway rails: from the hangar doors, up the ramps, across the deck to the mount.
   for (const s of halves) {
     for (const rx of [RX - 1.9, RX + 1.9]) {
-      kit.add('metal', box(rx - 0.09, 0, s * 46, rx + 0.09, 0.07, s * 41.1), '#7a6a5e');
-      kit.add('metal', box(rx - 0.09, 0, s * 39.9, rx + 0.09, 0.07, s * 26), '#7a6a5e');
+      kit.add('metal', box(rx - 0.09, 0, s * 46, rx + 0.09, 0.07, s * 38.1), '#7a6a5e');
+      kit.add('metal', box(rx - 0.09, 0, s * 36.9, rx + 0.09, 0.07, s * 26), '#7a6a5e');
       const ramp = beam(rx, 0.04, s * 26, rx, D + 0.04, s * 17, 0.18);
       kit.add('metal', ramp, '#7a6a5e', { flat: true });
       kit.add('metal', box(rx - 0.09, D, s * 17, rx + 0.09, D + 0.06, s * 3.7), '#7a6a5e', { flat: true });
       // Gravel crawlerway bed with rusty tread scars.
-      kit.add('sand', box(rx - 1.1, 0, s * 45.5, rx + 1.1, 0.03, s * 41.1), '#c8b393', { flat: true });
-      kit.add('sand', box(rx - 1.1, 0, s * 39.9, rx + 1.1, 0.03, s * 26.2), '#c8b393', { flat: true });
-      for (let z = 27; z < 45; z += 1.3) if (z < 39.6 || z > 41.2) kit.add('paint', box(rx - 0.9, 0.031, s * z, rx + 0.9, 0.04, s * (z + 0.35)), '#8f7563', { flat: true });
+      kit.add('sand', box(rx - 1.1, 0, s * 45.5, rx + 1.1, 0.03, s * 38.1), '#c8b393', { flat: true });
+      kit.add('sand', box(rx - 1.1, 0, s * 36.9, rx + 1.1, 0.03, s * 26.2), '#c8b393', { flat: true });
+      for (let z = 27; z < 45; z += 1.3) if (z < 36.6 || z > 38.2) kit.add('paint', box(rx - 0.9, 0.031, s * z, rx + 0.9, 0.04, s * (z + 0.35)), '#8f7563', { flat: true });
     }
   }
 
@@ -138,10 +138,83 @@ export function buildPad(kit: DecorKit, rnd: () => number, root: THREE.Group, de
   for (const s of halves) {
     kit.add('wood', rbox(16.05, 0, s * 14, 17.55, 1.2, s * 12.05, 0.05), '#b39a7f');
     kit.add('wood', box(16.0, 0.55, s * 14.02, 17.6, 0.65, s * 12.03), '#8c7660');
-    kit.add('paint', rbox(16.02, 0, s * 12, 17.58, 2.4, s * 8, 0.06), '#9fa98c');
-    for (let y = 0.5; y < 2.2; y += 0.35) kit.add('metal', box(17.58, y, s * 11.4, 17.64, y + 0.12, s * 8.6), STEEL_DARK, { flat: true });
-    kit.add('sign', quad(17.66, 1.7, s * 10, 1.6, 0.2, 1, 0, uvOf('hazard')), '#ffffff', { flat: true });
-    kit.add('paint', box(16.0, 2.4, s * 12.02, 17.6, 2.46, s * 7.98), '#7d8566', { flat: true });
+    // Cable switch cabinet (collision x 16..18.6): a sage steel box on a plinth.
+    kit.add('concrete', box(16.0, 0, s * 12.02, 18.6, 0.25, s * 7.98), ENV.concreteDark);
+    kit.add('paint', rbox(16.02, 0.25, s * 12, 18.58, 2.4, s * 8, 0.08), '#9fa98c');
+    for (let y = 0.6; y < 2.2; y += 0.35) kit.add('metal', box(18.58, y, s * 11.4, 18.64, y + 0.12, s * 8.6), STEEL_DARK, { flat: true });
+    kit.add('metal', box(18.58, 0.5, s * 10.05 - 0.02, 18.66, 2.2, s * 10.05 + 0.02), STEEL_DARK, { flat: true });
+    kit.add('sign', quad(18.67, 2.05, s * 10, 1.8, 0.2, 1, 0, uvOf('hazard')), '#ffffff', { flat: true });
+    kit.add('paint', box(16.0, 2.4, s * 12.02, 18.6, 2.46, s * 7.98), '#7d8566', { flat: true });
+    // Cable bundle climbing from the cabinet into the deck.
+    kit.add('metal', cylAB(16.6, 2.46, s * 9, 16.1, 3.4, s * 9, 0.14, 0.14, 8), '#34302c');
+  }
+
+  // ── Apron chicanes (break the forecourt-to-forecourt lines along the pad) ──
+  // West: nitrogen bottle racks against the gantry stairs (x −21.6..−18.6, z ±[10, 12], 2.6 m).
+  for (const s of halves) {
+    const z0 = s * 10;
+    const z1 = s * 12;
+    const zl = Math.min(z0, z1);
+    const zh = Math.max(z0, z1);
+    kit.add('concrete', box(-21.62, 0, zl - 0.02, -18.6, 0.2, zh + 0.02), ENV.concreteDark);
+    // Frame: corner posts, top canopy, mid chain rails; a solid back sheet on the stair side.
+    for (const x of [-21.55, -18.75]) for (const z of [zl + 0.07, zh - 0.07]) kit.add('metal', box(x - 0.06, 0.2, z - 0.06, x + 0.06, 2.5, z + 0.06), STEEL_DARK);
+    kit.add('metal', rbox(-21.65, 2.44, zl - 0.06, -18.6, 2.6, zh + 0.06, 0.03), '#8a8680');
+    kit.add('metal', box(-18.9, 0.2, zl + 0.02, -18.62, 2.44, zh - 0.02), '#7d8566');
+    for (const y of [0.9, 1.7]) kit.add('metal', box(-21.6, y, s > 0 ? zl + 0.02 : zh - 0.06, -18.65, y + 0.05, s > 0 ? zl + 0.06 : zh - 0.02), STEEL_DARK, { flat: true });
+    const bottles = [ENV.bone, '#9fa98c', ENV.bone, ENV.terracottaFaded, ENV.bone];
+    for (let i = 0; i < 5; i++) {
+      for (let j = 0; j < 3; j++) {
+        const x = -21.3 + i * 0.52 + (j % 2) * 0.12;
+        const z = zl + 0.38 + j * 0.62;
+        const col = bottles[(i + j * 2) % bottles.length];
+        kit.add('paint', cylAB(x, 0.2, z, x, 2.02, z, 0.25, 0.25, kit.seg(10)), col);
+        kit.add('paint', sphere(x, 2.02, z, 0.25, kit.seg(10), 5, 0.55), col);
+        kit.add('metal', cylAB(x, 2.1, z, x, 2.32, z, 0.06, 0.05, 6), STEEL_DARK, { flat: true });
+      }
+    }
+    kit.add('sign', quad(-21.66, 1.35, (zl + zh) / 2, 1.9, 0.26, -1, 0, uvOf('hazard')), '#ffffff', { flat: true });
+  }
+  // West, z = 0: fuel-line valve station on the transfer station's face
+  // (x −24..−21, z ±1.5, 3.2 m) with risers up to the overhead fuel lines.
+  {
+    kit.add('concrete', box(-24.02, 0, -1.52, -20.98, 0.45, 1.52), ENV.concreteDark);
+    kit.add('paint', rbox(-24.0, 0.45, -1.5, -21.0, 3.2, 1.5, 0.12, 2), '#c9c1b0');
+    kit.add('paint', box(-21.02, 2.9, -1.52, -20.96, 3.05, 1.52), ENV.terracottaFaded, { flat: true });
+    for (const [dz, r, col] of [
+      [-0.6, 0.3, ENV.bone],
+      [0.3, 0.24, '#9fa98c'],
+      [0.95, 0.17, TOWER_DARK],
+    ] as [number, number, string][]) {
+      kit.add('metal', cylAB(-22.6, 3.1, dz * 0.9, -22.6, 7.2, dz, r, r, 10), col);
+      kit.add('metal', cylAB(-22.6, 3.15, dz * 0.9, -22.6, 3.4, dz * 0.9, r + 0.1, r + 0.1, 10), STEEL_DARK);
+    }
+    for (const z of [-0.8, 0.7]) {
+      const w = new THREE.TorusGeometry(0.42, 0.06, 6, 18);
+      w.rotateY(Math.PI / 2);
+      w.translate(-20.86, 1.7, z);
+      kit.add('metal', w, ENV.terracottaFaded, { flat: true });
+      kit.add('metal', cylAB(-20.98, 1.7, z, -20.86, 1.7, z, 0.06, 0.06, 6), STEEL_DARK, { flat: true });
+    }
+    kit.add('sign', quad(-20.97, 2.6, 0, 2.6, 0.36, 1, 0, uvOf('stencilLox')), '#ffffff', { flat: true });
+    lamp(kit, -20.96, 3.35, 0, 1, 0, ENV.glowGold, 2.6, 0);
+  }
+  // East, z = 0: the deluge water valve house (sound suppression) on the
+  // transit shed's face (x 18.4..22, z ±1.5, 3.2 m); its main feeds the trench.
+  {
+    kit.add('concrete', rbox(18.42, 0, -1.5, 22.0, 3.2, 1.5, 0.1, 2), '#b3ab9c');
+    kit.add('concrete', box(18.38, 3.05, -1.56, 22.0, 3.3, 1.56), ENV.bone);
+    kit.add('metal', box(18.36, 0.1, -0.7, 18.42, 2.2, 0.7), '#8e9aa0');
+    kit.add('sign', quad(18.35, 2.62, 0, 3.0, 0.38, -1, 0, uvOf('stencilDeluge')), '#ffffff', { flat: true });
+    // Water main: out of the house, along the apron into the trench mouth.
+    kit.add('metal', pipe([[19.2, 0.35, 1.4], [19.2, 0.35, 2.6], [17.2, 0.35, 2.6], [15.6, 0.35, 2.6], [12.5, 0.35, 2.9]], 0.3, 12, 0.7), '#9fb4be');
+    kit.add('metal', cylAB(19.2, 0.35, 1.35, 19.2, 0.35, 1.6, 0.4, 0.4, 12), STEEL_DARK);
+    const w = new THREE.TorusGeometry(0.5, 0.06, 6, 18);
+    w.rotateY(Math.PI / 2);
+    w.translate(18.26, 1.45, 0);
+    kit.add('metal', w, ENV.terracottaFaded, { flat: true });
+    kit.add('glow', box(18.36, 1.95, 0.9, 18.37, 2.2, 1.2), ENV.glowGold, { flat: true, k: 1.6 });
+    moss(kit, rnd, 18.2, 0, -1.9, 0.5, Math.round(6 * decor));
   }
 
   // ── Maintenance tunnels (south/north) ─────────────────────────────────────
@@ -165,7 +238,11 @@ export function buildPad(kit: DecorKit, rnd: () => number, root: THREE.Group, de
     }
     kit.add('metal', box(-7.2, 2.08, zlo, -6.8, 2.14, zhi), STEEL_DARK, { flat: true });
     for (let z = 5; z < 17; z += 2.2) kit.add('metal', box(-9.25, 1.98, s * z - 0.04, -6.75, 2.04, s * z + 0.04), STEEL_DARK, { flat: true });
-    for (let z = 6.5; z < 17; z += 4.5) lamp(kit, -6.76, 1.95, s * z, -1, 0, ENV.glowGold, 2.4);
+    // Emergency lamps staggered on both walls every ~2.2 m: a warm rhythm down the tunnel.
+    for (let z = 5.2; z < 17; z += 4.4) {
+      lamp(kit, -6.76, 1.95, s * z, -1, 0, ENV.glowGold, 2.8);
+      lamp(kit, -9.24, 1.95, s * (z + 2.2), 1, 0, ENV.glowGold, 2.8);
+    }
     // Mouth: steel portal frame, open blast door, stencil.
     kit.add('metal', box(-9.5, 0, za - s * 0.18, -9.3, 2.6, za + s * 0.02), STEEL_DARK);
     kit.add('metal', box(-6.7, 0, za - s * 0.18, -6.5, 2.6, za + s * 0.02), STEEL_DARK);
@@ -178,12 +255,30 @@ export function buildPad(kit: DecorKit, rnd: () => number, root: THREE.Group, de
   }
 
   // ── Flame trench ──────────────────────────────────────────────────────────
-  // Dark, damp floor liners (trench + both tunnels) with drain channels.
-  kit.add('concrete', box(-12, 0, -3.5, 16, 0.008, 3.5), '#3f3a35', { flat: true });
-  for (const s of halves) kit.add('concrete', box(-9.3, 0, Math.min(s * 3.5, s * 17), -6.7, 0.008, Math.max(s * 3.5, s * 17)), '#3f3a35', { flat: true });
+  // Damp floors (trench + both tunnels) with the emergency lamps, the grate's
+  // shaft and the sunset spill at the mouth baked in; drain channel down the middle.
+  const underLights: BakedLight[] = [
+    { x: -3.2, y: 0, z: 0, r: 3.2, k: 1.1 },
+    { x: 12.5, y: 0, z: 0, r: 6, k: 0.9 },
+    { x: 16, y: 0, z: 0, r: 4, k: 0.8 },
+  ];
+  for (const x of [-10.5, 6, 13]) underLights.push({ x, y: 0, z: 2.6, r: 2.6, k: 0.8 }, { x: x + 1.2, y: 0, z: -2.6, r: 2.6, k: 0.8 });
+  for (const s of halves) {
+    for (let z = 5.2; z < 17; z += 4.4) underLights.push({ x: -7.3, y: 0, z: s * z, r: 2.4, k: 0.85 }, { x: -8.7, y: 0, z: s * (z + 2.2), r: 2.4, k: 0.85 });
+    underLights.push({ x: -8, y: 0, z: s * 17.5, r: 3, k: 0.7 });
+  }
+  litFloor(kit, -12, -3.5, 16, 3.5, 0.008, '#5a524a', 0.62, underLights, 0.9);
+  for (const s of halves) litFloor(kit, -9.3, Math.min(s * 3.5, s * 17), -6.7, Math.max(s * 3.5, s * 17), 0.008, '#5a524a', 0.62, underLights, 0.9);
   kit.add('metal', box(-12, 0.008, -0.2, 16, 0.02, 0.2), '#2d2a27', { flat: true });
   // Ceiling with transverse ribs, scorched wall liners (skipping openings).
-  kit.add('concrete', box(-12, 2.95, -3.5, 16, 2.99, 3.5), '#37312d', { flat: true });
+  {
+    // Ceiling liner, open over the broken grate.
+    const { x0, x1, hz } = GANTRY_GRATE;
+    kit.add('concrete', box(-12, 2.95, -3.5, x0, 2.99, 3.5), '#37312d', { flat: true });
+    kit.add('concrete', box(x1, 2.95, -3.5, 16, 2.99, 3.5), '#37312d', { flat: true });
+    kit.add('concrete', box(x0, 2.95, -3.5, x1, 2.99, -hz), '#37312d', { flat: true });
+    kit.add('concrete', box(x0, 2.95, hz, x1, 2.99, 3.5), '#37312d', { flat: true });
+  }
   for (let x = -11; x < 16; x += 2.2) {
     if (x > -4.6 && x < -1.8) continue; // broken grate
     kit.add('concrete', box(x - 0.15, 2.6, -3.5, x + 0.15, 2.96, 3.5), '#4a423c', { flat: true });
@@ -227,38 +322,45 @@ export function buildPad(kit: DecorKit, rnd: () => number, root: THREE.Group, de
   kit.add('paint', quad(0.95, 1.6, 0, 3.7, 2.4, -1, 0), SOOT, { flat: true });
   kit.add('paint', quad(5.05, 1.6, 0, 3.7, 2.4, 1, 0), SOOT, { flat: true });
   // Valve / pump housing (breaks the tunnel line): plinth, pipes, wheels, panel.
+  // (Collision x −10.4..−6, z ±1.1, to the 3 m ceiling: the casing fills it.)
   kit.add('concrete', rbox(-10.38, 0, -1.08, -6.02, 1.1, 1.08, 0.05), '#8e877b');
-  kit.add('metal', cylAB(-10.2, 1.9, 0, -6.2, 1.9, 0, 0.62, 0.62, 16), '#9fa98c');
-  kit.add('metal', cylAB(-10.3, 1.9, 0, -10.0, 1.9, 0, 0.7, 0.7, 16), STEEL_DARK);
-  kit.add('metal', cylAB(-6.4, 1.9, 0, -6.1, 1.9, 0, 0.7, 0.7, 16), STEEL_DARK);
-  kit.add('metal', cylAB(-8.2, 2.3, 0, -8.2, 2.96, 0, 0.3, 0.3, 10), '#8a7d6f');
-  kit.add('metal', cylAB(-9.4, 2.3, 0.5, -9.4, 2.96, 0.5, 0.18, 0.18, 8), TOWER_DARK);
+  kit.add('metal', rbox(-10.3, 1.1, -1.02, -6.1, 2.6, 1.02, 0.18, 2), '#9fa98c');
+  for (let x = -9.8; x < -6.3; x += 0.7) kit.add('metal', box(x - 0.05, 1.1, -1.08, x + 0.05, 2.6, 1.08), '#7d8566', { flat: true });
+  kit.add('metal', box(-10.36, 2.6, -1.06, -6.04, 2.96, 1.06), '#6f7a80');
+  kit.add('metal', cylAB(-8.2, 2.6, 0, -8.2, 2.96, 0, 0.34, 0.34, 10), '#8a7d6f');
+  kit.add('metal', cylAB(-9.4, 2.6, 0.5, -9.4, 2.96, 0.5, 0.2, 0.2, 8), TOWER_DARK);
   for (const [wx, wz] of [
-    [-7.2, 1.04],
-    [-9.2, -1.04],
+    [-7.2, 1.1],
+    [-9.2, -1.1],
   ] as [number, number][]) {
     const t = new THREE.TorusGeometry(0.34, 0.05, 6, 16);
-    t.translate(wx, 1.35, wz);
+    t.translate(wx, 1.85, wz * 1.08);
     kit.add('metal', t, ENV.terracottaFaded, { flat: true });
-    kit.add('metal', cylAB(wx, 1.35, wz, wx, 1.35, wz * 0.92, 0.05, 0.05, 6), STEEL_DARK, { flat: true });
+    kit.add('metal', cylAB(wx, 1.85, wz * 1.08, wx, 1.85, wz * 0.9, 0.05, 0.05, 6), STEEL_DARK, { flat: true });
   }
   kit.add('paint', box(-8.9, 0.5, 1.08, -7.5, 1.05, 1.12), '#2b2825', { flat: true });
   kit.add('glow', box(-8.7, 0.72, 1.12, -8.4, 0.9, 1.13), ENV.glowGold, { flat: true, k: 2.4 });
   kit.add('glow', box(-8.1, 0.72, 1.12, -7.8, 0.9, 1.13), ENV.glowChartreuse, { flat: true, k: 1.6 });
-  // Broken grate: rim frame on the deck, bent bars hanging into the trench.
-  kit.add('metal', box(-4.45, D, -1.25, -1.95, D + 0.03, -1.0), STEEL_DARK, { flat: true });
-  kit.add('metal', box(-4.45, D, 1.0, -1.95, D + 0.03, 1.25), STEEL_DARK, { flat: true });
-  kit.add('metal', box(-4.45, D, -1.0, -4.2, D + 0.03, 1.0), STEEL_DARK, { flat: true });
-  kit.add('metal', box(-2.2, D, -1.0, -1.95, D + 0.03, 1.0), STEEL_DARK, { flat: true });
-  kit.add('sign', floorQuad(-3.2, D + 0.011, -1.7, 3.2, 0.5, uvOf('hazard')), '#ffffff', { flat: true });
-  kit.add('sign', floorQuad(-3.2, D + 0.011, 1.7, 3.2, 0.5, uvOf('hazard'), Math.PI), '#ffffff', { flat: true });
-  for (let i = 0; i < 5; i++) {
-    const z = -0.8 + i * 0.4;
-    const bent = i === 1 || i === 3;
-    if (i === 2) continue;
-    kit.add('metal', beam(-4.2, D - 0.04, z, bent ? -3.3 : -2.9, bent ? 2.3 : D - 0.1, z + (bent ? 0.2 : 0), 0.06), STEEL_DARK, { flat: true });
+  // Broken grate: rim frame on the deck, torn bars hanging into the trench
+  // (all hanging along the hole's west/east lips so the drop stays clean).
+  {
+    const { x0, x1, hz } = GANTRY_GRATE;
+    const cx = (x0 + x1) / 2;
+    kit.add('metal', box(x0 - 0.25, D, -hz - 0.25, x1 + 0.25, D + 0.03, -hz), STEEL_DARK, { flat: true });
+    kit.add('metal', box(x0 - 0.25, D, hz, x1 + 0.25, D + 0.03, hz + 0.25), STEEL_DARK, { flat: true });
+    kit.add('metal', box(x0 - 0.25, D, -hz, x0, D + 0.03, hz), STEEL_DARK, { flat: true });
+    kit.add('metal', box(x1, D, -hz, x1 + 0.25, D + 0.03, hz), STEEL_DARK, { flat: true });
+    kit.add('sign', floorQuad(cx, D + 0.011, -hz - 0.55, x1 - x0 + 0.6, 0.5, uvOf('hazard')), '#ffffff', { flat: true });
+    kit.add('sign', floorQuad(cx, D + 0.011, hz + 0.55, x1 - x0 + 0.6, 0.5, uvOf('hazard'), Math.PI), '#ffffff', { flat: true });
+    for (let i = 0; i < 6; i++) {
+      const z = -hz + 0.25 + i * ((2 * hz - 0.5) / 5);
+      if (i === 2 || i === 3) continue;
+      const bent = i === 1 || i === 4;
+      kit.add('metal', beam(x0, D - 0.04, z, bent ? x0 + 0.5 : x0 + 0.9, bent ? 2.2 : D - 0.35, z + (bent ? 0.15 : 0), 0.06), STEEL_DARK, { flat: true });
+    }
+    kit.add('metal', beam(x1, D - 0.04, hz - 0.3, x1 - 0.45, 2.4, hz - 0.45, 0.06), STEEL_DARK, { flat: true });
+    kit.add('metal', beam(x1, D - 0.04, -hz + 0.4, x1 - 0.7, 2.9, -hz + 0.5, 0.06), STEEL_DARK, { flat: true });
   }
-  kit.add('metal', beam(-2.2, D - 0.04, 0.6, -2.9, 2.5, 0.4, 0.06), STEEL_DARK, { flat: true });
   // Under the hole: a rain puddle with moss (the Sunspear pedestal is drawn by the builder).
   const puddle = new THREE.CircleGeometry(1.5, 20);
   puddle.rotateX(-Math.PI / 2);
@@ -270,8 +372,8 @@ export function buildPad(kit: DecorKit, rnd: () => number, root: THREE.Group, de
   moss(kit, rnd, 12, 0, -2.8, 0.5, Math.round(6 * decor));
   // Emergency lamps along the trench.
   for (const x of [-10.5, 6, 13]) {
-    lamp(kit, x, 2.2, 3.44, 0, -1, ENV.glowGold, 2.6);
-    lamp(kit, x + 1.2, 2.2, -3.44, 0, 1, ENV.glowGold, 2.6);
+    lamp(kit, x, 2.2, 3.44, 0, -1, ENV.glowGold, 3);
+    lamp(kit, x + 1.2, 2.2, -3.44, 0, 1, ENV.glowGold, 3);
   }
   // Mouth: scorched lip, soot fan on the face above, stencil.
   kit.add('metal', box(15.7, 2.8, -3.6, 16.25, 3.1, 3.6), '#5d544c');
@@ -346,8 +448,23 @@ export function buildPad(kit: DecorKit, rnd: () => number, root: THREE.Group, de
     const zA = s * 26;
     const zB = s * 5;
     kit.addAll('metal', stairs(-18.55, Math.min(zA, zB), -16.05, Math.max(zA, zB), 0, L1, 'z', s < 0 ? 1 : -1, 0.3), '#8a8680');
-    kit.addAll('metal', railing(-18.55, 0.2, zA, -18.55, L1, zB, 1.0, 2.1), ENV.bone);
-    kit.addAll('metal', railing(-16.05, D + 0.2, s * 17, -16.05, L1, zB, 1.0, 2.1), ENV.bone);
+    // Outer railing only where it has collision (|z| ≤ 21, stair ≥ 2 m); the
+    // low flight is flanked by a concrete kerb. The inner side is left open on
+    // purpose: you can drop from the stairs onto the deck.
+    const zR = s * 21;
+    const yR = (L1 * 5) / 21;
+    kit.addAll('metal', railing(-18.7, yR, zR, -18.7, L1, zB, 1.0, 2.1), ENV.bone);
+    kit.add('concrete', box(-18.85, 0, zR - 0.2, -18.55, yR + 1.1, zR + 0.2), ENV.boneShade);
+    kit.add('concrete', beam(-18.7, 0.12, zA, -18.7, yR + 0.12, zR, 0.28, 0.24), ENV.boneShade);
+    // The pocket under L1 is walled off: a riveted service wall with a sealed door.
+  }
+  {
+    kit.add('metal', box(-18.8, 0, -5, -18.62, L1 - 0.4, 5), '#8e877b', { base: 0 });
+    for (let z = -4.5; z <= 4.5; z += 1.5) kit.add('metal', box(-18.86, 0.1, z - 0.05, -18.8, L1 - 0.5, z + 0.05), STEEL_DARK, { flat: true });
+    for (const y of [2.6, 5.4]) kit.add('metal', box(-18.86, y, -5, -18.8, y + 0.1, 5), STEEL_DARK, { flat: true });
+    kit.add('gloss', rbox(-18.9, 0.02, -1.2, -18.8, 2.4, 1.2, 0.04), '#a8a79f');
+    kit.add('sign', quad(-18.92, 2.8, 0, 3.2, 0.4, -1, 0, uvOf('stencilService')), '#ffffff', { flat: true });
+    lamp(kit, -18.9, 3.4, 0, -1, 0, ENV.glowGold, 2.8, 0);
   }
   // Fuel lines from the west (over the apron) under L1 into the tower.
   for (const [dz, r, col] of [

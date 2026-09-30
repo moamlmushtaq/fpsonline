@@ -11,6 +11,7 @@ import type { UiSound } from '../contracts';
 import { findNamecard } from '../../shared/cosmetics';
 import { i18n, setAttr, setText } from './i18n';
 import { icon, type IconName } from './icons';
+import { mouseButtonCode } from '../input/input';
 
 // ── DOM helper ──────────────────────────────────────────────────────────────
 
@@ -543,7 +544,8 @@ export function keybind(o: { code: string | null; format: (code: string) => stri
     if (e.target === el && e.button === 0 && performance.now() - startedAt < 250) return;
     e.preventDefault();
     e.stopPropagation();
-    finish(`Mouse${e.button}`);
+    // Browser button numbering (0 left, 1 middle, 2 right) → binding codes (Mouse1 = right).
+    finish(mouseButtonCode(e.button));
   };
   const onWheel = (e: WheelEvent) => {
     e.preventDefault();

@@ -17,7 +17,7 @@ import { GANTRY_CATWALK as CW } from '../../../../shared/maps/gantry';
 import { ENV } from '../../../engine/palette';
 import { lamp, moss } from './pad';
 import { ivy } from './compounds';
-import { beam, box, boxC, cyl, cylAB, DecorKit, floorQuad, lathe, pipe, quad, railing, rbox, sphere, stairs } from './kit';
+import { beam, box, boxC, cyl, cylAB, DecorKit, floorQuad, lathe, litFloor, litWall, pipe, quad, railing, rbox, sphere, stairs, type BakedLight } from './kit';
 import { uvOf } from './signage';
 
 const STEEL = ENV.metalLight;
@@ -44,11 +44,11 @@ function sphereTank(kit: DecorKit, rnd: () => number, s: number, decor: number):
     shade: (_x, y, _z, _nx, ny) => 0.7 + 0.3 * Math.max(0, ny * 0.5 + 0.5) + (Math.abs(y - cy) < 0.3 ? -0.08 : 0),
   });
   // Equator girder + hoop band.
-  const ring = new THREE.TorusGeometry(r + 0.05, 0.14, 6, kit.seg(40));
+  const ring = new THREE.TorusGeometry(r + 0.05, 0.14, 6, kit.segRaw(40));
   ring.rotateX(Math.PI / 2);
   ring.translate(cx, cy, cz);
   kit.add('metal', ring, STEEL_DARK, { flat: true });
-  const band = new THREE.CylinderGeometry(r * 0.94, r * 0.94, 0.9, kit.seg(32), 1, true);
+  const band = new THREE.CylinderGeometry(r * 0.94, r * 0.94, 0.9, kit.segRaw(32), 1, true);
   band.translate(cx, cy + 3.3, cz);
   kit.add('paint', band, bloomSide ? ENV.sage : ENV.terracottaFaded, { flat: true });
   // Legs from the plinth to the equator.
@@ -90,7 +90,7 @@ function bulletTank(kit: DecorKit, s: number): void {
     [-48.9, -1],
     [-40.1, 1],
   ] as [number, number][]) {
-    const cap = new THREE.SphereGeometry(r, kit.seg(24), 10, 0, Math.PI * 2, 0, Math.PI / 2);
+    const cap = new THREE.SphereGeometry(r, kit.segRaw(24), 10, 0, Math.PI * 2, 0, Math.PI / 2);
     cap.scale(1, 0.55, 1);
     cap.rotateZ((-dir * Math.PI) / 2);
     cap.translate(x0, y, cz);
@@ -98,7 +98,7 @@ function bulletTank(kit: DecorKit, s: number): void {
   }
   for (const x of [-47, -42]) kit.add('concrete', box(x - 0.6, 0, cz - 1.5, x + 0.6, 1.2, cz + 1.5), ENV.boneShade);
   for (const x of [-45.5, -43.5]) {
-    const b = new THREE.TorusGeometry(r + 0.02, 0.06, 5, kit.seg(24));
+    const b = new THREE.TorusGeometry(r + 0.02, 0.06, 5, kit.segRaw(24));
     b.rotateY(Math.PI / 2);
     b.translate(x, y, cz);
     kit.add('metal', b, ENV.terracottaFaded, { flat: true });
@@ -158,6 +158,15 @@ export function buildTankFarm(kit: DecorKit, rnd: () => number, root: THREE.Grou
       kit.add('metal', beam(-63.8, CW - 1.6, s * z, -61.2, CW - 0.42, s * z, 0.12), STEEL_DARK);
     }
     kit.addAll('metal', railing(-63.8, CW, za, -63.8, CW, zb, 1.05, 2.4), ENV.bone);
+    // Sodium floodlights on the catwalk posts: the tank farm lies in the long
+    // shadow of the tower at sunset, so its light comes in warm islands.
+    for (const z of [s * 11.75, s * 21.25]) {
+      kit.add('metal', box(-63.9, CW + 1.1, z - 0.5, -63.3, CW + 1.5, z + 0.5), STEEL_DARK, { flat: true });
+      kit.add('metal', box(-63.35, CW + 1.0, z - 0.45, -63.1, CW + 1.55, z + 0.45), '#8a8680', { flat: true });
+      kit.add('glow', box(-63.09, CW + 1.08, z - 0.38, -63.07, CW + 1.47, z + 0.38), '#ffd08a', { flat: true, k: 3 });
+      kit.add('pool', floorQuad(-55.5, 0.03, z + s * 0.5, 12, 9), '#ffc98a', { flat: true, k: 0.32 });
+      kit.add('pool', floorQuad(-60.5, 0.035, z, 5, 5), '#ffd08a', { flat: true, k: 0.3 });
+    }
     // Boundary wall beyond the catwalk (x < −64) with a sand drift.
     kit.add('concrete', box(-64.6, 0, s * 6, -64.05, 3.2, s * 60), ENV.concreteDark);
     kit.add('sand', box(-66, -0.5, s * 6, -64.6, 1.4, s * 60), ENV.sand, { flat: true });
@@ -172,10 +181,12 @@ export function buildTankFarm(kit: DecorKit, rnd: () => number, root: THREE.Grou
     // Side walls (collision z ±[5.6, 6]) and door frames.
     for (const s of [-1, 1]) {
       kit.add('concrete', box(-64.4, 0, s * 5.55, -56.4, 3.2, s * 6.05), '#bdb5a6');
-      kit.add('metal', box(-56.5, 0, s * 5.5, -56.2, 3.2, s * 6.4), STEEL_DARK);
-      kit.add('metal', box(-54.8, 0, s * 5.5, -54.5, 3.2, s * 6.4), STEEL_DARK);
+      // Door frames flush with the collision jambs (opening x −56.4..−54.6).
+      kit.add('metal', box(-56.7, 0, s * 5.5, -56.4, 3.2, s * 6.4), STEEL_DARK);
+      kit.add('metal', box(-54.6, 0, s * 5.5, -54.3, 3.2, s * 6.4), STEEL_DARK);
+      kit.add('metal', box(-56.7, 2.9, s * 5.5, -54.3, 3.2, s * 6.4), STEEL_DARK);
       // Blast door swung open against the wall.
-      kit.add('gloss', rbox(-58.6, 0.02, s * 6.05, -56.5, 2.9, s * 6.22, 0.04), '#a8a79f');
+      kit.add('gloss', rbox(-58.8, 0.02, s * 6.05, -56.7, 2.9, s * 6.22, 0.04), '#a8a79f');
       kit.add('sign', quad(-61.2, 2.5, s * 6.07, 3.4, 0.5, 0, s, uvOf('stencilBunker')), '#ffffff', { flat: true });
       // Sand drifts at the foot of the walls.
       kit.add('sand', sphere(-61, 0, s * 6.3, 2.2, 10, 5, 0.08), ENV.sand, { flat: true });
@@ -190,11 +201,24 @@ export function buildTankFarm(kit: DecorKit, rnd: () => number, root: THREE.Grou
       kit.add('metal', beam(-54.45, 1.08, z, -54.05, 2.22, z, 0.08), STEEL_DARK, { flat: true });
     }
     // Interior: dark liner, consoles, CRTs, the lunch-break still life.
+    // Liners with the room's light baked in: two caged ceiling lamps, the
+    // sunset spilling through the slot window, the CRT bank, the countdown board.
+    const room: BakedLight[] = [
+      { x: -61, y: 3, z: -3, r: 5, k: 0.7 },
+      { x: -61, y: 3, z: 3, r: 5, k: 0.7 },
+      { x: -56.2, y: 0.6, z: 0, r: 5.5, k: 0.95 },
+      { x: -59.2, y: 1.3, z: 0, r: 3.5, k: 0.5 },
+      { x: -63.9, y: 2.45, z: 0, r: 3, k: 0.55 },
+      { x: -63.6, y: 1.5, z: 3.4, r: 2, k: 0.5 },
+    ];
     kit.add('concrete', box(-63.95, 3.12, -5.55, -54.6, 3.19, 5.55), '#3d3833', { flat: true });
-    kit.add('concrete', box(-64.0, 0, -5.55, -63.95, 3.2, 5.55), '#5b544c');
-    kit.add('concrete', box(-63.95, 0, -5.6, -54.6, 3.2, -5.55), '#5b544c');
-    kit.add('concrete', box(-63.95, 0, 5.55, -54.6, 3.2, 5.6), '#5b544c');
-    kit.add('paint', box(-63.95, 0.004, -5.55, -54.6, 0.012, 5.55), '#4f4943', { flat: true });
+    litWall(kit, 'x+', -63.97, -5.55, 5.55, 0, 3.12, '#6a6158', 0.6, room, 0.8);
+    // (Side liners stop at the doorways, x −56.4..−54.6.)
+    litWall(kit, 'z+', -5.57, -63.95, -56.4, 0, 3.12, '#6a6158', 0.6, room, 0.8);
+    litWall(kit, 'z-', 5.57, -63.95, -56.4, 0, 3.12, '#6a6158', 0.6, room, 0.8);
+    litWall(kit, 'z+', -5.57, -56.4, -54.6, 2.4, 3.12, '#6a6158', 0.6, room, 0.8);
+    litWall(kit, 'z-', 5.57, -56.4, -54.6, 2.4, 3.12, '#6a6158', 0.6, room, 0.8);
+    litFloor(kit, -63.95, -5.55, -54.6, 5.55, 0.008, '#5e564e', 0.6, room, 0.8, 'paint');
     // Console row (collision x −60.2..−59, z ±3.6, h 0.95) with a raked screen bank behind.
     kit.add('paint', rbox(-60.2, 0, -3.6, -59, 0.95, 3.6, 0.06), '#9d9486');
     kit.add('paint', box(-59.02, 0.2, -3.5, -58.98, 0.8, 3.5), '#8e877b', { flat: true });
@@ -269,20 +293,25 @@ export function buildTankFarm(kit: DecorKit, rnd: () => number, root: THREE.Grou
     moss(kit, rnd, -63.7, 0, -5.2, 0.5, Math.round(8 * decor));
   }
 
-  // Valve manifold at Zone C (x −44..−42.4, z ±1, h 1.3).
+  // Valve manifold at Zone C (x −44..−42.4, z ±1, h 1.3): a solid steel
+  // manifold box (it is waist-high cover you can vault) with valve heads on top.
   kit.add('concrete', box(-44.05, 0, -1.05, -42.35, 0.25, 1.05), ENV.concreteDark);
-  for (const [x, z, r, col] of [
-    [-43.6, -0.5, 0.2, ENV.bone],
-    [-42.8, 0.45, 0.16, ENV.terracottaFaded],
-    [-43.5, 0.5, 0.14, '#9fa98c'],
-  ] as [number, number, number, string][]) {
-    kit.add('metal', cyl(x, 0.25, z, r, 1.0, 10), col);
-    const w = new THREE.TorusGeometry(r + 0.14, 0.035, 5, 12);
+  kit.add('metal', rbox(-43.98, 0.25, -0.98, -42.42, 1.18, 0.98, 0.1, 2), '#b9bfa6');
+  for (let z = -0.7; z <= 0.71; z += 0.7) kit.add('metal', box(-44.02, 0.35, z - 0.05, -42.38, 1.1, z + 0.05), '#8e9474', { flat: true });
+  kit.add('metal', box(-44.0, 1.18, -1.0, -42.4, 1.3, 1.0), '#6f7a80');
+  for (const [x, z, r] of [
+    [-43.55, -0.55, 0.2],
+    [-42.85, 0.45, 0.16],
+    [-43.5, 0.5, 0.14],
+  ] as [number, number, number][]) {
+    kit.add('metal', cyl(x, 1.3, z, r * 0.5, 0.12, 8), STEEL_DARK);
+    const w = new THREE.TorusGeometry(r + 0.1, 0.035, 5, 12);
     w.rotateX(Math.PI / 2);
-    w.translate(x, 1.25, z);
+    w.translate(x, 1.44, z);
     kit.add('metal', w, ENV.terracottaFaded, { flat: true });
   }
-  kit.add('metal', cylAB(-44, 0.75, -0.5, -42.4, 0.75, -0.5, 0.12, 0.12, 8), '#8a8680');
+  // Feed pipes dive into the ground on both ends.
+  for (const x of [-44.3, -42.1]) kit.add('metal', pipe([[x < -43 ? -43.9 : -42.5, 0.75, -0.5], [x, 0.75, -0.5], [x, -0.3, -0.5]], 0.14, 8, 0.3), '#8a8680');
   kit.add('sign', floorQuad(-45, 0.012, 0, 4.4, 4.4, uvOf('deckSeven'), -Math.PI / 2), '#ffffff', { flat: true, k: 0.75 });
 
   // ── West divider buildings (builder-drawn masses) ─────────────────────────
@@ -309,6 +338,17 @@ export function buildTankFarm(kit: DecorKit, rnd: () => number, root: THREE.Grou
   }
   lamp(kit, -24.02, 3.0, -9, 1, 0, ENV.glowGold, 3.4);
   lamp(kit, -24.02, 3.0, 9, 1, 0, ENV.glowGold, 3.4);
+  // West faces of the divider buildings light the lane's inner edge.
+  for (const z of [-26, -6, 6, 26]) {
+    lamp(kit, -34.02 - 0.05, 3.6, z, -1, 0, '#ffd08a', 3.6, 0);
+    kit.add('pool', floorQuad(-38.5, 0.03, z, 7, 7), '#ffc98a', { flat: true, k: 0.26 });
+  }
+  // Zone C: floodlight on the bunker brow washing the valve manifold.
+  for (const z of [-3.2, 3.2]) {
+    kit.add('metal', box(-54.2, CW - 0.35, z - 0.5, -53.7, CW + 0.05, z + 0.5), STEEL_DARK, { flat: true });
+    kit.add('glow', box(-53.69, CW - 0.3, z - 0.4, -53.67, CW, z + 0.4), '#ffd08a', { flat: true, k: 3 });
+  }
+  kit.add('pool', floorQuad(-46.5, 0.03, 0, 13, 12), '#ffc98a', { flat: true, k: 0.3 });
   // Compressor houses (x −34..−24, z s*[19, 33], h 5.5).
   for (const s of [-1, 1]) {
     const zc = s * 26;

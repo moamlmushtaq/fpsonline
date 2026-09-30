@@ -51,7 +51,7 @@ function farHouse(kit: DecorKit, x: number, z: number, ry: number, rng: () => nu
 
 function lollipop(kit: DecorKit, x: number, z: number, s: number, rng: () => number): void {
   kit.cyl('wood', x, 0, z, 0.2 * s, 0.3 * s, 3 * s, rgb('#7a6a58'), 6);
-  kit.ball('foliage', x, 4.2 * s, z, 2.4 * s, 2.0 * s, 2.4 * s, mix(rgb(ENV.olive), rgb(ENV.sage), rng()), 1, { drift: 0.2 });
+  kit.ball('foliage', x, 4.2 * s, z, 2.4 * s, 2.0 * s, 2.4 * s, mix(mix(rgb(ENV.sage), rgb(ENV.sand), 0.2), rgb(ENV.olive), rng() * 0.5), 1, { drift: 0.2 });
 }
 
 export interface BackdropParts {
@@ -180,8 +180,11 @@ export function buildBackdrop(kit: DecorKit, def: MapDef, rng: () => number): Ba
     rocket.root.scale.multiplyScalar(k);
   }
   rocket.root.position.copy(rp);
-  // Pitch-over (local +X) heads away from the town.
-  rocket.root.rotation.y = Math.atan2(-rp.z, rp.x);
+  // Seen from town, the lattice tower (local −Z) stands BEHIND the rocket so the
+  // white body reads in silhouette against it, and the pitch-over (local +X)
+  // arcs sideways to the north — across the view, away from the sun's glare.
+  const away = Math.hypot(rp.x, rp.z);
+  rocket.root.rotation.y = Math.atan2(-rp.x / away, -rp.z / away);
   kit.add(rocket.root);
   // Launch complex apron + a few service buildings around the pad.
   const pad = rp.clone();
@@ -192,8 +195,12 @@ export function buildBackdrop(kit: DecorKit, def: MapDef, rng: () => number): Ba
   let blinkT = 0;
   const beaconOn = new THREE.Color(ENV.glowGold).multiplyScalar(3.2);
   const beaconOff = new THREE.Color(ENV.glowGold).multiplyScalar(0.5);
+  // DEV-only: ?launch=<seconds> previews the finale in the harness.
+  const devLaunchAt = import.meta.env?.DEV ? Number(new URLSearchParams(globalThis.location?.search ?? '').get('launch') ?? NaN) : NaN;
+  const devLaunch = { team: 0 as const, t: 0 };
   const update = (dt: number, s: MapRuntimeState): void => {
-    rocket.update(dt, s.rocketLaunch, s.time);
+    if (Number.isFinite(devLaunchAt)) devLaunch.t = Math.min(devLaunchAt, Math.max(0, s.time - 1));
+    rocket.update(dt, s.rocketLaunch ?? (Number.isFinite(devLaunchAt) && s.time > 1 ? devLaunch : null), s.time);
     blinkT += dt;
     const on = blinkT % 2.2 < 0.25;
     beacon.color.copy(on ? beaconOn : beaconOff);

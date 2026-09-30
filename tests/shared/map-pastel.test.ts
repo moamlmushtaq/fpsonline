@@ -145,8 +145,62 @@ describe('pastel map', () => {
       }
     }
     // A handful of door-slot slivers may exceed 60 m; nothing crosses the map.
-    expect(longest).toBeLessThan(80);
-    expect(over60).toBeLessThan(40);
+    expect(longest).toBeLessThan(75);
+    expect(over60).toBeLessThan(30);
+  });
+
+  it('closes the known sniper lanes: sidewalks, roof-to-roof, house door slots', () => {
+    const clear = (a: Vec3, b: Vec3): boolean => world.segmentClear(a.x, a.y, a.z, b.x, b.y, b.z, 'sight');
+    // Main-street sidewalks, spawn exit to spawn exit (the van wreck seals the street).
+    for (const x of [29.8, 30.5, 36, 43.5]) expect(clear({ x, y: EYE_HEIGHT, z: -39 }, { x, y: EYE_HEIGHT, z: 39 }), `street x=${x}`).toBe(false);
+    // Bungalow roof → through both houses' door slots → the other bungalow roof (pylon monolith).
+    expect(clear({ x: -50, y: 2.95 + EYE_HEIGHT, z: 22 }, { x: 50, y: 2.95 + EYE_HEIGHT, z: 22 })).toBe(false);
+    // Carport roof → carport roof over the back-lot pergolas.
+    expect(clear({ x: -50, y: 2.55 + EYE_HEIGHT, z: 29 }, { x: 50, y: 2.55 + EYE_HEIGHT, z: 29 })).toBe(false);
+  });
+
+  it('the east lane bends through the intersection around the crashed van', () => {
+    const p = nav.findPath({ x: 37, y: 0, z: 16 }, { x: 37, y: 0, z: -16 });
+    expect(p).not.toBeNull();
+    // Wherever the route crosses z = 0 it is west of the wreck (x < 29.6).
+    let prev = { x: 37, y: 0, z: 16 };
+    for (const q of p!.points) {
+      if (Math.sign(q.z) !== Math.sign(prev.z) && q.z !== prev.z) {
+        const t = prev.z / (prev.z - q.z);
+        expect(prev.x + (q.x - prev.x) * t).toBeLessThan(29.6);
+      }
+      prev = q;
+    }
+  });
+
+  it('team spawns face their nearest exit', () => {
+    for (const s of map.spawns.filter((sp) => sp.team !== 2)) {
+      const fx = -Math.sin(s.yaw);
+      const fz = -Math.cos(s.yaw);
+      const ex = (s.pos.x < 0 ? -31 : 31) - s.pos.x;
+      const ez = (s.pos.z > 0 ? 38 : -38) - s.pos.z;
+      const d = Math.hypot(ex, ez);
+      expect((fx * ex + fz * ez) / d, JSON.stringify(s.pos)).toBeGreaterThan(0.95);
+    }
+  });
+
+  it('waist-high picnic tables are solid and can be mantled', () => {
+    for (const sz of [1, -1]) {
+      const top = world.supportHeight(-35.5, 23.5 * sz, 0.05, 3, 5);
+      expect(top).toBeCloseTo(0.78, 2);
+      // Walk at the table's long side and press jump in reach: a ground mantle
+      // lifts the player onto the top.
+      const yaw = sz > 0 ? 0 : Math.PI;
+      const m = createMoveState({ x: -35.5, y: 0, z: 25.8 * sz });
+      let seq = 0;
+      let maxY = 0;
+      for (let i = 0; i < 60; i++) {
+        stepMovement(world, m, cmd(++seq, yaw, 1, i >= 22 && i < 26 ? BTN_JUMP : 0), 1, SIM_DT);
+        maxY = Math.max(maxY, m.pos.y);
+      }
+      expect(maxY).toBeGreaterThan(0.75);
+      expect(maxY).toBeLessThan(0.85);
+    }
   });
 
   it('bots flow through all three lanes and never get stuck', () => {

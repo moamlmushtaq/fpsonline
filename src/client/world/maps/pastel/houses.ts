@@ -362,10 +362,11 @@ export function cornerHouse(kit: DecorKit, rng: () => number): void {
   porthole(kit, f, 3.0, 4.0, 0.55);
   faceBox(kit, 'paint', f, -0.8, 0.8, 0, 2.3, 0, 0.06, K.bone);
   faceBox(kit, 'wood', f, -0.65, 0.65, 0, 2.2, 0.02, 0.08, K.terra);
-  // Porch roof (crushed at the south end where the van hit it).
-  kit.box('wood', 42.6, 2.55, -5.6, 44, 2.72, 0.8, K.wood, 0.02, { ao: 0 });
-  kit.boxE('wood', new THREE.Vector3(43.2, 1.9, 3.2), new THREE.Euler(0.35, 0, -0.5), new THREE.Vector3(1.4, 0.15, 5.0), K.wood);
-  for (const z of [-5.4, -2.5, 0.6]) kit.box('wood', 42.7, 0, z - 0.08, 42.86, 2.55, z + 0.08, K.bone, 0.02);
+  // Porch roof: intact at the north end, torn down where the van ploughed in
+  // (the heap itself is drawn with the wreck in props.ts).
+  kit.box('wood', 42.6, 2.55, -5.6, 44, 2.72, -1.25, K.wood, 0.02, { ao: 0 });
+  kit.boxE('wood', new THREE.Vector3(43.2, 0.16, 2.8), new THREE.Euler(0.08, 0.2, 0.06), new THREE.Vector3(1.4, 0.12, 2.6), K.wood);
+  for (const z of [-5.4, -2.5]) kit.box('wood', 42.7, 0, z - 0.08, 42.86, 2.55, z + 0.08, K.bone, 0.02);
   // Porch rail + the radio (still playing).
   kit.box('wood', 42.7, 0.85, -5.5, 42.86, 0.95, -1.2, K.bone, 0.02, { ao: 0 });
   kit.box('paint', 42.66, 0.95, -3.6, 42.96, 1.2, -3.0, K.terraF, 0.04, { ao: 0 });
@@ -373,8 +374,8 @@ export function cornerHouse(kit: DecorKit, rng: () => number): void {
   kit.tube('chrome', new THREE.Vector3(42.8, 1.2, -3.1), new THREE.Vector3(42.7, 1.65, -2.9), 0.006, K.chrome, 3);
   kit.box('glow', 42.63, 1.05, -3.25, 42.65, 1.1, -3.12, rgb('#ffe3a1', 1.6), 0, { ao: 0 });
   // Rocking chair + climbing ivy.
-  kit.box('wood', 43.1, 0.4, -1.0, 43.6, 0.46, -0.45, K.woodDark, 0.02);
-  kit.box('wood', 43.5, 0.46, -1.0, 43.56, 1.1, -0.45, K.woodDark, 0.02);
+  kit.box('wood', 43.1, 0.4, -2.75, 43.6, 0.46, -2.2, K.woodDark, 0.02);
+  kit.box('wood', 43.5, 0.46, -2.75, 43.56, 1.1, -2.2, K.woodDark, 0.02);
   climbingVine(kit, new THREE.Vector3(44, 0, 5.4), 5.2, new THREE.Vector3(-1, 0, 0), rng, 1);
   for (let i = 0; i < 3; i++) hangingVine(kit, new THREE.Vector3(42.7, 2.55, -5 + i * 2.2), 0.7 + rng() * 0.9, rng, 1);
 }
@@ -383,13 +384,68 @@ export function cornerHouse(kit: DecorKit, rng: () => number): void {
 export function screenWall(kit: DecorKit, signs: { board: SignBatch; lit: SignBatch }, x0: number, x1: number, z0: number, z1: number, h: number, pattern: boolean): void {
   kit.box('concrete', x0 - 0.06, h, z0 - 0.06, x1 + 0.06, h + 0.12, z1 + 0.06, K.terraF, 0.02, { ao: 0 });
   if (!pattern) return;
-  const tile = Math.min(2.4, h - 0.4);
-  const n = Math.max(1, Math.round((x1 - x0) / tile));
+  // Real breeze-block scale: one atlas tile = 3 × 3 blocks of ~0.4 m.
+  const rows = Math.max(1, Math.round((h - 0.3) / 1.2));
+  const th = (h - 0.3) / rows;
+  const n = Math.max(1, Math.round((x1 - x0) / 1.2));
   const tw = (x1 - x0) / n;
-  for (let i = 0; i < n; i++) {
-    const cx = x0 + tw * (i + 0.5);
-    signs.board.quad(REGION.breeze, new THREE.Vector3(cx, h / 2 + 0.1, z0 - 0.012), tw, tile, new THREE.Vector3(0, 0, -1));
-    signs.board.quad(REGION.breeze, new THREE.Vector3(cx, h / 2 + 0.1, z1 + 0.012), tw, tile, new THREE.Vector3(0, 0, 1));
+  for (let r = 0; r < rows; r++) {
+    const cy = 0.15 + th * (r + 0.5);
+    for (let i = 0; i < n; i++) {
+      const cx = x0 + tw * (i + 0.5);
+      signs.board.quad(REGION.breeze, new THREE.Vector3(cx, cy, z0 - 0.012), tw, th, new THREE.Vector3(0, 0, -1));
+      signs.board.quad(REGION.breeze, new THREE.Vector3(cx, cy, z1 + 0.012), tw, th, new THREE.Vector3(0, 0, 1));
+    }
+  }
+}
+
+/**
+ * The long spawn screen wall (x ±26 at z ±40..40.4, 3.2 m): the spawn side
+ * carries a painted mural (Halcyon Heights / Moonbeam) lit by little flood
+ * lamps and flanked by breeze-block relief; the lot side gets breeze panels and
+ * overgrowth along the coping. sz = +1 Halcyon (south), −1 Bloom (north).
+ */
+export function spawnWall(kit: DecorKit, signs: { board: SignBatch; lit: SignBatch }, sz: number, rng: () => number): void {
+  const zIn = 40.4 * sz + 0.012 * sz; // spawn-facing face
+  const zOut = 40 * sz - 0.012 * sz; // lot-facing face
+  const nIn = new THREE.Vector3(0, 0, sz);
+  const nOut = new THREE.Vector3(0, 0, -sz);
+  const mw = 23.4;
+  const mh = 2.7;
+  signs.board.quad(sz > 0 ? REGION.muralH : REGION.muralB, new THREE.Vector3(0, 0.3 + mh / 2, zIn), mw, mh, nIn);
+  // Mural plinth + flood lamps on slim arms over the coping.
+  kit.box('concrete', -mw / 2 - 0.3, 0, Math.min(zIn, zIn + 0.3 * sz), mw / 2 + 0.3, 0.26, Math.max(zIn, zIn + 0.3 * sz), K.terraF, 0.03, { ao: 0.2 });
+  for (const x of [-9, -3, 3, 9]) {
+    const a = new THREE.Vector3(x, 3.3, 40.2 * sz);
+    const b = new THREE.Vector3(x, 3.55, 41.2 * sz);
+    kit.tube('chrome', a, b, 0.03, K.dark, 4);
+    kit.cyl('chrome', x, 3.35, 41.25 * sz, 0.16, 0.1, 0.22, K.chrome, 8);
+    kit.ball('glow', x, 3.33, 41.25 * sz, 0.12, 0.05, 0.12, rgb(ENV.glowGold, 1.4), 0, { drift: 0 });
+  }
+  // Breeze-block relief flanking the mural (spawn side) and across the lot side.
+  const rows = 2;
+  const th = (3.2 - 0.3) / rows;
+  const panel = (x0: number, x1: number, z: number, n: THREE.Vector3): void => {
+    const cols = Math.max(1, Math.round((x1 - x0) / 1.2));
+    const tw = (x1 - x0) / cols;
+    for (let r = 0; r < rows; r++) for (let i = 0; i < cols; i++) signs.board.quad(REGION.breeze, new THREE.Vector3(x0 + tw * (i + 0.5), 0.15 + th * (r + 0.5), z), tw, th, n);
+  };
+  panel(-25.6, -12.4, zIn, nIn);
+  panel(12.4, 25.6, zIn, nIn);
+  panel(-9.6, 9.6, zOut, nOut);
+  // Overgrowth over the coping (heavier on the Bloom side).
+  const strands = sz > 0 ? 9 : 16;
+  for (let i = 0; i < strands; i++) {
+    const x = -25 + rng() * 50;
+    const side = rng() < 0.5 ? 1 : -1;
+    hangingVine(kit, new THREE.Vector3(x, 3.3, (40.2 + side * 0.28) * sz), 0.6 + rng() * (sz > 0 ? 1.2 : 2.2), rng, 1.3);
+  }
+  climbingVine(kit, new THREE.Vector3(-25.6, 0, zIn), 3.1, nIn, rng, 1.2);
+  climbingVine(kit, new THREE.Vector3(25.4, 0, zIn), 2.6, nIn, rng, 1.2);
+  if (sz < 0) {
+    climbingVine(kit, new THREE.Vector3(-13.2, 0, zIn), 3.0, nIn, rng, 1.5);
+    climbingVine(kit, new THREE.Vector3(11.8, 0, zIn), 2.4, nIn, rng, 1.5);
+    drapedVine(kit, new THREE.Vector3(4, 3.25, zIn), new THREE.Vector3(18, 3.25, zIn), 0.5, rng, 5);
   }
 }
 
@@ -430,7 +486,8 @@ export function chapel(kit: DecorKit, signs: { board: SignBatch; lit: SignBatch 
       const xa1 = -hw1 + (2 * hw1 * c) / (cols * 2);
       const xb1 = -hw1 + (2 * hw1 * (c + 1)) / (cols * 2);
       const tint = [ENV.glowGold, ENV.pastelYellow, ENV.terracottaFaded, ENV.pastelPink][Math.floor(rng() * 4)];
-      kit.quad('glow', new THREE.Vector3(xa + 0.06, y0 + 0.06, z0 + 0.3), new THREE.Vector3(xb - 0.06, y0 + 0.06, z0 + 0.3), new THREE.Vector3(xb1 - 0.06, y1 - 0.06, z0 + 0.3), new THREE.Vector3(xa1 + 0.06, y1 - 0.06, z0 + 0.3), rgb(tint, 0.55 + rng() * 0.25), { drift: 0 });
+      // Wound to face −Z: the lit gable looks back over the Halcyon lot.
+      kit.quad('glow', new THREE.Vector3(xa + 0.06, y0 + 0.06, z0 + 0.3), new THREE.Vector3(xa1 + 0.06, y1 - 0.06, z0 + 0.3), new THREE.Vector3(xb1 - 0.06, y1 - 0.06, z0 + 0.3), new THREE.Vector3(xb - 0.06, y0 + 0.06, z0 + 0.3), rgb(tint, 0.55 + rng() * 0.25), { drift: 0 });
     }
   }
   kit.box('paint', -0.12, eave, z0 + 0.2, 0.12, peak, z0 + 0.4, K.bone, 0);
@@ -450,9 +507,52 @@ export function chapel(kit: DecorKit, signs: { board: SignBatch; lit: SignBatch 
   // Chapel sign on the screen wall (faces the parking lot, north) + low planters.
   signs.board.quad(REGION.chapel, new THREE.Vector3(-14, 1.9, 39.94), 4.4, 1.1, new THREE.Vector3(0, 0, -1));
   signs.board.quad(REGION.poster1, new THREE.Vector3(14, 1.6, 39.94), 1.2, 1.8, new THREE.Vector3(0, 0, -1));
-  // Flagpole with a bone/terracotta pennant (static).
-  kit.tube('chrome', new THREE.Vector3(-20, 0, 52.5), new THREE.Vector3(-20, 9, 52.5), 0.06, K.chrome, 6);
-  kit.quad('fabric', new THREE.Vector3(-20, 8.8, 52.5), new THREE.Vector3(-17.6, 8.5, 52.3), new THREE.Vector3(-17.6, 7.7, 52.3), new THREE.Vector3(-20, 7.4, 52.5), K.terraF, { drift: 0.1 });
+  // Flagpole with a bone/terracotta pennant (static; just outside the bounds).
+  const fz = 55.4;
+  kit.tube('chrome', new THREE.Vector3(-20, 0, fz), new THREE.Vector3(-20, 9, fz), 0.06, K.chrome, 6);
+  const fa = new THREE.Vector3(-20, 8.8, fz);
+  const fb = new THREE.Vector3(-17.6, 8.5, fz - 0.2);
+  const fc = new THREE.Vector3(-17.6, 7.7, fz - 0.2);
+  const fd = new THREE.Vector3(-20, 7.4, fz);
+  kit.quad('fabric', fa, fb, fc, fd, K.terraF, { drift: 0.1 });
+  kit.quad('fabric', fa, fd, fc, fb, K.terraF, { drift: 0.1 });
+  // Letter-board marquee at the chapel gate, facing the lot.
+  for (const x of [-9.9, -6.1]) kit.box('concrete', x - 0.12, 0, 55.3, x + 0.12, 2.35, 55.54, K.bone, 0.03, { base: 0 });
+  kit.box('plaster', -10.2, 1.25, 55.36, -5.8, 2.4, 55.48, K.terraF, 0.03, { ao: 0 });
+  signs.board.quad(REGION.marquee, new THREE.Vector3(-8, 1.82, 55.34), 4.0, 1.0, new THREE.Vector3(0, 0, -1));
+  // The chapel's cream mini-bus, parked for good beyond the lot.
+  const bx0 = 17.5;
+  const bx1 = 27.5;
+  kit.box('paint', bx0, 0.45, 55.8, bx1, 3.0, 58.2, K.bone, 0.3, { base: 0 });
+  kit.box('paint', bx0 - 0.01, 0.45, 55.79, bx1 + 0.01, 1.05, 58.21, K.terraF, 0.2, { base: 0 });
+  kit.box('window', bx0 + 0.6, 1.6, 55.77, bx1 - 1.9, 2.45, 58.23, mix(K.glassTint, K.dark, 0.3), 0.03, { ao: 0 });
+  kit.box('window', bx0 - 0.03, 1.5, 56.2, bx0 + 0.1, 2.5, 57.8, mix(K.glassTint, K.dark, 0.3), 0.03, { ao: 0 });
+  signs.board.quad(REGION.chapel, new THREE.Vector3(23, 1.25, 55.77), 3.2, 0.8, new THREE.Vector3(0, 0, -1));
+  for (const x of [bx0 + 1.7, bx1 - 1.9]) {
+    const g = new THREE.CylinderGeometry(0.45, 0.45, 2.5, 12);
+    g.rotateX(Math.PI / 2);
+    kit.geo('paint', g, new THREE.Matrix4().makeTranslation(x, 0.42, 57), rgb('#2f2c2a'), { drift: 0.05 });
+    g.dispose();
+  }
+  drapedVine(kit, new THREE.Vector3(bx0 + 1, 3.0, 55.8), new THREE.Vector3(bx1 - 2, 3.0, 55.8), -0.05, rng, 3);
+  // Chalk hopscotch + a kid's wagon left in the lot.
+  const chalk = mix(K.bone, rgb(ENV.pastelPink), 0.3);
+  for (const [cx, cz] of [
+    [-22, 47],
+    [-22, 47.9],
+    [-22.45, 48.8],
+    [-21.55, 48.8],
+    [-22, 49.7],
+    [-22.45, 50.6],
+    [-21.55, 50.6],
+  ] as const) {
+    kit.box('paint', cx - 0.42, 0.045, cz - 0.42, cx + 0.42, 0.05, cz - 0.36, chalk, 0, { ao: 0, drift: 0.3 });
+    kit.box('paint', cx - 0.42, 0.045, cz + 0.36, cx + 0.42, 0.05, cz + 0.42, chalk, 0, { ao: 0, drift: 0.3 });
+    kit.box('paint', cx - 0.42, 0.045, cz - 0.42, cx - 0.36, 0.05, cz + 0.42, chalk, 0, { ao: 0, drift: 0.3 });
+    kit.box('paint', cx + 0.36, 0.045, cz - 0.42, cx + 0.42, 0.05, cz + 0.42, chalk, 0, { ao: 0, drift: 0.3 });
+  }
+  kit.boxR('paint', -27.6, 0.3, 51.8, 0.55, 0.22, 0.95, 0.5, K.terra, 0.04);
+  kit.tube('chrome', new THREE.Vector3(-27.4, 0.3, 51.3), new THREE.Vector3(-26.9, 0.55, 50.6), 0.02, K.dark, 4);
 }
 
 export function dinerAndGas(kit: DecorKit, signs: { board: SignBatch; lit: SignBatch }, rng: () => number): void {
@@ -499,4 +599,36 @@ export function dinerAndGas(kit: DecorKit, signs: { board: SignBatch; lit: SignB
   signs.board.quad(REGION.poster2, new THREE.Vector3(-14, 1.6, -39.94), 1.2, 1.8, new THREE.Vector3(0, 0, 1));
   signs.board.quad(REGION.watch, new THREE.Vector3(14, 1.7, -39.94), 1.1, 0.85, new THREE.Vector3(0, 0, 1));
   drapedVine(kit, new THREE.Vector3(-26, 3.1, -40.3), new THREE.Vector3(-9, 3.1, -40.3), 0.4, rng, 4);
+  // Beyond the diner lot: an abandoned pickup with a camper shell, swallowed
+  // by glowing vines, and a tipped dumpster.
+  const px0 = -31;
+  const px1 = -25.8;
+  kit.box('paint', px0, 0.4, -57.4, px1, 1.25, -55.3, rgb(ENV.sage), 0.18, { base: 0 });
+  kit.box('paint', px1 - 1.7, 1.25, -57.3, px1 - 0.1, 2.05, -55.4, rgb(ENV.sage), 0.14, { base: 0 });
+  kit.box('window', px1 - 1.6, 1.4, -57.33, px1 - 0.3, 1.95, -55.37, mix(K.glassTint, K.dark, 0.4), 0.03, { ao: 0 });
+  kit.box('paint', px0 + 0.1, 1.25, -57.3, px1 - 1.9, 2.3, -55.4, K.bone, 0.2, { base: 0 });
+  for (const x of [px0 + 1, px1 - 1]) {
+    const g = new THREE.CylinderGeometry(0.4, 0.4, 2.2, 12);
+    g.rotateX(Math.PI / 2);
+    kit.geo('paint', g, new THREE.Matrix4().makeTranslation(x, 0.36, -56.35), rgb('#2f2c2a'), { drift: 0.05 });
+    g.dispose();
+  }
+  climbingVine(kit, new THREE.Vector3(px0 + 1.5, 0, -55.25), 2.2, new THREE.Vector3(0, 0, 1), rng, 1.6);
+  drapedVine(kit, new THREE.Vector3(px0 + 0.2, 2.3, -55.3), new THREE.Vector3(px1 - 2, 2.3, -55.3), 0.3, rng, 4);
+  kit.boxE('metal', new THREE.Vector3(4.5, 0.8, -56.2), new THREE.Euler(0, 0.35, Math.PI / 2 - 0.12), new THREE.Vector3(1.6, 2.2, 1.5), mix(rgb(ENV.sage), K.dark, 0.35), 0.06);
+  for (let i = 0; i < 6; i++) kit.boxR('paint', 2.5 + rng() * 4, 0.06, -55.2 + rng() * 1.1, 0.3 + rng() * 0.3, 0.1, 0.25, rng() * Math.PI, mix(K.bone, K.terraF, rng()), 0);
+  // Moss creeping out of the wall's shade across the lot (the Bloom's side):
+  // dark sage cushions pricked with tiny glowing buds.
+  for (let i = 0; i < Math.round(22 * kit.detail); i++) {
+    const x = -34 + rng() * 62;
+    const z = -41.2 - rng() * rng() * 11;
+    const r = 0.3 + rng() * 0.5;
+    const pad = new THREE.CircleGeometry(1, kit.low ? 9 : 14);
+    pad.rotateX(-Math.PI / 2);
+    kit.geo('foliage', pad, new THREE.Matrix4().makeTranslation(x, 0.045, z).multiply(new THREE.Matrix4().makeScale(r * 1.4, 1, r)), mix(rgb(ENV.olive), rgb(ENV.sage), rng() * 0.5), { drift: 0.25 });
+    pad.dispose();
+    for (let b = 0; b < 3 + Math.floor(rng() * 3); b++) {
+      kit.ball('glow', x + (rng() - 0.5) * r * 2, 0.07, z + (rng() - 0.5) * r * 1.4, 0.035, 0.035, 0.035, rgb(rng() < 0.7 ? ENV.glowChartreuse : ENV.glowGold, 1.6), 0, { drift: 0 });
+    }
+  }
 }

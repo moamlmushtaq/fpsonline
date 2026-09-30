@@ -11,8 +11,9 @@ import { ENV } from '../../../engine/palette';
 import { type DecorKit, type Kind, type RGB, mix, rgb, vnoise } from './kit';
 
 export const C = {
-  lawn: mix(rgb(ENV.sage), rgb(ENV.sand), 0.25),
-  lawnDark: rgb(ENV.olive),
+  // Sun-bleached golden-sage lawns; patches drift toward deeper sage (never mud).
+  lawn: mix(rgb(ENV.sage), rgb(ENV.sand), 0.42),
+  lawnDark: mix(rgb(ENV.olive), rgb(ENV.sage), 0.45),
   dry: rgb(ENV.sand),
   asphalt: rgb('#978f84'),
   asphaltDark: rgb('#857d72'),
@@ -49,6 +50,32 @@ export function ground(kit: DecorKit, kind: Kind, x0: number, z0: number, x1: nu
   }
 }
 
+/**
+ * A grass / weed tuft: a fan of thin pointed blades (single triangles, double-
+ * sided 'stem' batch) whose tips sway. Blades — not cards — so it never reads
+ * as a flat paper cut-out.
+ */
+export function tuft(kit: DecorKit, x: number, z: number, h: number, col: RGB, rng: () => number, y = 0.03): void {
+  const blades = kit.low ? 3 : 5;
+  const a0 = rng() * Math.PI * 2;
+  const g = new THREE.BufferGeometry();
+  const pos: number[] = [];
+  for (let i = 0; i < blades; i++) {
+    const a = a0 + (i / blades) * Math.PI * 2 + (rng() - 0.5) * 0.6;
+    const lean = 0.25 + rng() * 0.45;
+    const bh = h * (0.6 + rng() * 0.5);
+    const bw = 0.025 + rng() * 0.02;
+    const ca = Math.cos(a);
+    const sa = Math.sin(a);
+    // Base across the blade (perpendicular to its lean), tip leaning outward.
+    pos.push(x - sa * bw, y, z + ca * bw, x + sa * bw, y, z - ca * bw, x + ca * bh * lean, y + bh, z + sa * bh * lean);
+  }
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.computeVertexNormals();
+  kit.geo('stem', g, new THREE.Matrix4(), col, { drift: 0.15, shade: (_x, yy) => 0.7 + 0.45 * Math.min(1, (yy - y) / h), sway: (_x, yy) => Math.max(0, (yy - y) / h) * 0.3 });
+  g.dispose();
+}
+
 /** Dashed line along X or Z. */
 function dashes(kit: DecorKit, along: 'x' | 'z', fixed: number, from: number, to: number, y: number, w: number, dash: number, gap: number, col: RGB): void {
   for (let t = from; t < to; t += dash + gap) {
@@ -65,7 +92,7 @@ function curb(kit: DecorKit, x0: number, z0: number, x1: number, z1: number): vo
 
 export function buildGround(kit: DecorKit, rng: () => number): void {
   // ── Lawns: every outdoor ground solid top (minus the pool hole & mall) ──
-  const lawn = (x0: number, z0: number, x1: number, z1: number): void => ground(kit, 'grass', x0, z0, x1, z1, 0, C.lawn, C.lawnDark, 0.55);
+  const lawn = (x0: number, z0: number, x1: number, z1: number): void => ground(kit, 'grass', x0, z0, x1, z1, 0, C.lawn, C.lawnDark, 0.5);
   lawn(-54, 12, 54, 54);
   lawn(-54, -54, 54, -12);
   lawn(-54, -12, -45, 12);
@@ -178,9 +205,38 @@ export function buildGround(kit: DecorKit, rng: () => number): void {
   ground(kit, 'tile', -47.5, -5, -45, 5, 0.035, C.deck);
   ground(kit, 'tile', -33, -5, -30, 5, 0.035, C.deck);
 
+  // ── Overgrowth: tufts gathering along fences, walls and lawn edges ──
+  const isLawn = (x: number, z: number): boolean => {
+    const ax = Math.abs(x);
+    const az = Math.abs(z);
+    if (x > 29.5 && x < 45.5) return false; // main street + sidewalks
+    if (ax < 17.5 && az > 11.5 && az < 40.5) return false; // parking lots + mall apron
+    if (az > 39.5 && x > -36.5 && x < 30.5) return false; // spawn lots
+    if (ax < 16 && az < 13) return false; // mall
+    if (x > -33.5 && x < -14.5 && az < 12.5) return false; // service alley
+    if (x > 14.5 && x < 31 && az < 12.5) return false; // cross street
+    if (x > -47.8 && x < -29.8 && az < 12.3) return false; // pool deck
+    if (ax > 16.5 && ax < 30.5 && az > 11.5 && az < 27.5) return false; // houses + garage rows
+    if (x > 43.5 && az < 6.5) return false; // corner house
+    if (x < -47 && az < 4) return false; // pool cabana
+    if (x < -44.5 && az > 14.5 && az < 36) return false; // west bungalows + drives
+    if (x > 45.5 && az > 14.5 && az < 36) return false; // east bungalows + drives
+    return true;
+  };
+  const grassTuft = mix(rgb(ENV.sage), rgb(ENV.olive), 0.25);
+  const tufts = Math.round(420 * kit.detail);
+  for (let i = 0, n = 0; i < tufts * 3 && n < tufts; i++) {
+    const x = -53.5 + rng() * 107;
+    const z = -53.5 + rng() * 107;
+    if (!isLawn(x, z)) continue;
+    n++;
+    const k = 1 + Math.floor(rng() * 3);
+    for (let j = 0; j < k; j++) tuft(kit, x + (rng() - 0.5) * 0.7, z + (rng() - 0.5) * 0.7, 0.25 + rng() * 0.35, mix(grassTuft, rgb(ENV.sand), rng() * 0.45), rng);
+  }
+
   // ── Details: cracks with weeds, oil stains, leaf litter ──
   const count = Math.round(140 * kit.detail);
-  const weed = mix(C.lawnDark, rgb(ENV.glowChartreuse), 0.18);
+  const weed = mix(mix(rgb(ENV.sage), rgb(ENV.sand), 0.2), rgb(ENV.glowChartreuse), 0.22);
   for (let i = 0; i < count; i++) {
     const x = -52 + rng() * 104;
     const z = -52 + rng() * 104;
@@ -198,9 +254,7 @@ export function buildGround(kit: DecorKit, rng: () => number): void {
       const tufts = 2 + Math.floor(rng() * 3);
       for (let t = 0; t < tufts; t++) {
         const u = (rng() - 0.5) * len;
-        const tx = x + Math.cos(ang) * u;
-        const tz = z - Math.sin(ang) * u;
-        kit.boxR('foliage', tx, 0.12, tz, 0.08, 0.26, 0.28, rng() * Math.PI, weed, 0, { drift: 0.2, base: -Infinity });
+        tuft(kit, x + Math.cos(ang) * u, z - Math.sin(ang) * u, 0.18 + rng() * 0.22, mix(weed, rgb(ENV.olive), rng() * 0.35), rng);
       }
     }
   }

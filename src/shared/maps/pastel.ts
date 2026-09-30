@@ -2,7 +2,8 @@
 // HALCYON FRONT — "Pastel": an abandoned 1970s suburb (Halcyon Heights) swallowed
 // by glowing vines, in warm golden late-afternoon light. Close-range, vertical.
 //
-// Collision is deliberately lean (≤ 120 solids, see tests/shared/nav.test.ts):
+// Collision is deliberately lean (exactly at the 120-solid cap of
+// tests/shared/nav.test.ts — anything new must replace something):
 // every box is a gameplay decision; all rounded / angled / fine detail is drawn
 // by the client decor (src/client/world/maps/pastel.ts), which also draws every
 // solid styled 'hidden' (ground, pool, cars, stairs, escalators, fountain…).
@@ -16,9 +17,9 @@
 //        │ W1'+carport   fence   ¦vines¦          [pylon]        ¦vines¦   car   E1'+carport│
 //        │  bungalow  shed       [W2' 2-storey]   parking lot    [E2' 2-storey] ┃street┃   │
 //  z=-12 │  cabana   ≈≈≈curtain≈≈≈[garage row]┏━━━ STARLIGHT MALL ━━━┓[garage row]  van     │
-//        │ ▐pool▌   ┌──POOL──┐ ▒screen▒ grand┃gal esc │ esc gal┃grand ▒shelter▒ ┌truck┐corner│
-//  z=  0 │  house   │~deep~/ │  (A)    stair→┃ W  ══bridge◆══  E ┃←stair       │ (C) │house │
-//        │          └────────┘ ▒screen▒     ┃gal esc │ esc gal┃      ▒shelter▒ └─────┘      │
+//        │ ▐pool▌   ┌──POOL──┐ ▒screen▒ grand┃gal esc │ esc gal┃grand ▒shelter▒     (C)  corner│
+//  z=  0 │  house   │~deep~/ │  (A)    stair→┃ W  ══bridge◆══  E ┃←stair  ████ wreck ████house │
+//        │          └────────┘ ▒screen▒     ┃gal esc │ esc gal┃      ▒shelter▒            │
 //  z=+12 │          ≈≈≈curtain≈≈≈[garage row]┗━━━ fountain (B) ━━━┛[garage row]  van        │
 //        │  bungalow  shed       [W2 2-storey]    parking lot    [E2 2-storey]  ┃street┃   │
 //        │ W1+carport    fence   ¦vines¦          [pylon]        ¦vines¦   car   E1+carport │
@@ -30,27 +31,35 @@
 // LANES   West = BACKYARDS: fences to mantle, tool shed, wagon → carport → roof
 //         chain, vine-curtain pergolas (walk through, no sight / bullets), the
 //         drained kidney pool dip (A) with a sloped shallow end.
-//         Centre = STARLIGHT MALL: parking lot (wagon, sedan, pylon base) → two
+//         Centre = STARLIGHT MALL: parking lot (wagon, sedan, the solid 12.6 m
+//         STARLIGHT pylon monolith that also closes the roof-to-roof line through
+//         both houses' door slots) → two
 //         doors per end, each fronted by a double escalator that blocks the
 //         through-mall sightline → flooded atrium, fountain island (B) with the
 //         "Sunrise" screen, bridge (Sunspear) and galleries; grand stairs from
 //         both alleys up to the galleries.
 //         East = MAIN STREET: parked cars, camper vans (jump-mantle), bus shelter,
-//         the crashed soft-serve van across the intersection (C), carport chain.
+//         the crashed soft-serve van (C): its wreck seals the street and both
+//         sidewalks (x 29.6..44), so the lane bends through the intersection and
+//         no sidewalk line runs exit-to-exit. Carport chain.
 //         Garage rows close the mall corners, so the parking lots only feed the
 //         mall and lanes cross mid-map through the alleys, near spawn through the
 //         enterable two-storey houses (patio doors both ends, stair, balcony,
-//         jump-mantle roof) and the vine pergolas behind them.
-// SPAWNS  Behind unmantleable screen walls; exits west and east only. Verified
+//         jump-mantle roof) and the vine pergolas behind them (4.4 m, above the
+//         carport-roof eye line). Waist-high picnic table in each back garden.
+// SPAWNS  Behind unmantleable screen walls; exits west and east only; every
+//         spawn faces its nearest exit along the painted mural wall. Verified
 //         in tests/shared/map-pastel.test.ts: never visible from the enemy half.
 // ZONES   A pool (−39, 0) · B atrium fountain (0, 0) · C intersection (37, 0).
 // PICKUP  Sunspear on the mall bridge (0, 3.2, 0), above the fountain.
 // HEIGHTS ground 0 · mall floor −0.35 (water −0.2) · pool −1.2 · car roofs 1.3 ·
 //         vans 2.2 · carports 2.55 · bungalow roofs 2.95 · house upper floors /
 //         balconies 2.7 · house roofs 5.1 · garages 5 · mall galleries & bridge
-//         3.2 · mall walls 8 (decor roof 8.7, glass vault peak 12.3).
-// SIGHT   Ground-level lines ≤ ~60 m (door slivers only); elevated lines from the
-//         mall bridge through its side windows are the one deliberate long view.
+//         3.2 · mall walls 8 (decor roof 8.7, glass vault peak 12.3) · picnic
+//         tables 0.78 · wreck 3.2 · pergolas 4.4 · pylon 12.6.
+// SIGHT   Ground-level lines ≤ ~70 m, and only as slivers through two doors of
+//         the mall; nothing runs spawn-exit to spawn-exit or roof to roof across
+//         the map (tests/shared/map-pastel.test.ts pins the known lanes shut).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { MapKit, mirrorSpawnsZ, spawn, v, yawToward } from '../sim/map-kit';
@@ -141,8 +150,12 @@ k.box(-29.5, 0, 6, -22, 2.6, 6.4, 'concrete', 'breeze', { color: C_SAND });
 k.box(-30, 0, 12, -15, 5.0, 15.6, 'plaster', 'house', { color: C_BLUE });
 k.box(15, 0, 12, 30, 5.0, 15.6, 'plaster', 'house', { color: C_YELLOW });
 k.mirrorZ(m);
-// Crashed ice-cream step van across the intersection.
-k.box(31, 0, -1.2, 42.8, 3.2, 1.2, 'metal', 'hidden');
+// Crashed ice-cream step van across the intersection: it ploughed through the
+// corner-house porch, so the wreck (van + toppled roadside sign + freezer +
+// porch debris) seals the whole street and both sidewalks — the east lane
+// bends through the intersection here and no sidewalk sniper line runs from
+// one spawn exit to the other.
+k.box(29.6, 0, -1.2, 44, 3.2, 1.2, 'metal', 'hidden');
 // Two-storey corner house (the old radio still plays on its porch).
 k.box(44, 0, -6, 54, 5.5, 6, 'plaster', 'house', { color: C_YELLOW });
 
@@ -158,16 +171,21 @@ k.mirrorX(w1);
 // Backyard: tool shed (jump-mantle roof), privacy fence (1.2 m mantle).
 k.box(-42, 0, 19, -39, 2.3, 22, 'wood', 'shed', { color: C_BLUE });
 k.box(-45, 0, 34, -37, 1.2, 34.3, 'wood', 'hidden');
-// Parking lot cover: station wagon, sedan, and the STARLIGHT pylon's brick base
-// (tall cover in line with the houses' patio doors).
+// Parking lot cover: station wagon, sedan, and the STARLIGHT pylon — one solid
+// terrazzo monolith (tall cover in line with the houses' patio doors; it also
+// closes the roof-to-roof line that runs through both houses' door slots).
 k.box(-10, 0, 21, -8, 1.3, 25.5, 'metal', 'hidden');
 k.box(6, 0, 27, 10.5, 1.3, 29, 'metal', 'hidden');
-k.box(-1.3, 0, 18.5, 1.3, 3.0, 24.5, 'plaster', 'hidden');
+k.box(-0.8, 0, 18.5, 0.8, 12.6, 24.5, 'plaster', 'hidden');
 // Street: parked car (staggered against the far-curb wagon).
 k.box(41.5, 0, 19, 43.5, 1.3, 23.5, 'metal', 'hidden');
-// Vine-draped pergolas behind the two-storey houses (break the back-lot corridor).
-k.box(-24, 0.2, 27, -23.8, 3.6, 40, 'foliage', 'hidden', { walkThrough: true });
-k.box(23.8, 0.2, 27, 24, 3.6, 40, 'foliage', 'hidden', { walkThrough: true });
+// Vine-draped pergolas behind the two-storey houses (break the back-lot
+// corridor; 4.4 m so the carport-roof → carport-roof line is closed too).
+k.box(-24, 0.2, 27, -23.8, 4.4, 40, 'foliage', 'hidden', { walkThrough: true });
+k.box(23.8, 0.2, 27, 24, 4.4, 40, 'foliage', 'hidden', { walkThrough: true });
+// Picnic table in each back garden (waist-high: mantle onto it, cover when
+// crouched). South: lunch boxes still laid out; north: knocked on its side.
+k.box(-36.6, 0, 23.05, -34.4, 0.78, 23.95, 'wood', 'hidden');
 // Spawn screen walls (≥ 2.8 m: cannot be mantled). Exits west and east.
 k.box(-54, 0, 40, -36, 2.8, 40.4, 'concrete', 'breeze', { color: C_SAND });
 k.box(-26, 0, 40, 26, 3.2, 40.4, 'plaster', 'wall', { color: C_BONE });
@@ -193,15 +211,18 @@ k.mirrorZ(m);
 
 // ── Spawns ──────────────────────────────────────────────────────────────────
 // Halcyon (+Z): chapel lot and back gardens, all behind the screen walls.
+// Each spawn faces its nearest exit (west or east), so the first frame after a
+// respawn shows the way out along the painted mural wall.
+const exitFacing = (x: number, z: number): number => yawToward(x, z, x < 0 ? -31 : 31, 38);
 const south: SpawnPoint[] = [
-  spawn(-50, 0, 44, 0, 0),
-  spawn(-18, 0, 45, 0, 0),
-  spawn(-10, 0, 47.5, 0, 0),
-  spawn(-3, 0, 50, 0, 0),
-  spawn(3, 0, 50, 0, 0),
-  spawn(10, 0, 47.5, 0, 0),
-  spawn(18, 0, 45, 0, 0),
-  spawn(50, 0, 44, 0, 0),
+  spawn(-50, 0, 44, exitFacing(-50, 44), 0),
+  spawn(-18, 0, 45, exitFacing(-18, 45), 0),
+  spawn(-10, 0, 47.5, exitFacing(-10, 47.5), 0),
+  spawn(-3, 0, 50, exitFacing(-3, 50), 0),
+  spawn(3, 0, 50, exitFacing(3, 50), 0),
+  spawn(10, 0, 47.5, exitFacing(10, 47.5), 0),
+  spawn(18, 0, 45, exitFacing(18, 45), 0),
+  spawn(50, 0, 44, exitFacing(50, 44), 0),
 ];
 // FFA: spread over every level and lane (mirrored).
 const ffaHalf: SpawnPoint[] = [
@@ -236,18 +257,18 @@ export const PASTEL: MapDef = {
   lighting: {
     mood: 'golden',
     sunDir: v(-0.813, 0.2845, 0.508),
-    sunColor: '#ffcf86',
-    sunIntensity: 3.1,
-    skyZenith: '#8fb8d6',
-    skyHorizon: '#f3cbb4',
-    sunGlow: '#ffd9a0',
-    hemiSky: '#fbe3bd',
-    hemiGround: '#b39a78',
-    hemiIntensity: 0.95,
-    fogColor: '#efd0b6',
-    fogDensity: 0.0045,
-    exposure: 1.12,
-    bloom: 0.9,
+    sunColor: '#ffc987',
+    sunIntensity: 3.3,
+    skyZenith: '#86b4d6',
+    skyHorizon: '#f5c9b3',
+    sunGlow: '#ffd59c',
+    hemiSky: '#d9d7dc',
+    hemiGround: '#9c8470',
+    hemiIntensity: 0.68,
+    fogColor: '#efcdb8',
+    fogDensity: 0.0034,
+    exposure: 1.0,
+    bloom: 0.62,
     stars: 0,
     weather: 'spores',
   },
@@ -256,12 +277,14 @@ export const PASTEL: MapDef = {
     echo: 0.35,
     ambience: 'suburb',
     emitters: [
-      { kind: 'radio', pos: v(46.5, 1, 3.5), radius: 12 },
+      // The transistor radio on the corner-house porch rail (decor: houses.ts).
+      { kind: 'radio', pos: v(42.8, 1.1, -3.3), radius: 12 },
       { kind: 'wind_chime', pos: v(-31, UP + 1.8, 21.5), radius: 9 },
       { kind: 'wind_chime', pos: v(31, UP + 1.8, -21.5), radius: 9 },
       { kind: 'drip', pos: v(-5, 4, 6), radius: 11 },
       { kind: 'drip', pos: v(6, 4, -5), radius: 11 },
-      { kind: 'hum', pos: v(0, 3, -46), radius: 10 },
+      // The diner's OPEN neon, audible from the Bloom lot.
+      { kind: 'hum', pos: v(-12, 2.4, -56), radius: 11 },
     ],
   },
   rocket: { pos: v(-330, -4, -200), scale: 1.4 },

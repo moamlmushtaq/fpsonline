@@ -275,6 +275,8 @@ export class GameHud implements Hud {
     // Reset transient feedback so the next match starts clean.
     this.feed.replaceChildren();
     this.toasts.replaceChildren();
+    this.zonesEl.replaceChildren();
+    this.ffaEl.replaceChildren();
     this.objectives.clear();
     this.sb.show(false, [], this.mode, this.teamScores);
     this.subs.classList.remove('is-on');

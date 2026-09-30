@@ -3,7 +3,10 @@
 //
 // One transparent plane per body of water: sky-tinted fresnel reflection over
 // the terrazzo, slow crossing ripples, warm sun glints and soft sparkle. No
-// render targets (phones): the "reflection" is the painted sky gradient.
+// render targets (phones): the "reflection" is analytic — inside the mall the
+// reflected ray is traced to the ceiling plane: under the broken glass vault it
+// shows the sky, elsewhere the warm dark soffits, so the flood reads as a black
+// mirror with the skylight glowing in it.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as THREE from 'three';
@@ -31,6 +34,7 @@ uniform vec3 uHorizon;
 uniform vec3 uSun;
 uniform vec3 uSunDir;
 uniform float uOpacity;
+uniform vec3 uInterior;
 varying vec3 vWorld;
 
 vec2 wave(vec2 p, vec2 d, float f, float s, float t) {
@@ -61,8 +65,15 @@ void main() {
   float fres = pow(1.0 - max(dot(n, v), 0.0), 3.0);
   vec3 r = reflect(-v, n);
   vec3 refl = mix(uHorizon, uSky, smoothstep(0.0, 0.6, r.y));
+  // Mall interior: ceiling-plane trace (vault opening |x| < 10, |z| < 11).
+  float inMall = step(abs(vWorld.x), 15.2) * step(abs(vWorld.z), 12.2);
+  vec2 hit = vWorld.xz + r.xz * ((8.9 - vWorld.y) / max(r.y, 0.04));
+  float open = smoothstep(10.2, 9.2, abs(hit.x)) * smoothstep(11.2, 10.2, abs(hit.y));
+  float rib = smoothstep(0.08, 0.0, abs(fract(hit.y / 2.2 + 0.5) - 0.5)) * 0.6 + smoothstep(0.05, 0.0, abs(fract(hit.x / 2.0 + 0.5) - 0.5)) * 0.5;
+  vec3 vaultRefl = mix(mix(uHorizon, uSky, 0.55), uInterior * 1.6, clamp(rib, 0.0, 1.0));
+  refl = mix(refl, mix(uInterior, vaultRefl, open), inMall);
   float spec = pow(max(dot(r, uSunDir), 0.0), 180.0) * 2.4 + pow(max(dot(r, uSunDir), 0.0), 18.0) * 0.18;
-  vec3 col = mix(uShallow, refl, 0.25 + fres * 0.6) + uSun * spec;
+  vec3 col = mix(uShallow * mix(1.0, 0.55, inMall), refl, 0.3 + fres * 0.6) + uSun * spec * mix(1.0, 0.35 + 0.65 * open, inMall);
   // Sparkle where ripples crest.
   float sp = smoothstep(0.985, 1.0, sin(p.x * 3.1 + t * 1.7) * sin(p.y * 2.7 - t * 1.3));
   col += uSun * sp * 0.25;
@@ -86,6 +97,7 @@ export function createWaterSurface(l: MapLighting, geo: THREE.BufferGeometry, y:
         uSun: { value: new THREE.Color(l.sunColor) },
         uSunDir: { value: sun },
         uOpacity: { value: opacity },
+        uInterior: { value: new THREE.Color('#4f4741') },
       },
     ]),
     vertexShader: VERT,

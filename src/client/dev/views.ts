@@ -3,15 +3,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as THREE from 'three';
-import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { getMap } from '../../shared/maps/index';
 import type { MapDef } from '../../shared/maps/types';
-import type { MapId, TargetSnap, WeaponId, ZoneSnap } from '../../shared/types';
-import { WEAPON_IDS } from '../../shared/types';
+import type { MapId, TargetSnap, ZoneSnap } from '../../shared/types';
 import type { MapRuntimeState, MapView } from '../contracts';
 import { createAtmosphere } from '../engine/atmosphere';
 import { boxProjectUVs, Materials } from '../engine/materials';
-import { ENV } from '../engine/palette';
 import type { Renderer } from '../engine/renderer';
 import { buildMapView } from '../world/map-builder';
 import type { WeaponModels } from '../world/weapon-models';
@@ -37,7 +34,9 @@ export async function setupView(view: string, ctx: PreviewContext): Promise<Prev
     case 'map':
       return mapView(ctx);
     case 'weapons':
-      return weaponsView(ctx);
+      return (await import('./views-weapons')).weaponsView(ctx);
+    case 'viewmodel':
+      return (await import('./views-weapons')).viewmodelView(ctx);
     case 'materials':
       return materialsView(ctx);
     default: {
@@ -165,55 +164,6 @@ async function mapView(ctx: PreviewContext): Promise<PreviewView> {
     update(dt, t) {
       free?.update(dt);
       mv.update(dt, runtimeState(def, camera, t, mode));
-    },
-  };
-}
-
-// ── view=weapons ────────────────────────────────────────────────────────────
-
-export function studio(ctx: PreviewContext, scene: THREE.Scene): void {
-  const pmrem = new THREE.PMREMGenerator(ctx.engine.renderer);
-  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-  scene.environmentIntensity = 0.5;
-  scene.background = new THREE.Color(ENV.shadowWarm).multiplyScalar(0.6);
-  const key = new THREE.DirectionalLight('#ffe2bd', 2.6);
-  key.position.set(-2, 3, 2);
-  scene.add(key);
-  const rim = new THREE.DirectionalLight('#9cc3d5', 1.2);
-  rim.position.set(2, 1, -3);
-  scene.add(rim);
-  scene.add(new THREE.HemisphereLight('#f5e3c0', '#4a4038', 0.8));
-}
-
-function weaponsView(ctx: PreviewContext): PreviewView {
-  const scene = new THREE.Scene();
-  studio(ctx, scene);
-  const camera = makeCamera(ctx, 30);
-  const skin = ctx.params.get('skin') ?? 'factory';
-  const only = ctx.params.get('weapon') as WeaponId | null;
-  const ids = only ? [only] : WEAPON_IDS;
-  const models = ids.map((id, i) => {
-    const m = ctx.weapons.create(id, skin, (ctx.params.get('lod') as 'view' | 'world') ?? 'view');
-    const col = ids.length === 1 ? 0 : i % 2;
-    const row = ids.length === 1 ? 0 : Math.floor(i / 2);
-    if (ids.length > 1) m.root.position.set(0, 0.55 - row * 0.42, (col - 0.5) * 1.25);
-    m.root.rotation.y = 0;
-    m.setAmmo(Math.round((i + 1) * 4), 30);
-    m.setCharge(0.7);
-    scene.add(m.root);
-    return m;
-  });
-  camera.position.set(-3.6, 1.1, 0);
-  camera.lookAt(0, 0.12, 0);
-  if (only) {
-    camera.position.set(-1.05, 0.42, 0.55);
-    camera.lookAt(0, 0.03, -0.18);
-  }
-  return {
-    scene,
-    camera,
-    update(_dt, t) {
-      if (ctx.params.get('spin') === '1') for (const m of models) m.root.rotation.y = Math.sin(t * 0.5) * 0.6;
     },
   };
 }

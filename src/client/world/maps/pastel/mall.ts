@@ -446,10 +446,15 @@ function interior(kit: DecorKit, signs: { board: SignBatch; lit: SignBatch }, rn
     }
     // A fallen railing section lying in the water.
     kit.boxE('chrome', new THREE.Vector3(8.2 * s, MALL_Y + 0.1, -4.5 * s), new THREE.Euler(0.1, 0.4 * s, 1.35), new THREE.Vector3(0.08, 3, 0.08), COL.chrome);
-    // Planters against the gallery back walls, overgrown.
-    for (const z of [-8, 8]) {
-      kit.box('concrete', 13.3 * s - 0.6, GAL, z - 0.9, 13.3 * s + 0.6, GAL + 0.7, z + 0.9, COL.boneShade, 0.06, { base: GAL });
-      kit.ball('foliage', 13.3 * s, GAL + 1.05, z, 0.8, 0.6, 1.0, COL.sage, 1);
+    // Hanging planters over the gallery walk (above head height — the walk
+    // stays clear), overgrown and dripping glowing strands.
+    for (const z of [-8, -4.5, 4.5, 8]) {
+      const x = 12.6 * s;
+      kit.tube('chrome', new THREE.Vector3(x, 6.55, z), new THREE.Vector3(x, GAL + 2.75, z), 0.012, COL.dark, 3);
+      kit.cyl('paint', x, GAL + 2.25, z, 0.42, 0.3, 0.42, mix(COL.terraF, COL.bone, 0.3), 12);
+      kit.ball('foliage', x, GAL + 2.72, z, 0.55, 0.32, 0.55, mix(COL.sage, rgb(ENV.pastelYellow), 0.2), 1, { drift: 0.2 });
+      hangingVine(kit, new THREE.Vector3(x + 0.3, GAL + 2.3, z + 0.15), 0.5 + rng() * 0.5, rng, 1.4);
+      hangingVine(kit, new THREE.Vector3(x - 0.3, GAL + 2.3, z - 0.1), 0.4 + rng() * 0.5, rng, 1.4);
     }
   }
 
@@ -591,6 +596,22 @@ function fountain(kit: DecorKit, rng: () => number): void {
   }
   // "Sunrise": a ceramic sunburst fan — a half sun with radiating blades
   // (collision screen x ±2.4, z ±0.35, up to 2.9), echoing the facade mural.
+  // A glazed-tile screen fills the whole collision rectangle behind the fan,
+  // so every bullet stop reads as ceramic, never as an invisible wall.
+  const tileA = mix(COL.pink, COL.bone, 0.35);
+  const tileB = mix(rgb(ENV.pastelYellow), COL.bone, 0.3);
+  const cols = kit.low ? 4 : 8;
+  for (let i = 0; i < cols; i++) {
+    const x0 = -2.4 + (4.8 * i) / cols;
+    const x1 = -2.4 + (4.8 * (i + 1)) / cols;
+    for (let j = 0; j < 3; j++) {
+      const y0 = 0.45 + (2.45 * j) / 3;
+      const y1 = 0.45 + (2.45 * (j + 1)) / 3;
+      kit.box('tile', x0 + 0.015, y0 + 0.015, -0.13, x1 - 0.015, y1 - 0.015, 0.13, (i + j) % 2 ? tileA : tileB, 0, { ao: 0.15, base: 0.45, drift: 0.06 });
+    }
+  }
+  kit.box('concrete', -2.4, 0.45, -0.12, 2.4, 2.9, 0.12, COL.boneShade, 0, { ao: 0 });
+  for (const x of [-2.4, 2.24]) kit.box('paint', x, 0.45, -0.34, x + 0.16, 2.9, 0.34, COL.bone, 0.04, { ao: 0.2, base: 0.45 });
   const cy = 0.5;
   const rays = 11;
   for (let i = 0; i < rays; i++) {
@@ -599,8 +620,8 @@ function fountain(kit: DecorKit, rng: () => number): void {
     const r1 = i % 2 === 0 ? 2.35 : 1.95;
     const len = r1 - r0;
     const mid = new THREE.Vector3(Math.cos(a) * (r0 + len / 2), cy + Math.sin(a) * (r0 + len / 2), 0);
-    kit.boxE('paint', mid, new THREE.Euler(0, 0, a - Math.PI / 2), new THREE.Vector3(i % 2 === 0 ? 0.3 : 0.22, len, 0.36), COL.bone, 0.08, { drift: 0.04 });
-    kit.ball('glow', Math.cos(a) * r1, cy + Math.sin(a) * r1, 0, 0.09, 0.09, 0.2, rgb(ENV.glowGold, 1.2), 1, { drift: 0 });
+    kit.boxE('paint', mid, new THREE.Euler(0, 0, a - Math.PI / 2), new THREE.Vector3(i % 2 === 0 ? 0.3 : 0.22, len, 0.62), COL.bone, 0.08, { drift: 0.04 });
+    for (const zs of [-0.3, 0.3]) kit.ball('glow', Math.cos(a) * r1, cy + Math.sin(a) * r1, zs, 0.09, 0.09, 0.06, rgb(ENV.glowGold, 1.2), 1, { drift: 0 });
   }
   const half = new THREE.Shape();
   half.absarc(0, 0, 1.0, 0, Math.PI, false);

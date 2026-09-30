@@ -900,7 +900,7 @@ export function createLaunchRocket(materials: MaterialLibrary, quality: QualityS
 
   // ── Runtime ──
   const cTeam = new THREE.Color();
-  const cTmp = new THREE.Color();
+  const liveryIdle = new THREE.Color(ENV.boneShade).multiplyScalar(0.55);
   let teamKey = '';
   let wasLaunching = false;
   let ventT = 0;
@@ -938,7 +938,7 @@ export function createLaunchRocket(materials: MaterialLibrary, quality: QualityS
     glow.visible = false;
     trail.visible = false;
     if (arms) arms.rotation.y = 0;
-    matLivery.color.set(ENV.boneShade).multiplyScalar(0.55);
+    matLivery.color.copy(liveryIdle);
   };
 
   const update = (dt: number, launch: { team: Team; t: number } | null, time: number): void => {
@@ -999,8 +999,7 @@ export function createLaunchRocket(materials: MaterialLibrary, quality: QualityS
     // Beacons + livery in the winning team's color.
     const pulse = 0.75 + 0.25 * Math.sin(tt * 9);
     matBeacon.color.copy(cTeam).multiplyScalar(3.5 * pulse);
-    cTmp.set(ENV.boneShade).multiplyScalar(0.55);
-    matLivery.color.copy(cTmp).lerp(cTeam, ign).multiplyScalar(1 + ign * 1.8);
+    matLivery.color.copy(liveryIdle).lerp(cTeam, ign).multiplyScalar(1 + ign * 1.8);
     // Swing arms retract.
     if (arms) arms.rotation.y = THREE.MathUtils.smoothstep(t, 0.2, 1.4) * 1.15;
     // Flame + pad glow.

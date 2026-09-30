@@ -93,87 +93,9 @@ async function viewmodelView(ctx: PreviewContext): Promise<PreviewView> {
 export { THREE };
 
 // ── view=characters ─────────────────────────────────────────────────────────
+// Implemented in views-characters.ts (lazy import keeps this module small).
 
-import { Characters } from '../world/characters';
-import { createAtmosphere } from '../engine/atmosphere';
-import { getMap } from '../../shared/maps/index';
-import type { CharacterAnim, CharacterView } from '../contracts';
-import type { MapId, Team, Faction } from '../../shared/types';
-import { defaultCosmetics } from '../../shared/cosmetics';
-
-extraViews.characters = charactersView;
-
-function charactersView(ctx: PreviewContext): PreviewView {
-  const scene = new THREE.Scene();
-  const def = getMap((ctx.params.get('map') ?? 'pastel') as MapId);
-  const atmo = createAtmosphere(scene, def.lighting, ctx.engine.quality);
-  const ground = new THREE.Mesh(new THREE.CircleGeometry(40, 48).rotateX(-Math.PI / 2), ctx.materials.surface('concrete'));
-  ground.receiveShadow = true;
-  scene.add(ground);
-  const chars = new Characters(ctx.materials, ctx.weapons);
-  const anim = ctx.params.get('anim') ?? 'idle';
-  const lineup: { faction: Faction; team: Team; armor: string; visor: string; weapon: WeaponId }[] = [
-    { faction: 0, team: 0, armor: 'standard', visor: 'band', weapon: 'meridian' },
-    { faction: 0, team: 0, armor: 'slate', visor: 'twin', weapon: 'longline' },
-    { faction: 0, team: 0, armor: 'sandstone', visor: 'halo', weapon: 'breaker' },
-    { faction: 1, team: 1, armor: 'standard', visor: 'band', weapon: 'swift' },
-    { faction: 1, team: 1, armor: 'terracotta', visor: 'mono', weapon: 'meridian' },
-    { faction: 1, team: 1, armor: 'graphite', visor: 'cross', weapon: 'sunspear' },
-  ];
-  const views: { v: CharacterView; a: CharacterAnim }[] = lineup.map((l, i) => {
-    const cos = defaultCosmetics();
-    cos.armor = l.armor;
-    cos.visor = l.visor;
-    const v = chars.create({ faction: l.faction, team: l.team, cosmetics: cos, friendly: l.team === 0, quality: ctx.engine.quality, showcase: true });
-    v.root.position.set((i - 2.5) * 1.35, 0, i % 2 ? -0.4 : 0);
-    scene.add(v.root);
-    const a: CharacterAnim = {
-      vel: { x: 0, y: 0, z: 0 },
-      yaw: Math.PI + 0.55,
-      pitch: 0,
-      crouch: anim === 'crouch' ? 1 : 0,
-      sliding: anim === 'slide',
-      airborne: anim === 'air',
-      sprinting: anim === 'sprint',
-      ads: anim === 'ads',
-      reloading: anim === 'reload',
-      mantling: anim === 'mantle',
-      charging: l.weapon === 'sunspear',
-      weapon: l.weapon,
-      alive: true,
-    };
-    const spd = anim === 'sprint' ? 7.8 : anim === 'walk' ? 5.4 : anim === 'slide' ? 9 : anim === 'strafe' ? 5 : anim === 'back' ? 4 : 0;
-    const dir = anim === 'strafe' ? { x: 1, z: 0 } : anim === 'back' ? { x: 0, z: -1 } : { x: 0, z: 1 };
-    a.vel = { x: dir.x * spd, y: 0, z: dir.z * spd };
-    return { v, a };
-  });
-  const camera = makeCamera(ctx, 36);
-  const cs = ctx.params.get('cam');
-  if (cs === 'close') {
-    camera.position.set(-1.2, 1.5, 3.2);
-    camera.lookAt(-1.5, 1.1, 0);
-  } else {
-    camera.position.set(0, 1.5, 18);
-    camera.fov = 22;
-    camera.updateProjectionMatrix();
-    camera.lookAt(0, 0.95, 0);
-  }
-  let fired = 0;
-  return {
-    scene,
-    camera,
-    update(dt, t) {
-      atmo.update(dt, camera, 0);
-      for (const { v, a } of views) {
-        if (anim === 'fire' && t - fired > 0.18) v.fire();
-        if (anim === 'aimup') a.pitch = 0.5;
-        if (anim === 'aimdown') a.pitch = -0.5;
-        v.update(dt, a);
-      }
-      if (anim === 'fire' && t - fired > 0.18) fired = t;
-    },
-  };
-}
+extraViews.characters = async (ctx: PreviewContext): Promise<PreviewView> => (await import('./views-characters')).charactersView(ctx);
 
 // ── view=effects ────────────────────────────────────────────────────────────
 

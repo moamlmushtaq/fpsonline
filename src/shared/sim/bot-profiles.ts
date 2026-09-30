@@ -1,63 +1,107 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// HALCYON FRONT — bot tuning: per-difficulty profiles (reaction, aim error,
-// turn speed, tracking lag, trigger discipline, tactics), preferred engagement
-// ranges per weapon, and the throw solver. Tune feel here, logic lives in bots.ts.
+// HALCYON FRONT — bot tuning: per-difficulty profiles (perception, human aim
+// model, trigger discipline, tactics), preferred engagement ranges per weapon,
+// and the throw solver. Tune feel here; logic lives in bots.ts / bots/*.ts.
+//
+// Calibration targets (measured with a human-aimer model: reaction, Fitts'-law
+// flicks with endpoint error, lagged pursuit, partial recoil control):
+//  • recruit — a first-time touch player wins most duels.
+//  • veteran — an average desktop player wins about half.
+//  • elite   — beats an average player most of the time, a good player about
+//              half; never faster than a quick human (no snaps, no wallhacks).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { GRAVITY, THROW_SPEED, THROW_UP } from '../constants';
 import type { BotDifficulty, WeaponId } from '../types';
 
 export interface BotProfile {
-  /** Seconds before reacting to a newly seen enemy. */
+  // ── Perception ──
+  /** Visual reaction time (s) before a newly seen enemy is acted on. */
   reaction: number;
-  /** Initial aim error (radians) on acquisition. */
-  aimErr: number;
-  /** Aim error decay rate (1/s). */
+  /** Extra reaction per 50 m of distance (small, far figures are noticed later). */
+  reactionFar: number;
+  /** View cone half-angle (rad) in which enemies can be noticed. */
+  fovHalf: number;
+  /** Max distance (m) at which gunshots are heard (also capped by the shot's loudness). */
+  hearing: number;
+  /** Distance (m) at which a sprinting enemy's footsteps are heard (walking: half, crouched: silent). */
+  footsteps: number;
+  // ── Aim (see bots/aim.ts) ──
+  /** Flick duration = fittsA + fittsB·log2(1 + amplitude / target width). */
+  fittsA: number;
+  fittsB: number;
+  /** Mean overshoot of a flick (fraction of its amplitude). */
+  overshoot: number;
+  /** Flick endpoint scatter: sd as a fraction of the amplitude, plus a floor (rad). */
+  endErr: number;
+  baseErr: number;
+  /** Corrective settle rate after a flick (1/s). */
   settle: number;
-  /** Max turn speed (rad/s) and smoothing (1/s). */
-  turnRate: number;
-  smooth: number;
-  /** Perception lag of the tracked target (s) and fraction of its velocity predicted. */
+  /** Pursuit noise (rad per √s): hand tremor / imperfect tracking. */
+  pursuitNoise: number;
+  /** Perception lag of a tracked target (s) and fraction of its velocity predicted. */
   trackLag: number;
   predict: number;
-  /** Multiplier on the angular size of the target used as a fire tolerance. */
-  fireTol: number;
+  /** Max view turn rate (rad/s). */
+  turnRate: number;
+  /** Free-look smoothing (1/s) when not tracking an enemy. */
+  smooth: number;
+  /** Fraction of recoil pulled down and the lag (s) of that correction. */
   recoilComp: number;
-  /** Continuous aim noise (radians). */
-  jitter: number;
+  recoilLag: number;
+  /** Chance of aiming at the head for an engagement. */
   headChance: number;
+  // ── Trigger ──
+  /** Confirmation time on target before the first shot of an engagement (s). */
+  fireDelay: number;
+  /** Fire when the error is under this × the target's angular half-size. */
+  fireTol: number;
+  burst: [number, number];
+  burstPause: [number, number];
+  // ── Movement / tactics ──
   strafe: number;
   crouchChance: number;
   jumpChance: number;
   slideChance: number;
-  grenadeChance: number;
-  hearing: number;
-  fovHalf: number;
+  /** Health under which the bot breaks off to cover (0 = never). */
   retreatHp: number;
-  burst: [number, number];
-  burstPause: [number, number];
+  /** 0..1 — cover use, reload discipline, pre-aiming, flanks, holding angles. */
+  tactics: number;
+  /** Seconds holding an angle at a lane station [min, max]. */
+  hold: [number, number];
+  /** Per-throw-opportunity chance scale for grenades / smokes. */
+  grenadeSkill: number;
+  smokeSkill: number;
+  /** Eases up on humans on a long losing streak (subtle; recruit/veteran only). */
+  mercy: boolean;
 }
 
 const DEG = Math.PI / 180;
 
 export const BOT_PROFILES: Record<BotDifficulty, BotProfile> = {
   recruit: {
-    reaction: 0.65, aimErr: 8 * DEG, settle: 1.8, turnRate: 3.2, smooth: 5, trackLag: 0.22, predict: 0,
-    fireTol: 1.7, recoilComp: 0.3, jitter: 0.7 * DEG, headChance: 0.05, strafe: 0.35, crouchChance: 0.03,
-    jumpChance: 0, slideChance: 0, grenadeChance: 0.015, hearing: 24, fovHalf: 50 * DEG, retreatHp: 0,
-    burst: [0.45, 1.1], burstPause: [0.35, 0.8],
+    reaction: 0.7, reactionFar: 0.3, fovHalf: 42 * DEG, hearing: 22, footsteps: 7,
+    fittsA: 0.28, fittsB: 0.22, overshoot: 0.16, endErr: 0.25, baseErr: 1.6 * DEG, settle: 2, pursuitNoise: 1.9 * DEG,
+    trackLag: 0.26, predict: 0, turnRate: 3.4, smooth: 4.5, recoilComp: 0.1, recoilLag: 0.25, headChance: 0.03,
+    fireDelay: 0.25, fireTol: 2.1, burst: [0.5, 1.2], burstPause: [0.45, 1],
+    strafe: 0.2, crouchChance: 0.02, jumpChance: 0, slideChance: 0, retreatHp: 22, tactics: 0.25, hold: [0.8, 2],
+    grenadeSkill: 0.35, smokeSkill: 0.15, mercy: true,
   },
   veteran: {
-    reaction: 0.38, aimErr: 6 * DEG, settle: 2.4, turnRate: 5, smooth: 8, trackLag: 0.14, predict: 0.4,
-    fireTol: 1.35, recoilComp: 0.6, jitter: 0.4 * DEG, headChance: 0.2, strafe: 0.7, crouchChance: 0.08,
-    jumpChance: 0.03, slideChance: 0.15, grenadeChance: 0.04, hearing: 35, fovHalf: 50 * DEG, retreatHp: 32,
-    burst: [0.3, 0.75], burstPause: [0.22, 0.5],
+    reaction: 0.28, reactionFar: 0.12, fovHalf: 48 * DEG, hearing: 32, footsteps: 11,
+    fittsA: 0.1, fittsB: 0.09, overshoot: 0.08, endErr: 0.09, baseErr: 0.4 * DEG, settle: 5.5, pursuitNoise: 0.65 * DEG,
+    trackLag: 0.12, predict: 0.45, turnRate: 6.5, smooth: 7, recoilComp: 0.6, recoilLag: 0.11, headChance: 0.22,
+    fireDelay: 0.06, fireTol: 1.25, burst: [0.35, 0.8], burstPause: [0.18, 0.4],
+    strafe: 0.65, crouchChance: 0.07, jumpChance: 0.02, slideChance: 0.12, retreatHp: 35, tactics: 0.65, hold: [1.2, 3],
+    grenadeSkill: 0.8, smokeSkill: 0.7, mercy: true,
   },
   elite: {
-    reaction: 0.22, aimErr: 3.5 * DEG, settle: 3.4, turnRate: 7.5, smooth: 12, trackLag: 0.09, predict: 0.75,
-    fireTol: 1.1, recoilComp: 0.85, jitter: 0.25 * DEG, headChance: 0.4, strafe: 1, crouchChance: 0.12,
-    jumpChance: 0.05, slideChance: 0.3, grenadeChance: 0.07, hearing: 40, fovHalf: 52 * DEG, retreatHp: 40,
-    burst: [0.25, 0.6], burstPause: [0.16, 0.38],
+    reaction: 0.2, reactionFar: 0.08, fovHalf: 52 * DEG, hearing: 40, footsteps: 14,
+    fittsA: 0.075, fittsB: 0.07, overshoot: 0.05, endErr: 0.06, baseErr: 0.22 * DEG, settle: 7, pursuitNoise: 0.45 * DEG,
+    trackLag: 0.09, predict: 0.7, turnRate: 9, smooth: 10, recoilComp: 0.85, recoilLag: 0.08, headChance: 0.35,
+    fireDelay: 0.03, fireTol: 1.05, burst: [0.35, 0.8], burstPause: [0.1, 0.25],
+    strafe: 1, crouchChance: 0.1, jumpChance: 0.04, slideChance: 0.25, retreatHp: 42, tactics: 1, hold: [1.5, 3.5],
+    grenadeSkill: 1, smokeSkill: 1, mercy: false,
   },
 };
 
@@ -66,7 +110,7 @@ export const PREFERRED_RANGE: Record<WeaponId, number> = {
   meridian: 18,
   swift: 9,
   longline: 34,
-  breaker: 6,
+  breaker: 5,
   pulse: 12,
   sunspear: 24,
 };

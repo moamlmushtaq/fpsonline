@@ -60,6 +60,7 @@ class Tutorial implements MatchExtension {
   private hintShown = false;
   private reloading = false;
   private skipHold = 0;
+  private chipDevice = '';
   private summaryT = 0;
   private readonly ownThrows = new Set<number>();
   private readonly offs: (() => void)[] = [];
@@ -244,7 +245,10 @@ class Tutorial implements MatchExtension {
       this.skip();
       return;
     }
-    if (prev !== this.skipHold || holding) this.updateSkipChip();
+    if (prev !== this.skipHold || holding || api.device !== this.chipDevice) {
+      this.chipDevice = api.device;
+      this.updateSkipChip();
+    }
   }
 
   /** Per-frame presentation: glyph device changes, sub-progress, hints, beacons, arrow. */
@@ -330,19 +334,19 @@ class Tutorial implements MatchExtension {
           { key: 'look1', pos: C.lookBeacons[1], kind: 'sight' },
         ];
       case 'move':
-        return [{ key: 'move', pos: C.entry, kind: 'column', radius: 1.1, height: 3.6 }];
+        return [{ key: 'move', pos: C.entry, kind: 'column', radius: 0.8, height: 3.4 }];
       case 'sprint':
-        return [{ key: 'sprint', pos: { x: 12, y: 0, z: -12.6 }, kind: 'column', radius: 1.2, height: 3.8 }];
+        return [{ key: 'sprint', pos: { x: 12, y: 0, z: -12.6 }, kind: 'column', radius: 0.8, height: 3.4 }];
       case 'jump':
-        return [{ key: 'jump', pos: center(C.jumpEnd, 1), kind: 'column', radius: 1.2, height: 3.4 }];
+        return [{ key: 'jump', pos: center(C.jumpEnd, 1), kind: 'column', radius: 0.8, height: 3.2 }];
       case 'mantle':
-        return [{ key: 'mantle', pos: { x: 12, y: 0, z: -32.6 }, kind: 'column', radius: 1.1, height: 3.4 }];
+        return [{ key: 'mantle', pos: { x: 12, y: 0, z: -32.6 }, kind: 'column', radius: 0.8, height: 3.2 }];
       case 'slide':
-        return [{ key: 'slide', pos: center(C.slideEnd, 0), kind: 'column', radius: 1.1, height: 3.2 }];
+        return [{ key: 'slide', pos: center(C.slideEnd, 0), kind: 'column', radius: 0.8, height: 3.0 }];
       case 'shoot': {
         const out: BeaconSpec[] = C.trio.filter((t) => !this.m.trioDown.has(t)).map((t) => ({ key: `t${t}`, pos: tpos(t, 2.25), kind: 'sight' as const }));
         const mv = this.api.move;
-        if (!mv || mv.pos.y < C.perch.y - 0.5) out.push({ key: 'perch', pos: C.perch, kind: 'column', radius: 1.2, height: 3 });
+        if (!mv || mv.pos.y < C.perch.y - 0.5) out.push({ key: 'perch', pos: C.perch, kind: 'column', radius: 0.8, height: 3 });
         return out;
       }
       case 'ads':
@@ -352,7 +356,8 @@ class Tutorial implements MatchExtension {
       case 'throw':
         return [{ key: 'pit', pos: C.trioCenter, kind: 'ring', radius: 3 }];
       case 'capture':
-        return [{ key: 'pad', pos: C.pad, kind: 'column', radius: 2.2, height: 4.2 }];
+        // The pad already has its own objective ring + beam: a floating marker is enough.
+        return [{ key: 'pad', pos: { x: C.pad.x, y: C.pad.y + 3.4, z: C.pad.z }, kind: 'sight' }];
     }
   }
 
@@ -390,6 +395,11 @@ class Tutorial implements MatchExtension {
     const angle = Math.atan2(nx, ny);
     const mv = this.api.move;
     const dist = mv ? Math.hypot(spec.pos.x - mv.pos.x, spec.pos.z - mv.pos.z) : 0;
+    // Standing on it (pad, ring): no arrow.
+    if (dist < (spec.radius ?? 0.6) + 1.2) {
+      this.ui.setArrow(null);
+      return;
+    }
     this.ui.setArrow({ x: sx, y: sy, angle, dist });
   }
 

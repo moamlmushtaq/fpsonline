@@ -32,6 +32,7 @@ import { profile, type ProfileStore } from './state/profile';
 import { NetManager } from './net/net-manager';
 import type { Transport } from './net/transport';
 import { LocalHostLink } from './net/local-host';
+import { prefetchDecorModules } from './world/map-builder';
 import { ClientMatch } from './game/match';
 import type { LoadingScreen } from './ui/screens/loading';
 import { PROTOCOL_VERSION, ROOM_CODE_LENGTH } from '../shared/constants';
@@ -54,6 +55,8 @@ interface Session {
   purpose: 'queue' | 'room' | 'match';
 }
 
+/** Screens a lobby update never navigates away from. */
+const LOBBY_KEEP_SCREENS = new Set<ScreenId | null>(['room', 'results', 'match', 'loading']);
 const MENU_SCREENS = new Set<ScreenId>(['menu', 'play', 'loadout', 'customize', 'settings', 'profile', 'matchmaking', 'room', 'results']);
 
 function detectPlatform(): Platform {
@@ -207,6 +210,7 @@ export class App {
       } catch (err) {
         console.warn('[app] local host prewarm failed', err);
       }
+      prefetchDecorModules();
     }, 800);
     this.handleUrlEntry();
     if (this.debug) this.installDebug();
@@ -301,6 +305,9 @@ export class App {
     else if (base === 'match') {
       /* ClientMatch owns in-match music */
     } else if (base !== 'results') this.audio.setMusic('menu');
+    // Back at the main menu with a room still open (Menu from a private match's results):
+    // leave the room so it does not hold a slot for a player who is gone.
+    if (base === 'menu' && !this.match && this.session && this.session.purpose === 'room' && !this.launching) this.leaveRoomSilently();
     const inGameplay = base === 'match' && top === 'match' && !this.paused;
     this.input.setGameplayActive(inGameplay);
     this.audio.setDuck(base === 'match' && top !== 'match' ? 1 : 0);
@@ -421,6 +428,13 @@ export class App {
     this.send({ type: 'startRoom' });
   }
 
+  private leaveRoomSilently(): void {
+    this.send({ type: 'leave' });
+    this.endSession();
+    this.room = null;
+    this.emit('room', null);
+  }
+
   leaveRoom(): void {
     this.send({ type: 'leave' });
     this.endSession();
@@ -437,6 +451,13 @@ export class App {
   }
 
   async playAgain(): Promise<void> {
+    // After a private match: back to the room's lobby (the session stayed open), or rejoin it.
+    const room = this.room;
+    if (room) {
+      if (this.session && !this.session.closed) await this.ui.show('room', { code: room.code });
+      else await this.joinRoom(room.code);
+      return;
+    }
     if (this.lastLaunch) await this.lastLaunch();
     else await this.quickPlay('tdm');
   }
@@ -586,7 +607,9 @@ export class App {
         this.room = m;
         s.purpose = 'room';
         this.emit('room', m);
-        if (m.state === 'lobby' && !this.match && this.ui.baseScreen !== 'room') void this.ui.show('room', { code: m.code });
+        // Not after a match (the lobby state arrives with its results, which stay on screen:
+        // "Play again" leads back to the room).
+        if (m.state === 'lobby' && !this.match && !LOBBY_KEEP_SCREENS.has(this.ui.baseScreen)) void this.ui.show('room', { code: m.code });
         break;
       case 'matchStart':
         s.purpose = 'match';
@@ -687,8 +710,14 @@ export class App {
     this.audio.setHeartbeat(0);
     this.audio.setEnvironment(null);
     this.engine.setOverlay(null, null);
-    this.endSession();
-    this.room = null;
+    // A private room outlives its matches: the host puts everyone back in the lobby, so keep
+    // the connection (and room) after a natural end. Anything else closes the session.
+    const s = this.session;
+    if (result && this.room && s && !s.closed && s.transport.kind === 'online') s.purpose = 'room';
+    else {
+      this.endSession();
+      this.room = null;
+    }
     if (result && you >= 0) {
       const applied = profile.applyMatch(result.results, you, result.ratingDelta);
       void this.ui.show('results', { results: result.results, you, applied, ratingDelta: result.ratingDelta });

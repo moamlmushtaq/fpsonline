@@ -286,37 +286,46 @@ export class ClientMatch implements MatchContext, MatchApi {
    * Compiles every material behind the loading screen so the first frames don't
    * hitch — in small chunks with frame yields, so the page keeps processing
    * network traffic (a main thread blocked for seconds would starve the socket's
-   * heartbeat on slow devices). Hidden characters are made visible for the pass.
+   * heartbeat on slow devices). Everything hidden (characters not yet spawned, pooled
+   * effects, other weapons) is made visible for the pass: compile() skips invisible
+   * objects, and a program first compiled mid-fight is a visible hitch.
    */
   private async warmShaders(scene: THREE.Scene, overlay: THREE.Scene, overlayCam: THREE.Camera): Promise<void> {
     const r = this.app.engine.renderer;
     const hidden: THREE.Object3D[] = [];
-    for (const e of this.view?.remotes.entries.values() ?? []) {
-      if (!e.view.root.visible) {
-        e.view.root.visible = true;
-        hidden.push(e.view.root);
+    const reveal = (o: THREE.Object3D): void => {
+      // Lights keep their state: the light setup is part of every program's cache key.
+      if (!o.visible && !(o as THREE.Light).isLight) {
+        o.visible = true;
+        hidden.push(o);
       }
-    }
+    };
+    scene.traverse(reveal);
+    overlay.traverse(reveal);
     const items: THREE.Object3D[] = [];
     for (const c of scene.children) {
       if (c.children.length > 6) items.push(...c.children);
       else items.push(c);
     }
     let t = performance.now();
+    const prevTarget = r.getRenderTarget();
     try {
+      // Compile against the target the frame will actually draw into (see Renderer.sceneTarget).
+      r.setRenderTarget(this.app.engine.sceneTarget);
       for (const o of items) {
         if (this.disposed) return;
-        if (!o.visible) continue;
         r.compile(o, this.camera, scene);
         if (performance.now() - t > 20) {
           await nextFrame();
           t = performance.now();
         }
       }
+      r.setRenderTarget(this.app.engine.sceneTarget);
       r.compile(overlay, overlayCam);
     } catch (err) {
       console.warn('[match] shader warm-up skipped', err);
     } finally {
+      r.setRenderTarget(prevTarget);
       for (const o of hidden) o.visible = false;
     }
     await this.finishPrograms();

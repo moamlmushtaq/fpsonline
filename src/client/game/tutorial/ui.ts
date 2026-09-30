@@ -65,7 +65,8 @@ body.q-low .hf-tut__card { backdrop-filter: none; -webkit-backdrop-filter: none;
 .hf-tut__skip kbd.pad { border-radius: 999px; }
 .hf-tut__skip svg { width: 1.1rem; height: 1.1rem; direction: ltr; }
 .hf-tut__skip svg circle { fill: none; stroke: var(--c-accent, #f0b35b); stroke-width: 3; stroke-dasharray: 50.3; stroke-dashoffset: 50.3; transform: rotate(-90deg); transform-origin: 50% 50%; }
-body.touch-ui .hf-tut__skip { min-height: 48px; top: calc(var(--safe-t, 0px) + .6rem); }
+/* Touch: the corners belong to the HUD panels; the chip sits beside the prompt card (physical: touch layout is not mirrored). */
+body.touch-ui .hf-tut__skip { min-height: 48px; min-width: 64px; justify-content: center; inset-inline-end: auto; left: calc(50% + min(10.5rem, 27vw)); top: calc(var(--safe-t, 0px) + 3.9rem); }
 .hf-tut.is-paused .hf-tut__skip { background: var(--c-accent, #f0b35b); color: var(--c-ink, #1d1712); border-color: transparent; transform: scale(1.06); }
 .hf-tut.is-paused .hf-tut__card, .hf-tut.is-paused .hf-tut__arrow { opacity: 0 !important; }
 .hf-tut__arrow { position: absolute; left: 0; top: 0; width: 44px; height: 44px; margin: -22px 0 0 -22px; opacity: 0; transition: opacity 200ms; display: grid; place-items: center; }
@@ -73,7 +74,7 @@ body.touch-ui .hf-tut__skip { min-height: 48px; top: calc(var(--safe-t, 0px) + .
 .hf-tut__arrow svg { width: 26px; height: 26px; filter: drop-shadow(0 1px 3px rgba(0,0,0,.5)); }
 .hf-tut__arrow svg path { fill: var(--c-accent, #f0b35b); }
 .hf-tut__arrow b { position: absolute; top: 100%; font: 500 .7rem var(--f-mono); color: #fbe3bd; text-shadow: 0 1px 2px rgba(0,0,0,.6); direction: ltr; white-space: nowrap; }
-.hf-tut__look { position: absolute; inset-inline-end: 12%; top: 46%; width: 120px; height: 60px; opacity: 0; transition: opacity 300ms; }
+.hf-tut__look { position: absolute; right: 12%; top: 46%; width: 120px; height: 60px; opacity: 0; transition: opacity 300ms; }
 .hf-tut__look.is-on { opacity: 1; }
 .hf-tut__look i { position: absolute; left: 0; top: 18px; width: 26px; height: 26px; border-radius: 50%; background: rgba(243,236,224,.35); border: 2px solid rgba(255,250,240,.9); animation: hf-tut-drag 1.6s var(--ease) infinite; }
 @keyframes hf-tut-drag { 0% { transform: translateX(0); opacity: 0; } 15% { opacity: 1; } 70% { transform: translateX(90px); opacity: 1; } 100% { transform: translateX(90px); opacity: 0; } }

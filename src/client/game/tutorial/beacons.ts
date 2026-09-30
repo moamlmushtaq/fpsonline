@@ -211,7 +211,7 @@ export class Beacons {
       b.ring.position.y = 0.04;
       b.diamond.position.y = h * 0.62;
     } else if (s.kind === 'sight') {
-      b.ring.scale.setScalar(0.55);
+      b.ring.scale.setScalar(0.8);
       b.ring.position.y = 0;
       b.diamond.position.y = 0;
       b.diamond.scale.setScalar(0.7);
@@ -241,13 +241,20 @@ export class Beacons {
           continue;
         }
       }
-      const appear = b.done > 0 ? Math.max(0, 1 - (b.done - 0.25) / 0.65) : Math.abs(b.life);
+      let appear = b.done > 0 ? Math.max(0, 1 - (b.done - 0.25) / 0.65) : Math.abs(b.life);
+      // Fade world-filling pieces when the camera is inside / right next to them.
+      const dx = camera.position.x - b.spec.pos.x;
+      const dz = camera.position.z - b.spec.pos.z;
+      const near = Math.hypot(dx, dz);
+      const rr = b.spec.radius ?? 0.6;
+      const prox = b.spec.kind === 'sight' ? 1 : Math.min(1, Math.max(0, (near - rr * 0.9) / (rr * 1.6 + 1)));
+      appear *= b.spec.kind === 'ring' ? 0.35 + 0.65 * prox : prox;
       const doneMix = b.done > 0 ? Math.min(1, b.done * 6) : 0;
       const pulse = 1 + this.hint * 0.35 * Math.sin(this.time * 7);
       const c = (b.colMat.uniforms.uColor.value as THREE.Color).copy(ACTIVE).lerp(DONE, doneMix);
       (b.ringMat.uniforms.uColor.value as THREE.Color).copy(c);
       b.diaMat.color.copy(c).multiplyScalar(2.2);
-      b.colMat.uniforms.uAlpha.value = appear * 0.55 * pulse;
+      b.colMat.uniforms.uAlpha.value = appear * 0.15 * pulse;
       b.colMat.uniforms.uTime.value = this.time;
       b.ringMat.uniforms.uAlpha.value = appear * pulse;
       b.ringMat.uniforms.uTime.value = this.time + b.phase;
@@ -261,7 +268,7 @@ export class Beacons {
         // Face the camera; spin the diamond inside the ring.
         b.ring.quaternion.copy(camera.quaternion);
         b.diamond.rotation.y += dt * 2;
-        const s = 0.55 * (1 + b.done * 0.8) * pulse;
+        const s = 0.8 * (1 + b.done * 0.8) * pulse;
         b.ring.scale.setScalar(s);
       }
     }

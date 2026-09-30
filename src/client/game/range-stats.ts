@@ -63,7 +63,7 @@ body.q-low .hf-range { backdrop-filter: none; -webkit-backdrop-filter: none; bac
 .hf-range__seg button.on { background: var(--c-accent, #f0b35b); color: var(--c-ink, #1d1712); }
 .hf-range__speedlbl { font-size: .62rem; letter-spacing: .12em; text-transform: uppercase; color: rgba(243,236,224,.5); margin-top: .5rem; }
 .hf-range__toggle { display: none; }
-body.touch-ui .hf-range { inset-inline-end: auto; inset-inline-start: calc(var(--safe-l, 0px) + .7rem); top: calc(var(--safe-t, 0px) + .6rem); width: auto; max-width: 16rem; padding: .4rem .55rem; font-size: .72rem; }
+body.touch-ui .hf-range { inset-inline-end: auto; inset-inline-start: auto; left: calc(var(--safe-l, 0px) + .7rem); top: calc(var(--safe-t, 0px) + 5.6rem); width: auto; max-width: 16rem; padding: .4rem .55rem; font-size: .72rem; }
 body.touch-ui .hf-range__toggle { display: inline-grid; place-items: center; min-width: 48px; min-height: 40px; border-radius: 8px; border: 1px solid rgba(243,236,224,.28); background: rgba(243,236,224,.06); color: inherit; font: 600 .78rem var(--f-mono); direction: ltr; }
 body.touch-ui .hf-range:not(.is-open) .hf-range__body, body.touch-ui .hf-range:not(.is-open) .hf-range__title, body.touch-ui .hf-range:not(.is-open) .hf-range__clock { display: none; }
 body.touch-ui .hf-range:not(.is-open) .hf-range__head { margin: 0; }
@@ -306,7 +306,8 @@ export class RangePanel implements MatchExtension {
     const cur = profile.value.rangeBest ?? { score: 0, accuracy: 0, headshots: 0 };
     const next = { ...cur, ttk: { ...(cur.ttk ?? {}) } };
     let changed = false;
-    const improve = (key: string, had: number | undefined, value: number, better: boolean, label: string, shown: string) => {
+    /** Records an improvement; toasts it once per session when it beats a stored best. */
+    const improve = (key: string, had: number | undefined, better: boolean, label: string, shown: string): void => {
       if (!better) return;
       changed = true;
       if (had !== undefined && !this.toasted.has(key)) {
@@ -314,24 +315,23 @@ export class RangePanel implements MatchExtension {
         this.api.hud.toast(this.t('range.newBest', { what: `${label} ${shown}` }), '#f6d58e');
         this.api.audio.ui('unlock');
       }
-      void value;
     };
     if (s.shots >= 20) {
       const had = cur.bestAccuracy;
       const better = had === undefined || s.accuracy > had + 1e-6;
-      improve('acc', had, s.accuracy, better, this.t('range.accuracy'), pct(s.accuracy));
+      improve('acc', had, better, this.t('range.accuracy'), pct(s.accuracy));
       if (better) next.bestAccuracy = s.accuracy;
     }
     if (s.bestStreak > 0) {
       const had = cur.bestStreak;
       const better = had === undefined || s.bestStreak > had;
-      improve('streak', had, s.bestStreak, better, this.t('range.streak'), String(s.bestStreak));
+      improve('streak', had, better, this.t('range.streak'), String(s.bestStreak));
       if (better) next.bestStreak = s.bestStreak;
     }
     if (s.kills > 0) {
       const had = cur.mostTargets;
       const better = had === undefined || s.kills > had;
-      improve('targets', had, s.kills, better && s.kills >= 5, this.t('range.targets'), String(s.kills));
+      improve('targets', had, better && s.kills >= 5, this.t('range.targets'), String(s.kills));
       if (better) next.mostTargets = s.kills;
       if (better && s.kills < 5) changed = true;
     }
@@ -340,7 +340,7 @@ export class RangePanel implements MatchExtension {
       const k = String(b.distance);
       const had = cur.ttk?.[k];
       const better = had === undefined || b.avg < had - 1e-3;
-      improve(`ttk${k}`, had, b.avg, better, `${k}m`, secs(b.avg));
+      improve(`ttk${k}`, had, better, `${k}m`, secs(b.avg));
       if (better) next.ttk[k] = Math.round(b.avg * 1000) / 1000;
     }
     if (!changed) return;

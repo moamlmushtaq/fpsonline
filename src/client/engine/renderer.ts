@@ -124,6 +124,16 @@ export class Renderer implements RenderEngine {
 
   // ── Scenes ────────────────────────────────────────────────────────────────
 
+  /**
+   * The render target scenes are drawn into this frame (the post pipeline's HDR target,
+   * or null = the canvas). Shader warm-up must compile against it: three.js keys programs
+   * on the target (output colour space, tone mapping), so a program compiled for the
+   * canvas is compiled again on first use when post is on.
+   */
+  get sceneTarget(): THREE.WebGLRenderTarget | null {
+    return this.post?.composer.renderTarget1 ?? null;
+  }
+
   setScene(scene: THREE.Scene | null, camera: THREE.PerspectiveCamera | null): void {
     this.scene = scene;
     this.camera = camera;

@@ -38,8 +38,10 @@ k.box(-22, -1, 9.5, 22, 0, 16, 'sand', 'ground');
 k.box(-22, -1, -1.2, 4.2, 0, 9.5, 'concrete', 'pad');
 k.box(-20, 0, -104, -19.4, 3, 12.6, 'concrete', 'wall'); // west perimeter
 k.box(19.4, 0, -104, 20, 3, 12.6, 'concrete', 'wall'); // east perimeter
-k.box(-20, 0, 12, 20, 3, 12.6, 'concrete', 'wall'); // back wall
-k.box(-20, 0, -110, 20, 7, -104, 'dirt', 'berm'); // bullet berm
+k.box(-20, 0, 12, 20, 1.5, 12.6, 'concrete', 'wall'); // back wall (low: the evening sun streams in under the canopy)
+// Bullet berm: an earth slope rising from the 100 m row to a 7 m crest.
+k.ramp(-20, 0, -106.5, 20, 7, -101.2, 'z', -1, 'dirt', 'berm');
+k.box(-20, 0, -110, 20, 7, -106.5, 'dirt', 'berm');
 
 // ── Firing line pavilion ────────────────────────────────────────────────────
 k.box(-17, 0, -0.6, 1, 1.02, 0, 'wood', 'counter'); // shooting counter (walk around both ends)
@@ -50,6 +52,8 @@ for (const x of [-17.6, 1.6]) k.box(x - 0.18, 0, -1.0, x + 0.18, 3.6, -0.64, 'co
 k.box(-18.8, 0, 7.4, -14.4, 1.35, 8.0, 'metal', 'hidden');
 k.box(-12.9, 0, 7.4, -11.7, 1.1, 8.0, 'metal', 'hidden');
 k.box(-10.4, 0, 7.4, -9.2, 1.1, 8.0, 'metal', 'hidden');
+// Ammo crates stacked at the pavilion's east end.
+k.box(2.4, 0, 6.3, 4.0, 1.0, 8.3, 'wood', 'hidden');
 
 // ── Distance markers along the lanes (low posts; the boards are decor) ──────
 for (const z of [-10, -25, -50, -75, -100]) {
@@ -72,9 +76,9 @@ k.box(7, 1.25, -38.5, 19.4, 2.6, -36, 'concrete', 'beam');
 k.ramp(9, 0, -45.5, 15, 3.0, -40, 'z', -1, 'concrete');
 k.box(8, 0, -50.5, 16, 3.0, -45.5, 'concrete', 'platform');
 // Grenade pit: sandbag berm behind the close trio, low wings at the sides.
-k.box(8.5, 0, -63, 15.5, 0.8, -62, 'fabric', 'sandbags');
-k.box(8.5, 0, -62, 9.3, 0.55, -58.4, 'fabric', 'sandbags');
-k.box(14.7, 0, -62, 15.5, 0.55, -58.4, 'fabric', 'sandbags');
+k.box(8.5, 0, -63, 15.5, 0.8, -62, 'fabric', 'hidden'); // sandbags (drawn by the decor)
+k.box(8.5, 0, -62, 9.3, 0.55, -58.4, 'fabric', 'hidden');
+k.box(14.7, 0, -62, 15.5, 0.55, -58.4, 'fabric', 'hidden');
 
 // ── Targets ─────────────────────────────────────────────────────────────────
 
@@ -212,22 +216,24 @@ export const RANGE: MapDef = {
   pickups: [{ id: 'range-sunspear', kind: 'sunspear', pos: RANGE_COURSE.pedestal, respawn: 8 }],
   targets,
   landmarks: [
-    { nameKey: 'landmark.range.berm', pos: v(0, 7, -106), icon: 'antenna' },
+    { nameKey: 'landmark.range.berm', pos: v(0, 7, -107), icon: 'antenna' },
     { nameKey: 'range.landmark.tower', pos: v(-34, 14, -34), icon: 'tower' },
     { nameKey: 'range.landmark.course', pos: RANGE_COURSE.perch, icon: 'crane' },
     { nameKey: 'landmark.range.sun', pos: v(-200, 80, -160), icon: 'sun' },
   ],
   lighting: {
     mood: 'golden',
-    sunDir: v(-0.66, 0.3, -0.69),
+    // Low evening sun behind-left of the firing line: it streams in under the canopy
+    // and throws long target shadows downrange.
+    sunDir: v(-0.5, 0.3, 0.81),
     sunColor: '#ffd08a',
     sunIntensity: 2.45,
     skyZenith: '#86aecb',
     skyHorizon: '#f5d3a0',
     sunGlow: '#ffe1a8',
     hemiSky: '#f6e2bd',
-    hemiGround: '#8f8272',
-    hemiIntensity: 0.72,
+    hemiGround: '#a58f72',
+    hemiIntensity: 0.8,
     fogColor: '#f0d6a8',
     fogDensity: 0.0052,
     exposure: 1.05,
@@ -240,9 +246,9 @@ export const RANGE: MapDef = {
     echo: 0.42,
     ambience: 'range',
     emitters: [
-      { kind: 'radio', pos: v(-13.4, 1.1, 8.6), radius: 9 },
-      { kind: 'wind_chime', pos: v(3.2, 3.2, 6.8), radius: 7 },
-      { kind: 'hum', pos: v(-11, 1, 8), radius: 4 },
+      { kind: 'radio', pos: v(-15.1, 1.6, 7.7), radius: 9 },
+      { kind: 'wind_chime', pos: v(3.4, 3.1, 8.6), radius: 7 },
+      { kind: 'hum', pos: v(-11, 1, 7.8), radius: 4 },
     ],
   },
   rocket: { pos: v(40, -5, -250), scale: 1.4 },

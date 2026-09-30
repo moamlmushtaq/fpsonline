@@ -1001,6 +1001,15 @@ interface DecorModule {
   backdrop?: BackdropOptions;
 }
 
+/**
+ * Idle-time prefetch of every map's decor chunk (called once the menu is up): keeps the
+ * download off the loading screen's critical path, and an offline fallback match still
+ * gets its full decor when the page's origin has gone away (server stopped mid-session).
+ */
+export function prefetchDecorModules(): void {
+  for (const load of Object.values(DECOR_MODULES)) void load().catch(() => undefined);
+}
+
 async function loadDecor(id: string): Promise<DecorModule | null> {
   const loader = DECOR_MODULES[`./maps/${id}.ts`] ?? DECOR_MODULES[`./maps/${id}/index.ts`];
   if (!loader) return null;

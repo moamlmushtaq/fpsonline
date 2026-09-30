@@ -236,7 +236,7 @@ export class RangeKit {
       if (lib.surfaceVC) return lib.surfaceVC(tex.tag, { color: '#ffffff' });
     }
     const low = this.low;
-    const std = (o: THREE.MeshStandardMaterialParameters) => this.own(low ? new THREE.MeshLambertMaterial({ vertexColors: true, emissive: o.emissive }) : new THREE.MeshStandardMaterial({ vertexColors: true, ...o }));
+    const std = (o: THREE.MeshStandardMaterialParameters) => this.own(low ? new THREE.MeshLambertMaterial({ vertexColors: true }) : new THREE.MeshStandardMaterial({ vertexColors: true, ...o }));
     switch (kind) {
       case 'ceramic':
         return std({ roughness: 0.32, metalness: 0.02 });

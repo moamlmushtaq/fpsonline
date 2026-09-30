@@ -101,6 +101,7 @@ describe('lag compensation end to end', () => {
         if (m.type === 'matchStart') {
           start = m;
           pred = new Predictor(world, m.you);
+          send({ type: 'loaded' }); // like ClientMatch: the countdown waits for it
           for (const p of m.players) teams.set(p.id, p.team);
         } else if (m.type === 'snap') onSnap(m);
       }

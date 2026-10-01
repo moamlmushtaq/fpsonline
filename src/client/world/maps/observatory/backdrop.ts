@@ -359,9 +359,11 @@ float vn3(vec3 p) { vec3 i = floor(p); vec3 f = fract(p); f = f * f * (3.0 - 2.0
 void main() {
   vec3 d = normalize(vDir);
   float h = d.y;
-  float band = exp(-pow(dot(d, uNormal) / 0.2, 2.0));
+  // x*x instead of pow(x, 2.0): pow() of a negative base is NaN on Apple GPUs (→ black bloom squares).
+  float bandX = dot(d, uNormal) / 0.2;
+  float band = exp(-bandX * bandX);
   float n = vn3(d * 7.0) * 0.6 + vn3(d * 19.0) * 0.3 + vn3(d * 43.0) * 0.1;
-  float dust = smoothstep(0.45, 0.7, vn3(d * 11.0 + 5.0)) * exp(-pow(dot(d, uNormal) / 0.06, 2.0));
+  float dust = smoothstep(0.45, 0.7, vn3(d * 11.0 + 5.0)) * exp(-(dot(d, uNormal) / 0.06) * (dot(d, uNormal) / 0.06));
   float glow = band * (0.35 + 0.9 * n) * (1.0 - dust * 0.85);
   // Tiny dense star specks inside the band.
   vec3 sp = d * 420.0;

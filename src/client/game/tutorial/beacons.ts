@@ -47,7 +47,7 @@ varying vec3 vV;
 void main() {
   float facing = abs(dot(normalize(vN), normalize(vV)));
   float edge = pow(facing, 1.2);
-  float fade = pow(1.0 - vT, 1.6) * smoothstep(0.0, 0.04, vT);
+  float fade = pow(max(1.0 - vT, 0.0), 1.6) * smoothstep(0.0, 0.04, vT);
   float bands = 0.75 + 0.25 * sin(vT * 26.0 - uTime * 3.0);
   gl_FragColor = vec4(uColor * edge * fade * bands * uAlpha, 1.0);
   #include <tonemapping_fragment>
@@ -65,7 +65,8 @@ void main() {
   float r = length(p);
   float aa = fwidth(r) * 1.5;
   float ring = 1.0 - smoothstep(0.03, 0.03 + aa, abs(r - 0.9));
-  float a = fract(atan(p.x, p.y) / 6.2831853 + 1.0);
+  // atan(0,0) is NaN on Apple GPUs (→ black bloom squares): guard the centre.
+  float a = dot(p, p) < 1e-12 ? 0.0 : fract(atan(p.x, p.y) / 6.2831853 + 1.0);
   float ticks = step(0.5, fract(a * 24.0)) * (1.0 - smoothstep(0.02, 0.02 + aa, abs(r - 0.78))) * 0.6;
   float arc = step(a, uFill) * (1.0 - smoothstep(0.045, 0.045 + aa, abs(r - 0.9)));
   float pulse = 0.8 + 0.2 * sin(uTime * 4.0);

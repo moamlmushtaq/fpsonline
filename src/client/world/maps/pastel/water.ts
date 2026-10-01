@@ -57,12 +57,13 @@ void main() {
     vec2 dd = p - c;
     float d = length(dd);
     float rr = ph * 3.2;
-    float ring = exp(-pow((d - rr) * 5.0, 2.0)) * (1.0 - ph);
+    float ring = exp(-((d - rr) * 5.0) * ((d - rr) * 5.0)) * (1.0 - ph);
     g += (dd / max(d, 0.001)) * ring * 0.06;
   }
   vec3 n = normalize(vec3(-g.x, 1.0, -g.y));
   vec3 v = normalize(cameraPosition - vWorld);
-  float fres = pow(1.0 - max(dot(n, v), 0.0), 3.0);
+  // clamp(): dot of unit vectors can exceed 1 by an ulp; pow() of a negative base is NaN on Apple GPUs.
+  float fres = pow(1.0 - clamp(dot(n, v), 0.0, 1.0), 3.0);
   vec3 r = reflect(-v, n);
   vec3 refl = mix(uHorizon, uSky, smoothstep(0.0, 0.6, r.y));
   // Mall interior: ceiling-plane trace (vault opening |x| < 10, |z| < 11).

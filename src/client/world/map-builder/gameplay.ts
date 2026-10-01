@@ -28,7 +28,8 @@ varying vec2 vUv;
 void main() {
   vec2 p = (vUv * 2.0 - 1.0) * uScale;
   float r = length(p);
-  float a = fract(atan(p.x, p.y) / 6.2831853 + 1.0);
+  // atan(0,0) is undefined in GLSL and NaN on Apple GPUs (→ black bloom squares): guard the centre.
+  float a = dot(p, p) < 1e-12 ? 0.0 : fract(atan(p.x, p.y) / 6.2831853 + 1.0);
   float aa = fwidth(r) * 1.5;
   float ring = 1.0 - smoothstep(0.012, 0.012 + aa, abs(r - 1.0));
   // Dial ticks (every 5°, long at quadrants) just inside the ring.
@@ -72,7 +73,8 @@ varying vec3 vV;
 void main() {
   float facing = abs(dot(normalize(vN), normalize(vV)));
   float edge = pow(facing, 1.5);
-  float fade = pow(1.0 - vT, 2.2) * smoothstep(0.0, 0.03, vT);
+  // max(): interpolated vT can overshoot 1 by an ulp; pow() of a negative base is NaN on Apple GPUs.
+  float fade = pow(max(1.0 - vT, 0.0), 2.2) * smoothstep(0.0, 0.03, vT);
   float streak = 0.8 + 0.2 * sin(vT * 30.0 - uTime * 2.0);
   float a = edge * fade * streak * uIntensity;
   gl_FragColor = vec4(uColor * a, 1.0);
@@ -269,7 +271,7 @@ export class GameplayVisuals {
         uniform float uFill; uniform vec3 uColor; varying vec2 vUv;
         void main() {
           vec2 p = vUv * 2.0 - 1.0;
-          float a = fract(atan(p.x, p.y) / 6.2831853 + 1.0);
+          float a = dot(p, p) < 1e-12 ? 0.0 : fract(atan(p.x, p.y) / 6.2831853 + 1.0);
           float on = step(a, uFill);
           gl_FragColor = vec4(uColor * (0.25 + on * 0.75), 0.35 + on * 0.6);
           #include <tonemapping_fragment>

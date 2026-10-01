@@ -267,7 +267,7 @@ varying float vFogD;
 void main() {
   vec2 p = vUv - 0.5;
   float d = length(p) * 2.0;
-  float ang = atan(p.y, p.x);
+  float ang = dot(p, p) < 1e-12 ? 0.0 : atan(p.y, p.x); // atan(0,0) is NaN on Apple GPUs
   float edge = 0.92 + 0.1 * sin(ang * 5.0 + vSeed * 40.0) + 0.06 * sin(ang * 11.0 - vSeed * 17.0);
   float a = 1.0 - smoothstep(edge * 0.35, edge, d);
   a *= vAlpha;
@@ -295,7 +295,7 @@ varying float vFogD;
 void main() {
   float h = position.y + 0.5;
   float y = h * uTop;
-  float ang = atan(position.z, position.x);
+  float ang = abs(position.x) + abs(position.z) < 1e-6 ? 0.0 : atan(position.z, position.x); // cap centres: atan(0,0) is NaN on Apple GPUs
   float r = mix(uSpread, 1.4, pow(h, 0.3)) + y * 0.025;
   float lump = sin(y * 0.33 - uTime * 0.7 + ang * 3.0) * 0.45 + sin(y * 0.13 + ang * 5.0 + uTime * 0.25) * 0.35 + sin(y * 0.71 + ang * 7.0 - uTime * 1.1) * 0.2;
   r *= 1.0 + 0.3 * lump * smoothstep(0.02, 0.2, h);
@@ -371,7 +371,7 @@ void main() {
   float flick = 0.82 + 0.18 * sin(uTime * 43.0 + along * 17.0) * sin(uTime * 29.0 - vUv.x * 25.0);
   float fade = smoothstep(0.0, 0.7, along);
   vec3 col = mix(uEdge, uCore, core) * (0.35 + core) * fade * flick;
-  col += uCore * core * pow(0.5 + 0.5 * sin(along * 34.0 - uTime * 24.0), 8.0) * 0.5 * smoothstep(0.45, 1.0, along);
+  col += uCore * core * pow(max(0.5 + 0.5 * sin(along * 34.0 - uTime * 24.0), 0.0), 8.0) * 0.5 * smoothstep(0.45, 1.0, along);
   float fd = vFogD * uFogScale;
   col *= exp(-fogDensity * fogDensity * fd * fd) * uPower;
   gl_FragColor = vec4(col, 1.0);

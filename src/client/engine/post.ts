@@ -58,6 +58,41 @@ class OverlayPass extends Pass {
   }
 }
 
+// ── NaN / Inf guard ─────────────────────────────────────────────────────────
+// Apple GPUs (Safari on iPhone, iPad and Mac) return NaN where other GPUs
+// quietly return 0 — pow() of a negative base, atan(0, 0), 0/0 — and specular
+// peaks can overflow the HalfFloat targets to Inf. One such pixel is invisible
+// on its own, but bloom's downsample/blur chain (and the painterly filter)
+// smears it into a large BLACK SQUARE. Every value entering bloom and grading
+// is therefore forced finite. The exponent-bit test is used instead of isnan(),
+// which fast-math shader compilers may fold away.
+const SANITIZE_GLSL = /* glsl */ `
+float hfFinite(float x) {
+  return (floatBitsToUint(x) & 0x7f800000u) == 0x7f800000u ? 0.0 : x;
+}
+vec3 hfSafe(vec3 c) {
+  return clamp(vec3(hfFinite(c.r), hfFinite(c.g), hfFinite(c.b)), 0.0, 4096.0);
+}`;
+
+/** UnrealBloomPass high-pass with the NaN/Inf guard on its (only) scene read. */
+const BLOOM_HIGHPASS_FRAG = /* glsl */ `
+#include <common>
+uniform sampler2D tDiffuse;
+uniform vec3 defaultColor;
+uniform float defaultOpacity;
+uniform float luminosityThreshold;
+uniform float smoothWidth;
+varying vec2 vUv;
+${SANITIZE_GLSL}
+void main() {
+  vec4 texel = texture2D(tDiffuse, vUv);
+  texel = vec4(hfSafe(texel.rgb), clamp(hfFinite(texel.a), 0.0, 1.0));
+  float v = luminance(texel.xyz);
+  vec4 outputColor = vec4(defaultColor.rgb, defaultOpacity);
+  float alpha = smoothstep(luminosityThreshold, luminosityThreshold + smoothWidth, v);
+  gl_FragColor = mix(outputColor, texel, alpha);
+}`;
+
 // ── Grading shader ──────────────────────────────────────────────────────────
 
 const GRADING_VERT = /* glsl */ `
@@ -82,6 +117,7 @@ uniform float uPaintRadius;
 uniform float uShadowSplit;
 uniform float uShadowFloor;
 varying vec2 vUv;
+${SANITIZE_GLSL}
 
 // ACES filmic fit (identical to three.js ACESFilmicToneMapping).
 vec3 hfRRTAndODTFit(vec3 v) {
@@ -119,7 +155,7 @@ float vnoise(vec2 p) {
   float d = hash12(i + vec2(1.0, 1.0));
   return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
 }
-vec3 tap(vec2 uv) { return aces(texture2D(tDiffuse, uv).rgb); }
+vec3 tap(vec2 uv) { return aces(hfSafe(texture2D(tDiffuse, uv).rgb)); }
 // One Kuwahara quadrant from the shared centre + two bilinear taps.
 void quadrant(vec3 c0, vec2 uv, vec2 dir, vec2 px, inout vec3 acc, inout float wsum) {
   vec3 s1 = tap(uv + vec2(dir.x * 1.5, dir.y * 0.5) * px);
@@ -151,7 +187,7 @@ void main() {
   // signs) never smears away: the filter only calms texture noise into strokes.
   col = mix(col, c0, 0.4);
 #else
-  vec3 col = aces(texture2D(tDiffuse, uv).rgb);
+  vec3 col = aces(hfSafe(texture2D(tDiffuse, uv).rgb));
 #endif
 
   // All grading below runs on LINEAR display-referred values (post ACES, pre
@@ -319,6 +355,9 @@ export class PostPipeline {
     const bloom = new UnrealBloomPass(res, 0.6, 0.42, BLOOM_THRESHOLD);
     // Soft knee so the transition into bloom is gentle (default is a hard 0.01).
     (bloom.highPassUniforms as Record<string, THREE.IUniform>).smoothWidth.value = BLOOM_KNEE;
+    // NaN/Inf guard on the scene read (see SANITIZE_GLSL): without it Safari shows black squares.
+    bloom.materialHighPassFilter.fragmentShader = BLOOM_HIGHPASS_FRAG;
+    bloom.materialHighPassFilter.needsUpdate = true;
     this.bloomPass = bloom;
     this.composer.insertPass(bloom, 2);
   }

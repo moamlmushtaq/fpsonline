@@ -650,7 +650,7 @@ void main() {
   vV = cameraPosition - wp.xyz;
   vCam = length(vV);
   vT = 0.5 - position.y / uLength;
-  vAng = atan(position.x, position.z);
+  vAng = abs(position.x) + abs(position.z) < 1e-6 ? 0.0 : atan(position.x, position.z); // atan(0,0) is NaN on Apple GPUs
   vec4 mv = viewMatrix * wp;
   vFogDepth = -mv.z;
   gl_Position = projectionMatrix * mv;

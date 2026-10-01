@@ -182,7 +182,7 @@ export class Materials implements MaterialLibrary {
       }
     }
     // Hand-painted finish (world-space mottling, hue drift, painted form): every preset.
-    enablePainterly(m);
+    enablePainterly(m, this.tier === 'low');
     m.name = `surface.${tag}.${style || 'default'}`;
     this.cache.set(key, m);
     return m;
@@ -206,7 +206,7 @@ export class Materials implements MaterialLibrary {
         : new THREE.MeshStandardMaterial({ ...common, roughness: opts.roughness ?? 0.85, metalness: opts.metalness ?? 0 });
     if (opts.transparent) m.depthWrite = false;
     // Flat stylized props still read hand-painted (skipped for see-through ones).
-    enablePainterly(m);
+    enablePainterly(m, this.tier === 'low');
     m.name = `painted.${color}`;
     this.cache.set(key, m);
     return m;

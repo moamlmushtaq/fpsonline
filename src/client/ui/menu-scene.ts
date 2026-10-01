@@ -548,7 +548,7 @@ export class MenuScene {
       const mat = this.own(
         low ? new THREE.MeshLambertMaterial({ vertexColors: true }) : new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.66, metalness: 0.05 }),
       );
-      enablePainterly(mat);
+      enablePainterly(mat, low);
       const mesh = this.addMesh(merged, mat, true);
       mesh.castShadow = shadows;
       mesh.name = 'menu.props';

@@ -14,8 +14,8 @@
 //         across large surfaces (luminance preserving),
 //       • top-lit / bottom-dark: upward faces a touch brighter and warmer,
 //         downward faces cooler and darker (painted form, not lighting).
-//     Cost: 3 fetches of one 128² noise texture + ~25 ALU per pixel, on every
-//     preset. Characters, weapons and effects never get the define.
+//     Cost: 3 fetches of one 128² noise texture + ~30 ALU per pixel (1 fetch
+//     on low, HF_PAINT_LOW). Characters, weapons and effects never get it.
 //
 //  2. Direct-to-screen grading (the LOW preset has no post pipeline): the same
 //     saturation, warm tint, luminance-preserving cool-violet shadow split, toe
@@ -63,17 +63,28 @@ const PAINT_PARS_FRAGMENT = /* glsl */ `
 	vec3 hfPaint( vec3 c ) {
 		vec3 n = normalize( vHfNormal );
 		vec3 p = vHfWorld;
+		vec3 an = abs( n );
+		vec2 fp = an.y > 0.7 ? p.xz : ( an.x > an.z ? p.zy : p.xy );
+	#ifdef HF_PAINT_LOW
+		// Low preset: ONE fetch. Blotches (r), strokes (g), hue drift (b) and
+		// dabs (a) all come from the stroke-scale sample (the map's baked vertex
+		// colors already carry the large-scale variation).
+		vec4 M = texture2D( hfPaintTex, fp * ( 1.0 / 6.0 ) );
+		vec4 L = M;
+		vec4 S = M;
+		const float hfAmp = 0.6; // one correlated sample: tone it down to Medium's apparent strength
+	#else
 		// Large scale: a continuous skewed mapping of 3D position (seam-free on
 		// every face orientation) → value blotches (r) + hue drift (b).
 		vec4 L = texture2D( hfPaintTex, vec2( p.x + p.y * 0.37, p.z - p.y * 0.29 ) * ( 1.0 / 30.0 ) );
 		// Mid scale: strokes laid in the face's dominant plane, warped by L.
-		vec3 an = abs( n );
-		vec2 fp = an.y > 0.7 ? p.xz : ( an.x > an.z ? p.zy : p.xy );
 		vec4 M = texture2D( hfPaintTex, fp * ( 1.0 / 3.4 ) + ( L.rb - 0.5 ) * 0.5 );
 		vec4 S = texture2D( hfPaintTex, fp.yx * ( 1.0 / 1.15 ) + M.rg * 0.35 );
+		const float hfAmp = 1.0;
+	#endif
 		// Strokes as flat-ish patches with soft edges (thresholded), not smooth noise.
 		float stroke = smoothstep( 0.36, 0.64, M.g ) - 0.5;
-		float v = 1.0 + ( L.r - 0.5 ) * 0.34 + stroke * 0.2 + ( S.a - 0.5 ) * 0.12;
+		float v = 1.0 + hfAmp * ( ( L.r - 0.5 ) * 0.34 + stroke * 0.2 + ( S.a - 0.5 ) * 0.12 );
 		// Warm ↔ cool drift (normalised to luminance 1 → value preserved), plus a
 		// little temperature change from stroke to stroke, as a painter mixes.
 		vec3 hue = mix( vec3( 0.9, 0.99, 1.13 ), vec3( 1.1, 0.995, 0.86 ), smoothstep( 0.25, 0.75, L.b ) );
@@ -184,13 +195,17 @@ function paintable(m: THREE.Material): boolean {
   return true;
 }
 
-/** Opts one environment material into the painterly finish (idempotent). */
-export function enablePainterly(m: THREE.Material): boolean {
+/**
+ * Opts one environment material into the painterly finish (idempotent).
+ * `low` selects the 1-fetch variant (low preset).
+ */
+export function enablePainterly(m: THREE.Material, low = false): boolean {
   if (!paintable(m)) return false;
   const d = ((m as THREE.ShaderMaterial).defines ??= {}) as Record<string, string>;
   if ('HF_PAINTERLY' in d) return true;
   ensurePaintTexture();
   d.HF_PAINTERLY = '';
+  if (low) d.HF_PAINT_LOW = '';
   m.needsUpdate = true;
   return true;
 }
@@ -200,7 +215,7 @@ export function enablePainterly(m: THREE.Material): boolean {
  * decor, static geometry, backdrop). Objects flagged `userData.noPaint` (and
  * their materials) are skipped. Returns the number of materials changed.
  */
-export function paintTree(root: THREE.Object3D): number {
+export function paintTree(root: THREE.Object3D, low = false): number {
   let n = 0;
   const seen = new Set<THREE.Material>();
   root.traverse((o) => {
@@ -211,7 +226,7 @@ export function paintTree(root: THREE.Object3D): number {
     for (const m of mats) {
       if (!m || seen.has(m)) continue;
       seen.add(m);
-      if (enablePainterly(m)) n++;
+      if (enablePainterly(m, low)) n++;
     }
   });
   return n;

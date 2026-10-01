@@ -305,7 +305,9 @@ export class EffectsSystem implements Effects {
 
   setQuality(q: QualitySettings): void {
     this.q = q;
-    this.dissolver?.setBudget(q.particles);
+    this.dissolver?.setBudget(q.particles, q.post);
+    // Low (no post): per-particle tone mapping + additive sum clips → dimmer gain.
+    this.add.setGain(q.post ? 1 : 0.5);
     if (q.preset === 'high' && !this.light) {
       this.light = new THREE.PointLight('#ffcf94', 0, 9, 2);
       this.light.name = 'fx.light';
@@ -597,7 +599,7 @@ export class EffectsSystem implements Effects {
   elimination(pos: Vec3, yaw: number, faction: Faction, team: Team, fxId: string, crouch: number): void {
     const style = findElimFx(fxId).style;
     const kind: DissolveStyle = style === 'faction' ? (faction === 1 ? 'petals' : 'shards') : style;
-    this.dissolver.play(kind, pos, yaw, faction, team, crouch);
+    this.dissolver.play(kind, pos, yaw, faction, team, crouch, this.mainCam?.position ?? null);
   }
 
   /**

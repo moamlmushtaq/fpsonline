@@ -26,6 +26,7 @@ import * as THREE from 'three';
 import type { Faction, Team, Vec3 } from '../../shared/types';
 import { ENV, teamColors } from './palette';
 import { type ParticlePool, SPRITE } from './particles';
+import { PIECE, PiecePool } from './dissolve-pieces';
 
 const rnd = Math.random;
 const rr = (a: number, b: number): number => a + (b - a) * rnd();
@@ -182,342 +183,6 @@ function template(f: Faction): BodyTemplate {
 /** One world-space body sample (scratch, reused). */
 const S = { x: 0, y: 0, z: 0, nx: 0, ny: 0, nz: 0, hn: 0 };
 
-// ── Instanced 3D pieces ─────────────────────────────────────────────────────
-
-export type PieceKind = 'shard' | 'paper' | 'crystal';
-
-/** Spawn parameters (fill the shared scratch PIECE, then call PiecePool.spawn). */
-interface PieceSpec {
-  x: number; y: number; z: number;
-  /** Facing normal (the piece's +Z) and roll around it. */
-  nx: number; ny: number; nz: number; roll: number;
-  sx: number; sy: number; sz: number;
-  vx: number; vy: number; vz: number;
-  /** Angular velocity (rad/s) around a random axis. */
-  spin: number;
-  delay: number;
-  life: number;
-  ground: number;
-  gravity: number;
-  drag: number;
-  bounce: number;
-  /** Paper flutter: lateral sway acceleration (m/s²). */
-  flutter: number;
-  /** Albedo tint. */
-  r: number; g: number; b: number;
-  /** Seam glow colour (linear, premultiplied intensity) while held / at the release flash. */
-  gr: number; gg: number; gb: number;
-  holdGlow: number;
-  flashGlow: number;
-  glowDecay: number;
-}
-
-const PIECE: PieceSpec = {
-  x: 0, y: 0, z: 0, nx: 0, ny: 0, nz: 1, roll: 0, sx: 0.1, sy: 0.1, sz: 0.02, vx: 0, vy: 0, vz: 0, spin: 0,
-  delay: 0, life: 1, ground: -1e9, gravity: 0, drag: 0, bounce: 0, flutter: 0, r: 1, g: 1, b: 1, gr: 0, gg: 0, gb: 0, holdGlow: 0, flashGlow: 0, glowDecay: 4,
-};
-
-const _q = new THREE.Quaternion();
-const _q2 = new THREE.Quaternion();
-const _v = new THREE.Vector3();
-const _s = new THREE.Vector3();
-const _m = new THREE.Matrix4();
-const _z = new THREE.Vector3(0, 0, 1);
-
-/** Shard: a faceted ceramic plate (convex outer face, flat inner face, glowing seam edges). */
-function shardGeometry(): THREE.BufferGeometry {
-  const ring: [number, number][] = [[-0.5, -0.32], [0.04, -0.5], [0.5, -0.12], [0.3, 0.42], [-0.18, 0.5], [-0.46, 0.2]];
-  const pos: number[] = [];
-  const colr: number[] = [];
-  const edge: number[] = [];
-  const tri = (a: number[], b: number[], c: number[], col: number[], e: number): void => {
-    pos.push(...a, ...b, ...c);
-    for (let i = 0; i < 3; i++) {
-      colr.push(...col);
-      edge.push(e);
-    }
-  };
-  const front = [1, 1, 1];
-  const back = [0.74, 0.71, 0.66];
-  const side = [0.96, 0.93, 0.87];
-  const apex = [0.04, 0.02, 0.75];
-  for (let i = 0; i < ring.length; i++) {
-    const [ax, ay] = ring[i];
-    const [bx, by] = ring[(i + 1) % ring.length];
-    // Outer face: aEdge 1 on the rim, 0 at the apex → the seam glow hugs the outline.
-    pos.push(...apex, ax, ay, 0.5, bx, by, 0.5);
-    colr.push(...front, ...front, ...front);
-    edge.push(0, 1, 1);
-    tri([0, 0, -0.5], [bx, by, -0.5], [ax, ay, -0.5], back, 0);
-    tri([ax, ay, 0.5], [ax, ay, -0.5], [bx, by, -0.5], side, 1);
-    tri([ax, ay, 0.5], [bx, by, -0.5], [bx, by, 0.5], side, 1);
-  }
-  return finishPieceGeometry(pos, colr, edge);
-}
-
-/** Paper: a square folded along its diagonal (a shallow dart), two tones. */
-function paperGeometry(): THREE.BufferGeometry {
-  const pos: number[] = [];
-  const colr: number[] = [];
-  const edge: number[] = [];
-  const a = [0, -0.5, 0];
-  const b = [0, 0.5, 0];
-  const l = [-0.5, 0, 0.22];
-  const r = [0.5, 0, 0.22];
-  pos.push(...a, ...b, ...l, ...a, ...r, ...b);
-  colr.push(1, 1, 1, 1, 1, 1, 1, 1, 1, 0.86, 0.85, 0.82, 0.86, 0.85, 0.82, 0.86, 0.85, 0.82);
-  edge.push(0, 0, 0, 0, 0, 0);
-  return finishPieceGeometry(pos, colr, edge);
-}
-
-/** Crystal: an elongated hexagonal bipyramid (whole body glows). */
-function crystalGeometry(): THREE.BufferGeometry {
-  const pos: number[] = [];
-  const colr: number[] = [];
-  const edge: number[] = [];
-  const top = [0, 0.75, 0];
-  const bot = [0, -0.6, 0];
-  for (let i = 0; i < 6; i++) {
-    const a0 = (i / 6) * Math.PI * 2;
-    const a1 = ((i + 1) / 6) * Math.PI * 2;
-    const p0 = [Math.cos(a0) * 0.32, 0.1, Math.sin(a0) * 0.32];
-    const p1 = [Math.cos(a1) * 0.32, 0.1, Math.sin(a1) * 0.32];
-    const k = 0.85 + 0.15 * (i % 2);
-    pos.push(...top, ...p1, ...p0, ...bot, ...p0, ...p1);
-    for (let j = 0; j < 6; j++) {
-      colr.push(k, k, k);
-      edge.push(1);
-    }
-  }
-  return finishPieceGeometry(pos, colr, edge);
-}
-
-function finishPieceGeometry(pos: number[], colr: number[], edge: number[]): THREE.BufferGeometry {
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute('color', new THREE.Float32BufferAttribute(colr, 3));
-  g.setAttribute('aEdge', new THREE.Float32BufferAttribute(edge, 1));
-  g.computeVertexNormals(); // non-indexed → flat facets (they catch the sun one by one)
-  return g;
-}
-
-/** Standard material + per-instance seam/body glow (aGlow × aEdge → emissive). */
-function pieceMaterial(kind: PieceKind): THREE.MeshStandardMaterial {
-  const m = new THREE.MeshStandardMaterial({
-    vertexColors: true,
-    roughness: kind === 'paper' ? 0.85 : kind === 'crystal' ? 0.18 : 0.3,
-    metalness: kind === 'crystal' ? 0.1 : 0,
-    side: kind === 'paper' ? THREE.DoubleSide : THREE.FrontSide,
-    // Ceramic stays ceramic-white in shade (the armor it came from is self-lit a touch too).
-    emissive: kind === 'shard' ? new THREE.Color('#fff4e6') : new THREE.Color(0x000000),
-    emissiveIntensity: kind === 'shard' ? 0.14 : 0,
-  });
-  m.onBeforeCompile = (sh) => {
-    sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute float aEdge;\nattribute vec3 aGlow;\nvarying vec3 vGlow;\nvarying float vEdge;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGlow = aGlow;\nvEdge = aEdge;');
-    sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vGlow;\nvarying float vEdge;')
-      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += vGlow * (vEdge * vEdge * vEdge);');
-  };
-  m.customProgramCacheKey = () => 'halcyon.dissolvePiece';
-  return m;
-}
-
-class PiecePool {
-  readonly mesh: THREE.InstancedMesh;
-  private readonly cap: number;
-  private next = 0;
-  private live = 0;
-  private readonly px: Float32Array; private readonly py: Float32Array; private readonly pz: Float32Array;
-  private readonly vx: Float32Array; private readonly vy: Float32Array; private readonly vz: Float32Array;
-  private readonly qx: Float32Array; private readonly qy: Float32Array; private readonly qz: Float32Array; private readonly qw: Float32Array;
-  private readonly wx: Float32Array; private readonly wy: Float32Array; private readonly wz: Float32Array; private readonly ws: Float32Array;
-  private readonly sx: Float32Array; private readonly sy: Float32Array; private readonly sz: Float32Array;
-  private readonly age: Float32Array; private readonly life: Float32Array;
-  private readonly ground: Float32Array; private readonly grav: Float32Array; private readonly drag: Float32Array;
-  private readonly bounce: Float32Array; private readonly flutter: Float32Array; private readonly hits: Uint8Array;
-  private readonly cr: Float32Array; private readonly cg: Float32Array; private readonly cb: Float32Array;
-  private readonly gr: Float32Array; private readonly gg: Float32Array; private readonly gb: Float32Array;
-  private readonly hold: Float32Array; private readonly flash: Float32Array; private readonly decay: Float32Array;
-  private readonly alive: Uint8Array;
-  private readonly glow: THREE.InstancedBufferAttribute;
-  private readonly color: THREE.InstancedBufferAttribute;
-
-  constructor(scene: THREE.Scene, kind: PieceKind, capacity: number) {
-    const n = (this.cap = Math.max(8, capacity | 0));
-    const F = (): Float32Array => new Float32Array(n);
-    this.px = F(); this.py = F(); this.pz = F();
-    this.vx = F(); this.vy = F(); this.vz = F();
-    this.qx = F(); this.qy = F(); this.qz = F(); this.qw = F();
-    this.wx = F(); this.wy = F(); this.wz = F(); this.ws = F();
-    this.sx = F(); this.sy = F(); this.sz = F();
-    this.age = F(); this.life = F();
-    this.ground = F(); this.grav = F(); this.drag = F();
-    this.bounce = F(); this.flutter = F(); this.hits = new Uint8Array(n);
-    this.cr = F(); this.cg = F(); this.cb = F();
-    this.gr = F(); this.gg = F(); this.gb = F();
-    this.hold = F(); this.flash = F(); this.decay = F();
-    this.alive = new Uint8Array(n);
-    const geo = kind === 'shard' ? shardGeometry() : kind === 'paper' ? paperGeometry() : crystalGeometry();
-    this.glow = new THREE.InstancedBufferAttribute(new Float32Array(n * 3), 3).setUsage(THREE.DynamicDrawUsage);
-    geo.setAttribute('aGlow', this.glow);
-    this.mesh = new THREE.InstancedMesh(geo, pieceMaterial(kind), n);
-    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.color = new THREE.InstancedBufferAttribute(new Float32Array(n * 3), 3).setUsage(THREE.DynamicDrawUsage);
-    this.mesh.instanceColor = this.color;
-    this.mesh.count = 0;
-    this.mesh.visible = false;
-    this.mesh.frustumCulled = false;
-    this.mesh.name = `fx.dissolve.${kind}`;
-    this.mesh.renderOrder = 5;
-    scene.add(this.mesh);
-  }
-
-  get count(): number {
-    return this.live;
-  }
-
-  /** Spawns from the shared PIECE spec. When full, the oldest slot is recycled. */
-  spawn(p: PieceSpec): void {
-    let i = -1;
-    for (let k = 0; k < this.cap; k++) {
-      const j = (this.next + k) % this.cap;
-      if (!this.alive[j]) {
-        i = j;
-        break;
-      }
-    }
-    if (i < 0) i = this.next;
-    this.next = (i + 1) % this.cap;
-    this.alive[i] = 1;
-    this.px[i] = p.x; this.py[i] = p.y; this.pz[i] = p.z;
-    this.vx[i] = p.vx; this.vy[i] = p.vy; this.vz[i] = p.vz;
-    _v.set(p.nx, p.ny, p.nz);
-    if (_v.lengthSq() < 1e-6) _v.set(0, 0, 1);
-    _q.setFromUnitVectors(_z, _v.normalize());
-    _q2.setFromAxisAngle(_z, p.roll);
-    _q.multiply(_q2);
-    this.qx[i] = _q.x; this.qy[i] = _q.y; this.qz[i] = _q.z; this.qw[i] = _q.w;
-    _v.set(rnd() - 0.5, rnd() - 0.5, rnd() - 0.5);
-    if (_v.lengthSq() < 1e-6) _v.set(0, 1, 0);
-    _v.normalize();
-    this.wx[i] = _v.x; this.wy[i] = _v.y; this.wz[i] = _v.z; this.ws[i] = p.spin;
-    this.sx[i] = p.sx; this.sy[i] = p.sy; this.sz[i] = p.sz;
-    this.age[i] = -Math.max(0, p.delay);
-    this.life[i] = Math.max(0.05, p.life);
-    this.ground[i] = p.ground; this.grav[i] = p.gravity; this.drag[i] = p.drag;
-    this.bounce[i] = p.bounce; this.flutter[i] = p.flutter; this.hits[i] = 0;
-    this.cr[i] = p.r; this.cg[i] = p.g; this.cb[i] = p.b;
-    this.gr[i] = p.gr; this.gg[i] = p.gg; this.gb[i] = p.gb;
-    this.hold[i] = p.holdGlow; this.flash[i] = p.flashGlow; this.decay[i] = p.glowDecay;
-  }
-
-  clear(): void {
-    this.alive.fill(0);
-  }
-
-  update(dt: number): void {
-    const G = this.glow.array as Float32Array;
-    const C = this.color.array as Float32Array;
-    let n = 0;
-    for (let i = 0; i < this.cap; i++) {
-      if (!this.alive[i]) continue;
-      const age0 = this.age[i];
-      const age = (this.age[i] += dt);
-      let gk: number;
-      let scale = 1;
-      if (age < 0) {
-        gk = this.hold[i];
-      } else {
-        if (age >= this.life[i]) {
-          this.alive[i] = 0;
-          continue;
-        }
-        const h = age0 < 0 ? age : dt;
-        const settled = this.hits[i] >= 3;
-        if (!settled) {
-          const k = Math.exp(-this.drag[i] * h);
-          this.vx[i] *= k;
-          this.vy[i] *= k;
-          this.vz[i] *= k;
-          this.vy[i] -= this.grav[i] * h;
-          const fl = this.flutter[i];
-          if (fl !== 0) {
-            // Paper: a falling-leaf sway (lateral pendulum) + lift on the swing.
-            const ph = age * 3.4 + i * 1.7;
-            this.vx[i] += Math.cos(ph) * fl * h;
-            this.vz[i] += Math.sin(ph * 0.8) * fl * h;
-          }
-          this.px[i] += this.vx[i] * h;
-          this.py[i] += this.vy[i] * h;
-          this.pz[i] += this.vz[i] * h;
-          const g = this.ground[i];
-          if (this.py[i] < g) {
-            this.py[i] = g;
-            if (this.vy[i] < -0.8 && this.hits[i] < 2) {
-              this.vy[i] = -this.vy[i] * this.bounce[i];
-              this.vx[i] *= 0.55;
-              this.vz[i] *= 0.55;
-              this.ws[i] *= 0.5;
-              this.hits[i]++;
-            } else {
-              // Resting: lie down and stop.
-              this.vy[i] = 0;
-              this.vx[i] = 0;
-              this.vz[i] = 0;
-              this.hits[i] = 3;
-            }
-          }
-          const a = this.ws[i] * h;
-          if (a !== 0) {
-            _v.set(this.wx[i], this.wy[i], this.wz[i]);
-            _q2.setFromAxisAngle(_v, a);
-            _q.set(this.qx[i], this.qy[i], this.qz[i], this.qw[i]).premultiply(_q2);
-            this.qx[i] = _q.x; this.qy[i] = _q.y; this.qz[i] = _q.z; this.qw[i] = _q.w;
-          }
-        }
-        gk = this.flash[i] * Math.exp(-age * this.decay[i]);
-        // Shrink away over the last 0.45 s (opaque pieces can't fade).
-        scale = Math.min(1, (this.life[i] - age) / 0.45);
-      }
-      _q.set(this.qx[i], this.qy[i], this.qz[i], this.qw[i]);
-      _v.set(this.px[i], this.py[i], this.pz[i]);
-      _s.set(this.sx[i] * scale, this.sy[i] * scale, this.sz[i] * scale);
-      _m.compose(_v, _q, _s);
-      this.mesh.setMatrixAt(n, _m);
-      C[n * 3] = this.cr[i];
-      C[n * 3 + 1] = this.cg[i];
-      C[n * 3 + 2] = this.cb[i];
-      G[n * 3] = this.gr[i] * gk;
-      G[n * 3 + 1] = this.gg[i] * gk;
-      G[n * 3 + 2] = this.gb[i] * gk;
-      n++;
-    }
-    this.live = n;
-    this.mesh.count = n;
-    this.mesh.visible = n > 0;
-    if (n > 0) {
-      this.mesh.instanceMatrix.clearUpdateRanges();
-      this.mesh.instanceMatrix.addUpdateRange(0, n * 16);
-      this.mesh.instanceMatrix.needsUpdate = true;
-      this.color.clearUpdateRanges();
-      this.color.addUpdateRange(0, n * 3);
-      this.color.needsUpdate = true;
-      this.glow.clearUpdateRanges();
-      this.glow.addUpdateRange(0, n * 3);
-      this.glow.needsUpdate = true;
-    }
-  }
-
-  dispose(): void {
-    this.mesh.removeFromParent();
-    this.mesh.geometry.dispose();
-    (this.mesh.material as THREE.Material).dispose();
-    this.mesh.dispose();
-  }
-}
-
 // ── Dissolve choreography ───────────────────────────────────────────────────
 
 /** Release timing: feet first, crown last (≈ 1 s sweep), a little jitter. */
@@ -534,6 +199,9 @@ const GHOST_BANDS: readonly (readonly [number, number, number])[] = [
   [1.68, 0.4, 0.93],
 ];
 
+/** Pieces closer than this to an avoided camera are not spawned. */
+const AVOID_R = 0.75;
+
 const ORIGAMI = [ENV.bone, ENV.pastelPink, ENV.pastelBlue, ENV.pastelYellow, ENV.pastelMint];
 const PRISM_HUES = [0.0, 0.08, 0.15, 0.33, 0.52, 0.62, 0.78];
 
@@ -547,6 +215,8 @@ export class Dissolver {
   private readonly crystals: PiecePool;
   /** Particle budget multiplier (0.25…1). */
   private k = 1;
+  /** Big soft glows (flash / ghost) are toned down without post (Low): they clip to white. */
+  private glowK = 1;
   // Body transform of the current dissolve.
   private bx = 0;
   private by = 0;
@@ -556,6 +226,9 @@ export class Dissolver {
   private cs = 1;
   private sn = 0;
   private tpl: BodyTemplate = template(0);
+  /** Camera position to keep clear (set per dissolve; see sample()). */
+  private readonly avoid = new THREE.Vector3();
+  private avoidOn = false;
 
   constructor(
     scene: THREE.Scene,
@@ -570,8 +243,9 @@ export class Dissolver {
     this.crystals = new PiecePool(scene, 'crystal', Math.round(200 * Math.max(0.4, this.k)));
   }
 
-  setBudget(particles: number): void {
+  setBudget(particles: number, post = true): void {
     this.k = Math.max(0.25, particles);
+    this.glowK = post ? 1 : 0.45;
   }
 
   private n(base: number): number {
@@ -595,8 +269,12 @@ export class Dissolver {
     this.sn = Math.sin(yaw);
   }
 
-  /** Writes body sample `i` (strided over the template) into S, in world space. */
-  private sample(i: number, n: number, offset: number): void {
+  /**
+   * Writes body sample `i` (strided over the template) into S, in world space.
+   * False when it sits right at the camera (the LOCAL player's own dissolve:
+   * the eye is inside the head for the first frames of the death cam's pull-back).
+   */
+  private sample(i: number, n: number, offset: number): boolean {
     const t = this.tpl;
     const j = (Math.floor((i * TEMPLATE_N) / n) + offset) % TEMPLATE_N;
     const lx = t.px[j], lz = t.pz[j];
@@ -608,10 +286,16 @@ export class Dissolver {
     S.nz = -nx * this.sn + nz * this.cs;
     S.ny = t.ny[j];
     S.hn = t.hn[j];
+    if (!this.avoidOn) return true;
+    const dx = S.x - this.avoid.x, dy = S.y - this.avoid.y, dz = S.z - this.avoid.z;
+    return dx * dx + dy * dy + dz * dz > AVOID_R * AVOID_R;
   }
 
-  play(style: DissolveStyle, pos: Vec3, yaw: number, faction: Faction, team: Team, crouch: number): void {
+  play(style: DissolveStyle, pos: Vec3, yaw: number, faction: Faction, team: Team, crouch: number, camera?: THREE.Vector3 | null): void {
     this.begin(pos, yaw, faction, crouch);
+    // Only when the camera is inside the body's volume (own death in first person).
+    this.avoidOn = !!camera && Math.hypot(camera.x - pos.x, camera.z - pos.z) < 0.9 && camera.y > pos.y - 0.5 && camera.y < pos.y + 2.4;
+    if (camera) this.avoid.copy(camera);
     const tc = teamColors(team);
     switch (style) {
       case 'petals':
@@ -636,6 +320,8 @@ export class Dissolver {
 
   /** Soft glowing "ghost" of the body that fades band by band from the feet up. */
   private ghost(r: number, g: number, b: number, a: number): void {
+    if (this.avoidOn) return; // (own death: the camera is inside the glow)
+    a *= this.glowK;
     for (const [y, s, hn] of GHOST_BANDS) {
       this.add.spawn({
         x: this.bx, y: this.by + y * this.sy, z: this.bz, life: 0.32, size: s, size1: s * 1.3, r, g, b, a, a1: 0,
@@ -646,6 +332,8 @@ export class Dissolver {
 
   private flash(r: number, g: number, b: number, size: number, life: number, a = 0.8): void {
     const y = this.by + this.cy;
+    if (this.avoidOn) a *= 0.3; // own death: a soft veil, not a white-out
+    a *= this.glowK;
     this.add.spawn({ x: this.bx, y, z: this.bz, life, size: size * 0.35, size1: size, r, g, b, a, a1: 0, sprite: SPRITE.glow });
   }
 
@@ -662,12 +350,12 @@ export class Dissolver {
     const off = (rnd() * TEMPLATE_N) | 0;
     const spin = rnd() < 0.5 ? 1 : -1;
     for (let i = 0; i < n; i++) {
-      this.sample(i, n, off);
+      if (!this.sample(i, n, off)) continue;
       // Teal heart with violet tips: the mix shifts per petal and over its life.
       const m = i % 5 === 0 ? 0.85 : i % 3 === 0 ? 0.45 : rr(0, 0.2);
       _c.copy(a).lerp(b, m);
       const k = rr(1.9, 2.5);
-      const s = rr(0.1, 0.15) * cv;
+      const s = rr(0.12, 0.17) * cv;
       this.add.spawn({
         x: S.x + S.nx * 0.02, y: S.y + S.ny * 0.02, z: S.z + S.nz * 0.02,
         vx: S.nx * rr(0.2, 0.6), vy: rr(0.3, 0.8) + S.ny * 0.3, vz: S.nz * rr(0.2, 0.6),
@@ -680,7 +368,7 @@ export class Dissolver {
     }
     // Motes rising from the dissolve front.
     for (let i = 0, m = this.n(36); i < m; i++) {
-      this.sample(i, m, off + 7);
+      if (!this.sample(i, m, off + 7)) continue;
       this.add.spawn({
         x: S.x, y: S.y, z: S.z, vx: S.nx * 0.2, vy: rr(0.7, 1.5), vz: S.nz * 0.2, life: rr(1.1, 1.8), size: rr(0.03, 0.05), size1: 0.015,
         r: a.r * 3, g: a.g * 3, b: a.b * 3, r1: b.r * 2.4, g1: b.g * 2.4, b1: b.b * 2.4, a: 1, a1: 0, holdA: 0,
@@ -689,7 +377,7 @@ export class Dissolver {
     }
     // Sparkles that pop exactly as each band lets go.
     for (let i = 0, m = this.n(16); i < m; i++) {
-      this.sample(i, m, off + 31);
+      if (!this.sample(i, m, off + 31)) continue;
       this.add.spawn({ x: S.x, y: S.y, z: S.z, life: 0.24, size: rr(0.14, 0.22), size1: 0.03, r: 2.4, g: 2.6, b: 2.5, a: 1, a1: 0, holdA: 0, delay: delayAt(S.hn), sprite: SPRITE.glint, rot: rnd() * 0.6 });
     }
   }
@@ -707,7 +395,7 @@ export class Dissolver {
     // holds, a hot flash as each shard cracks free.
     const gr = glint.r, gg = glint.g, gb = glint.b;
     for (let i = 0; i < n; i++) {
-      this.sample(i, n, off);
+      if (!this.sample(i, n, off)) continue;
       const out = rr(0.6, 1.7);
       const s = rr(0.085, 0.14) * cv;
       const w = rr(0.93, 1.0);
@@ -728,7 +416,7 @@ export class Dissolver {
     }
     // Crack sparks + bone-white dust as each band lets go.
     for (let i = 0, m = this.n(18); i < m; i++) {
-      this.sample(i, m, off + 11);
+      if (!this.sample(i, m, off + 11)) continue;
       const sp = rr(1.8, 3.6);
       this.add.spawn({
         x: S.x, y: S.y, z: S.z, vx: S.nx * sp, vy: rr(0.5, 2), vz: S.nz * sp, life: rr(0.12, 0.24), size: 0.016,
@@ -737,7 +425,7 @@ export class Dissolver {
     }
     const bone = _c.set(ENV.bone);
     for (let i = 0, m = this.n(12); i < m; i++) {
-      this.sample(i, m, off + 23);
+      if (!this.sample(i, m, off + 23)) continue;
       this.alpha.spawn({
         x: S.x, y: S.y, z: S.z, vx: S.nx * 0.5, vy: rr(0.1, 0.5), vz: S.nz * 0.5, life: rr(0.8, 1.2), size: rr(0.16, 0.24), size1: rr(0.55, 0.8),
         r: bone.r, g: bone.g, b: bone.b, a: 0.34, holdA: 0, delay: delayAt(S.hn) + 0.02, drag: 2.5, sprite: SPRITE.dust, rot: rnd() * 6,
@@ -745,7 +433,7 @@ export class Dissolver {
     }
     // Sun glints flickering on the tumbling shards.
     for (let i = 0, m = this.n(16); i < m; i++) {
-      this.sample(i, m, off + 47);
+      if (!this.sample(i, m, off + 47)) continue;
       const t = delayAt(S.hn) + rr(0.12, 0.7);
       this.add.spawn({
         x: S.x + S.nx * 0.4, y: S.y + rr(0.2, 0.7), z: S.z + S.nz * 0.4, vx: S.nx * 0.6, vy: -0.4, vz: S.nz * 0.6, life: rr(0.12, 0.2),
@@ -763,8 +451,8 @@ export class Dissolver {
     const off = (rnd() * TEMPLATE_N) | 0;
     const spin = rnd() < 0.5 ? 1 : -1;
     for (let i = 0; i < n; i++) {
-      this.sample(i, n, off);
-      const s = rr(0.09, 0.14) * cv;
+      if (!this.sample(i, n, off)) continue;
+      const s = rr(0.1, 0.15) * cv;
       const vx = S.nx * rr(0.15, 0.45), vy = rr(0.9, 1.7), vz = S.nz * rr(0.15, 0.45);
       const life = rr(1.0, 1.6);
       const delay = delayAt(S.hn);
@@ -772,10 +460,18 @@ export class Dissolver {
       const x = S.x + S.nx * 0.02, y = S.y, z = S.z + S.nz * 0.02;
       // Charcoal flake + its glowing rim, moving in lockstep (no swirl: same path).
       this.alpha.spawn({ x, y, z, vx, vy, vz, life, size: s, size1: s * 0.55, r: 0.12, g: 0.1, b: 0.09, a: 0.95, a1: 0, delay, drag: 1.1, orbit: ob, ox: this.bx, oz: this.bz, sprite: SPRITE.ash, rot, spin: sp, flip: fl });
-      this.add.spawn({ x, y, z, vx, vy, vz, life, size: s, size1: s * 0.55, r: 3.2, g: 1.25, b: 0.35, r1: 1.6, g1: 0.3, b1: 0.08, a: 1, a1: 0, holdA: 0.55, delay, drag: 1.1, orbit: ob, ox: this.bx, oz: this.bz, sprite: SPRITE.emberRim, rot, spin: sp, flip: fl });
+      this.add.spawn({ x, y, z, vx, vy, vz, life, size: s, size1: s * 0.55, r: 2.6, g: 0.95, b: 0.25, r1: 1.4, g1: 0.25, b1: 0.06, a: 1, a1: 0, holdA: 0.8, delay, drag: 1.1, orbit: ob, ox: this.bx, oz: this.bz, sprite: SPRITE.emberRim, rot, spin: sp, flip: fl });
+    }
+    // Thin grey smoke curling off the burn front.
+    for (let i = 0, m = this.n(8); i < m; i++) {
+      if (!this.sample(i, m, off + 29)) continue;
+      this.alpha.spawn({
+        x: S.x, y: S.y + 0.1, z: S.z, vx: rr(-0.15, 0.15), vy: rr(0.5, 0.9), vz: rr(-0.15, 0.15), life: rr(1.2, 1.8), size: rr(0.18, 0.26), size1: rr(0.7, 1),
+        r: 0.36, g: 0.33, b: 0.32, a: 0.28, a1: 0, holdA: 0, delay: delayAt(S.hn) + 0.05, drag: 0.6, swirl: 0.6, sprite: SPRITE.smoke, rot: rnd() * 6, spin: rr(-0.6, 0.6),
+      });
     }
     for (let i = 0, m = this.n(48); i < m; i++) {
-      this.sample(i, m, off + 13);
+      if (!this.sample(i, m, off + 13)) continue;
       const hot = rnd();
       this.add.spawn({
         x: S.x, y: S.y, z: S.z, vx: rr(-0.3, 0.3), vy: rr(1.2, 2.6), vz: rr(-0.3, 0.3), life: rr(0.8, 1.5), size: rr(0.025, 0.05), size1: 0.01,
@@ -791,7 +487,7 @@ export class Dissolver {
     const cv = this.cov(n, 90);
     const off = (rnd() * TEMPLATE_N) | 0;
     for (let i = 0; i < n; i++) {
-      this.sample(i, n, off);
+      if (!this.sample(i, n, off)) continue;
       const c = _c.set(ORIGAMI[i % ORIGAMI.length]);
       const s = rr(0.13, 0.19) * cv;
       const out = rr(0.5, 1.3);
@@ -810,7 +506,7 @@ export class Dissolver {
       this.paper.spawn(P);
     }
     for (let i = 0, m = this.n(14); i < m; i++) {
-      this.sample(i, m, off + 5);
+      if (!this.sample(i, m, off + 5)) continue;
       this.add.spawn({ x: S.x, y: S.y, z: S.z, life: 0.22, size: rr(0.12, 0.18), size1: 0.03, r: 2.2, g: 2.1, b: 1.9, a: 1, a1: 0, holdA: 0, delay: delayAt(S.hn), sprite: SPRITE.glint });
     }
   }
@@ -835,7 +531,7 @@ export class Dissolver {
     const n = this.n(80);
     const off = (rnd() * TEMPLATE_N) | 0;
     for (let i = 0; i < n; i++) {
-      this.sample(i, n, off);
+      if (!this.sample(i, n, off)) continue;
       const big = i % 7 === 0;
       const s = big ? rr(0.16, 0.22) : rr(0.06, 0.1);
       this.add.spawn({
@@ -855,7 +551,7 @@ export class Dissolver {
     const cv = this.cov(n, 80);
     const off = (rnd() * TEMPLATE_N) | 0;
     for (let i = 0; i < n; i++) {
-      this.sample(i, n, off);
+      if (!this.sample(i, n, off)) continue;
       const c = _c.setHSL(PRISM_HUES[i % PRISM_HUES.length], 0.6, 0.72);
       const s = rr(0.07, 0.11) * cv;
       const out = rr(0.8, 2);
@@ -874,7 +570,7 @@ export class Dissolver {
       this.crystals.spawn(P);
     }
     for (let i = 0, m = this.n(40); i < m; i++) {
-      this.sample(i, m, off + 9);
+      if (!this.sample(i, m, off + 9)) continue;
       const c = _c.setHSL(PRISM_HUES[i % PRISM_HUES.length], 0.7, 0.66);
       this.add.spawn({
         x: S.x, y: S.y, z: S.z, vx: S.nx * rr(0.6, 1.6), vy: rr(0.3, 1.4), vz: S.nz * rr(0.6, 1.6), life: rr(0.5, 0.9), size: rr(0.07, 0.12), size1: 0.02,

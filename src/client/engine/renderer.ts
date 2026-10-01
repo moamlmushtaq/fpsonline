@@ -11,7 +11,7 @@
 
 import * as THREE from 'three';
 import type { GradingSettings, QualityPreset, QualitySettings, RenderEngine } from '../contracts';
-import { applySceneFogSun, setBakedShadowSupport, type StaticShadowBake } from './atmosphere';
+import { applySceneFogSun, type StaticShadowBake } from './atmosphere';
 import { ENV } from './palette';
 import { setDirectGrading } from './painterly';
 import { PostPipeline } from './post';
@@ -98,7 +98,6 @@ export class Renderer implements RenderEngine {
       renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
     }
     this.renderer = renderer;
-    setBakedShadowSupport(renderer);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = this.grading.exposure;
@@ -223,7 +222,8 @@ export class Renderer implements RenderEngine {
     const r = this.renderer;
     // Always on: medium/high follow the view with a live PCF shadow map; low
     // has no per-frame shadow pass but samples the map's sun shadow baked once
-    // (atmosphere.ts setStaticShadowCasters) through a 4-tap bilinear BASIC lookup. Scenes
+    // (atmosphere.ts setStaticShadowCasters) through ONE hardware-PCF depth-compare
+    // fetch (the BASIC type's lookup is patched for it). Scenes
     // without a casting light (menu on low) compile no shadow code at all.
     r.shadowMap.enabled = true;
     r.shadowMap.type = this.q.shadows === 'off' ? THREE.BasicShadowMap : THREE.PCFShadowMap;

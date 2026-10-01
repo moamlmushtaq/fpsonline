@@ -195,8 +195,9 @@ export async function buildMapView(def: MapDef, ctx: { engine: RenderEngine; mat
   // Painterly finish on every environment surface the decor modules built with
   // their own materials (library materials carry it already) — characters,
   // weapons, gameplay markers and effects are never part of these roots.
-  paintTree(decorRoot);
-  for (const o of backdrop) paintTree(o);
+  const lowPaint = quality.preset === 'low';
+  paintTree(decorRoot, lowPaint);
+  for (const o of backdrop) paintTree(o, lowPaint);
   // Low preset: the static content casts one baked whole-map sun shadow.
   view.atmosphere.setStaticShadowCasters([staticRoot, decorRoot], staticShadowBounds(def, [staticRoot, decorRoot]));
   view.collectTickers(view.scene);

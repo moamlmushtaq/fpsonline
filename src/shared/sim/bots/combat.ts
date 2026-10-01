@@ -14,11 +14,12 @@ import { SIM_DT, SIM_HZ } from '../../constants';
 import { activeSlot, activeWeapon, aimAngles, currentSpread } from '../../combat';
 import { angleDiff, clamp, forwardFromAngles, wrapAngle, yawFromDir } from '../../math';
 import { playerHeight } from '../../movement';
-import type { Vec3 } from '../../types';
+import type { InputCmd, Vec3 } from '../../types';
 import { WEAPONS } from '../../weapons';
 import { ballisticPitch } from '../bot-profiles';
 import type { BotController } from '../bots';
 import type { SimPlayer } from '../game';
+import type { RewoundState } from '../lagcomp';
 import { throwLaneClear } from './tactics';
 
 const TMP: RewoundState = { pos: { x: 0, y: 0, z: 0 }, crouchT: 0, alive: true };

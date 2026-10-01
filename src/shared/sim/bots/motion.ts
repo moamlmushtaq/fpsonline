@@ -7,6 +7,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { activeWeapon } from '../../combat';
+import type { Vec3 } from '../../types';
 import { PREFERRED_RANGE } from '../bot-profiles';
 import type { BotController } from '../bots';
 import type { SimPlayer } from '../game';

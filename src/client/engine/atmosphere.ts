@@ -627,6 +627,8 @@ void main() {
   float edge = pow(facing, 1.8);
   float along = smoothstep(0.0, 0.15, vT) * (1.0 - smoothstep(0.45, 1.0, vT));
   float streak = 0.7 + 0.3 * sin(vAng * 7.0 + uTime * 0.35) * sin(vAng * 17.0 - uTime * 0.21 + vT * 3.0);
+  // Slow drifting dust density along the beam (breaks up the cone's CG look).
+  streak *= 0.82 + 0.18 * sin(vT * 11.0 - uTime * 0.6 + vAng * 2.0);
   float near = smoothstep(0.8, 5.0, vCam);
   float fogF = exp(-fogDensity * fogDensity * vFogDepth * vFogDepth);
   float a = edge * along * streak * near * fogF * uIntensity;
@@ -650,7 +652,7 @@ void main() {
   vec3 p = vec3(cos(ang) * r, y, sin(ang) * r);
   vec4 mv = modelViewMatrix * vec4(p, 1.0);
   gl_Position = projectionMatrix * mv;
-  gl_PointSize = clamp(0.035 * uScale / max(-mv.z, 0.2), 1.0, 24.0);
+  gl_PointSize = clamp(0.05 * uScale / max(-mv.z, 0.2), 1.0, 24.0);
   vA = sin(t * 3.14159) * (0.5 + 0.5 * sin(uTime * (1.0 + aSeed * 2.0) + aSeed * 30.0));
 }`;
 
@@ -696,7 +698,7 @@ export function createLightShaft(opts: LightShaftOptions): THREE.Object3D {
     uniforms: {
       uColor: { value: color },
       uTime: { value: 0 },
-      uIntensity: { value: 0.32 },
+      uIntensity: { value: 0.46 },
       uLength: { value: len },
       fogDensity: { value: 0 },
     },
@@ -711,7 +713,7 @@ export function createLightShaft(opts: LightShaftOptions): THREE.Object3D {
   mesh.renderOrder = 20;
   group.add(mesh);
 
-  const n = 36;
+  const n = 56;
   const mp = new Float32Array(n * 3);
   const ms = new Float32Array(n);
   for (let i = 0; i < n; i++) {
@@ -726,7 +728,7 @@ export function createLightShaft(opts: LightShaftOptions): THREE.Object3D {
   mg.setAttribute('aSeed', new THREE.BufferAttribute(ms, 1));
   const moteMat = new THREE.ShaderMaterial({
     uniforms: {
-      uColor: { value: color.clone().multiplyScalar(2.2) },
+      uColor: { value: color.clone().multiplyScalar(3) },
       uTime: { value: 0 },
       uLength: { value: len },
       uRadius: { value: rad },

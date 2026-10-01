@@ -3,10 +3,12 @@
 // elite) that play through the exact same InputCmd path as humans.
 //
 // Structure
-//  • think() runs every tick (cheap): aim (bots/aim.ts), path following, combat
-//    footwork, trigger discipline, button edges. seq increments every tick.
-//  • deliberate() runs at 20 Hz, staggered by player id: perception, goals,
-//    path requests, stuck detection, throwables, stance.
+//  • think() runs every tick (cheap): aim + trigger (bots/combat.ts over the
+//    human aim model in bots/aim.ts), locomotion (bots/motion.ts), button edges.
+//    seq increments every tick.
+//  • deliberate() runs at 20 Hz, staggered by player id: perception
+//    (bots/perception.ts), goals (this file), path requests, stuck / stillness
+//    checks, throwables, stance.
 //  • BotDirector (bots/director.ts) coordinates a team: lane spread, fight
 //    hotspots, target sharing, Launch Control roles, Sunspear claims, mercy.
 //  • Lane skeleton (bots/lanes.ts): stations along each lane with the angles a
@@ -27,36 +29,37 @@
 // (last known / heard) | cover (low health or reloading) → peek | pickup.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { EYE_HEIGHT, SIM_DT, SIM_HZ } from '../constants';
-import { activeSlot, activeWeapon, aimAngles, currentSpread } from '../combat';
-import { angleDiff, clamp, forwardFromAngles, hash32, mulberry32, wrapAngle, yawFromDir } from '../math';
-import { eyeHeight, playerHeight } from '../movement';
+import { SIM_DT, SIM_HZ } from '../constants';
+import { activeSlot, activeWeapon } from '../combat';
+import { clamp, hash32, mulberry32, yawFromDir } from '../math';
 import type { BotDifficulty, InputCmd, Vec3 } from '../types';
-import { BTN_ADS, BTN_CROUCH, BTN_FIRE, BTN_JUMP, BTN_RELOAD, BTN_SPRINT, BTN_THROW, TEAM_NONE } from '../types';
+import { BTN_ADS, BTN_CROUCH, BTN_FIRE, BTN_JUMP, BTN_RELOAD, BTN_SPRINT, BTN_THROW } from '../types';
 import { WEAPONS } from '../weapons';
-import { BOT_PROFILES, PREFERRED_RANGE, ballisticPitch, type BotProfile } from './bot-profiles';
+import { BOT_PROFILES, ballisticPitch, type BotProfile } from './bot-profiles';
 import { BotAim } from './bots/aim';
 import { BotDirector } from './bots/director';
 import { STATIONS, laneOfX, stationOfZ } from './bots/lanes';
-import { findCoverNode, pickStationNode, throwLaneClear } from './bots/tactics';
+import { desiredSlot, planThrow, shouldFire, updateAim, wantAds } from './bots/combat';
+import { computeMove, headroom } from './bots/motion';
+import { perceive } from './bots/perception';
+import { findCoverNode, pickStationNode } from './bots/tactics';
 import type { GameSim, SimPlayer } from './game';
-import type { RewoundState } from './lagcomp';
-import { LINK_MANTLE, type NavPath } from './nav';
+import type { NavPath } from './nav';
 import { insideZone } from './zones';
 
-type GoalKind = 'none' | 'lane' | 'hold' | 'rotate' | 'objective' | 'chase' | 'cover' | 'peek' | 'pickup' | 'shift';
+/** What the bot is currently doing (shared with the bots/*.ts helpers). */
+export type GoalKind = 'none' | 'lane' | 'hold' | 'rotate' | 'objective' | 'chase' | 'cover' | 'peek' | 'pickup' | 'shift';
 
 const THINK_EVERY = 3; // 20 Hz at SIM_HZ 60
 const DT_THINK = SIM_DT * THINK_EVERY;
-const TMP: RewoundState = { pos: { x: 0, y: 0, z: 0 }, crouchT: 0, alive: true };
-const EYE: Vec3 = { x: 0, y: 0, z: 0 };
-const FWD: Vec3 = { x: 0, y: 0, z: 0 };
 const POS: Vec3 = { x: 0, y: 0, z: 0 };
-const AIM = { yaw: 0, pitch: 0 };
-const AIM_CMD: InputCmd = { seq: 0, mx: 0, mz: 0, yaw: 0, pitch: 0, buttons: 0, slot: 0, viewTick: 0 };
 const LANE_COUNTS = [0, 0, 0];
 const TRAIL = 32;
 
+/**
+ * One bot. The public API is think() / onSpawn() / id / difficulty; the other
+ * fields are the bot's working state, shared with the bots/*.ts helpers.
+ */
 export class BotController {
   readonly id: number;
   readonly difficulty: BotDifficulty;
@@ -439,8 +442,6 @@ export class BotController {
     this.advanceStation(p);
   }
 
-  // ── Perception ───────────────────────────────────────────────────────────
-
   // ── Goals ────────────────────────────────────────────────────────────────
 
   private chooseGoal(p: SimPlayer): void {
@@ -785,12 +786,6 @@ export class BotController {
     this.coverUntil = sim.tick + Math.round(this.rand(4, 6) * SIM_HZ);
     return true;
   }
-
-  // ── Throwables ───────────────────────────────────────────────────────────
-
-  // ── Movement ─────────────────────────────────────────────────────────────
-
-  // ── Aim & trigger ────────────────────────────────────────────────────────
 
 }
 

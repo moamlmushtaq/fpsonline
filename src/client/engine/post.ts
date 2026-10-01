@@ -123,7 +123,8 @@ void quadrant(vec3 c0, vec2 uv, vec2 dir, vec2 px, inout vec3 acc, inout float w
   vec3 m = (c0 + s1 + s2) * (1.0 / 3.0);
   vec3 d0 = c0 - m; vec3 d1 = s1 - m; vec3 d2 = s2 - m;
   float v = dot(d0, d0) + dot(d1, d1) + dot(d2, d2);
-  float w = 1.0 / (1.0 + v * 900.0);
+  // Strongly prefer the calmest quadrant: edges stay crisp, flat areas calm down.
+  float w = 1.0 / (1.0 + v * 3200.0);
   w *= w;
   acc += m * w;
   wsum += w;

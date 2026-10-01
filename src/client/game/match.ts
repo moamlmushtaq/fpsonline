@@ -55,6 +55,9 @@ import type {
   ZoneSnap,
 } from '../../shared/types';
 import type { MatchContext, MatchView } from './context';
+// Admin combat assist / ESP (owner's cheat panel; zero cost while the flags are off).
+import { adminFlags } from '../admin/flags';
+import { AdminAssist } from './admin-assist';
 import { CameraDirector } from './deathcam';
 import { FirstPersonRig } from './first-person';
 import type { InstructionOptions, MatchApi, MatchExtension } from './extensions';
@@ -122,6 +125,7 @@ export class ClientMatch implements MatchContext, MatchApi {
   private readonly flow: MatchFlow;
   private readonly worldState: WorldState;
   private readonly extensions: MatchExtension[] = [];
+  private readonly assist: AdminAssist;
   private offQuality: (() => void) | null = null;
   private pendingSnaps: SnapshotMsg[] = [];
 
@@ -177,6 +181,7 @@ export class ClientMatch implements MatchContext, MatchApi {
     this.rig = new FirstPersonRig(this);
     this.flow = new MatchFlow(this, this.director, this.hudBridge, () => this.overlays);
     this.worldState = new WorldState(this);
+    this.assist = new AdminAssist(this);
     this.runtime = {
       time: 0,
       matchElapsed: 0,
@@ -589,6 +594,11 @@ export class ClientMatch implements MatchContext, MatchApi {
     const controllable = this.predictor.alive && this.director.mode !== 'death' && this.director.mode !== 'outro';
     if (controllable) {
       this.local.look(look.dx, look.dy);
+      // Admin aimbot: an extra look delta on the same view path (kbm, pad and touch alike).
+      if (adminFlags.assist) {
+        const a = this.assist.frame(rawDt, this.director.mode === 'fp');
+        if (a.dx !== 0 || a.dy !== 0) this.local.look(a.dx, a.dy);
+      }
       if (this.director.mode === 'intro' && this.clock.phase === 'live' && (look.dx !== 0 || look.dy !== 0 || this.local.moveX !== 0 || this.local.moveZ !== 0)) this.director.hurryIntro();
     }
     this.local.sampleFrame(app.input);
@@ -624,6 +634,8 @@ export class ClientMatch implements MatchContext, MatchApi {
 
     // ── Camera ──
     this.updateCamera(dt, alpha);
+    // Admin ESP / aimbot FOV circle (drawn after the camera moved).
+    if (adminFlags.visuals || this.assist.canvasShown) this.assist.draw(this.director.mode === 'fp' && this.predictor.alive && app.ui.current === 'match');
 
     // ── Map, effects, audio ──
     const rt = this.runtime;
@@ -662,6 +674,8 @@ export class ClientMatch implements MatchContext, MatchApi {
     const p = this.predictor;
     const allowFire = this.clock.phase === 'live' || this.config.mode === 'range';
     const cmd = this.local.buildCmd(this.interp.renderTick, p.combat, allowFire && this.director.mode !== 'outro');
+    // Admin triggerbot: FIRE goes into the command itself, so prediction and host agree.
+    if (adminFlags.trigger) this.assist.applyTrigger(cmd, p.combat, allowFire && this.director.mode === 'fp');
     const m = p.move;
     const c = p.combat;
     const mk = this.marks;
@@ -932,6 +946,7 @@ export class ClientMatch implements MatchContext, MatchApi {
       roster: [...this.players.keys()],
       remotes: this.view ? [...this.view.remotes.entries.values()].filter((e) => !e.isLocal).map((e) => e.ident.id) : [],
       range: this.range ? this.range.summary() : null,
+      assist: this.assist.debug(),
     };
   }
 
@@ -959,6 +974,7 @@ export class ClientMatch implements MatchContext, MatchApi {
     for (const off of this.offs.splice(0)) off();
     window.clearInterval(this.pingTimer);
     window.clearTimeout(this.leaveTimer);
+    this.assist.dispose();
     for (const x of this.extensions.splice(0)) {
       try {
         x.dispose?.();

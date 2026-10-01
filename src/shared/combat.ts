@@ -76,6 +76,8 @@ const RECOIL_SETTLE = 0.08;
 const THROW_FIRE_BLOCK = 0.3;
 /** Sunspear: charge bleeds off this much faster than it builds when released. */
 const CHARGE_DECAY_MULT = 2;
+/** Admin rapid fire: fire interval (and Sunspear charge) multiplier. */
+export const RAPID_FIRE_MULT = 0.5;
 
 // ── State ───────────────────────────────────────────────────────────────────
 
@@ -134,7 +136,16 @@ export function cloneCombatState(c: CombatState): CombatState {
     // Admin cheats: copied only when present so ordinary states stay field-for-field identical.
     ...(c.cheatAmmo ? { cheatAmmo: true } : {}),
     ...(c.cheatSpeed !== undefined && c.cheatSpeed !== 1 ? { cheatSpeed: c.cheatSpeed } : {}),
+    ...(c.cheatNoRecoil ? { cheatNoRecoil: true } : {}),
+    ...(c.cheatNoSpread ? { cheatNoSpread: true } : {}),
+    ...(c.cheatRapid ? { cheatRapid: true } : {}),
   };
+}
+
+/** Seconds between shots for the active weapon (admin rapid fire shortens it). */
+export function shotInterval(c: CombatState, id: WeaponId): number {
+  const t = fireInterval(id);
+  return c.cheatRapid ? t * RAPID_FIRE_MULT : t;
 }
 
 /** Admin speed cheat multiplier (1 when off; clamped to 1..3). */
@@ -189,6 +200,7 @@ export function speedMultiplier(c: CombatState): number {
 
 /** Current cone half-angle in radians (HUD crosshair and shot spread). */
 export function currentSpread(c: CombatState, m: MoveState): number {
+  if (c.cheatNoSpread) return 0; // admin no spread: a perfect cone
   const w = WEAPONS[activeWeapon(c)];
   const base = lerp(w.hipSpread, w.adsSpread, c.adsT) * (1 - 0.15 * m.crouchT);
   const move = w.moveSpread * clamp(horizontalSpeed(m) / SPRINT_SPEED, 0, 1);
@@ -336,7 +348,7 @@ export function stepCombat(c: CombatState, m: MoveState, cmd: InputCmd, playerId
     if (c.cycleT > 0) {
       const before = c.cycleT;
       c.cycleT = Math.max(0, c.cycleT - dt);
-      const mark = fireInterval(w0.id) - CYCLE_DELAY;
+      const mark = shotInterval(c, w0.id) - CYCLE_DELAY;
       if ((w0.fireMode === 'pump' || w0.fireMode === 'bolt') && before > mark && c.cycleT <= mark) res.cycled = true;
     }
   }
@@ -382,7 +394,7 @@ export function stepCombat(c: CombatState, m: MoveState, cmd: InputCmd, playerId
   }
 
   // ── Recoil recovery & spray reset ──
-  const interval = fireInterval(w.id);
+  const interval = shotInterval(c, w.id);
   const sinceShot = interval - c.fireCd;
   const settleAfter = w.fireMode === 'auto' ? interval + SIM_DT * 1.5 : RECOIL_SETTLE;
   if (sinceShot > settleAfter || c.reloadT > 0 || busy) {
@@ -416,7 +428,7 @@ export function stepCombat(c: CombatState, m: MoveState, cmd: InputCmd, playerId
     if (fireDown && ready) {
       if (c.chargeT <= 0) res.chargeStarted = true;
       c.chargeT += dt;
-      if (c.chargeT >= (w.chargeTime ?? 0.6) - 1e-9) {
+      if (c.chargeT >= (w.chargeTime ?? 0.6) * (c.cheatRapid ? RAPID_FIRE_MULT : 1) - 1e-9) {
         c.chargeT = 0;
         fire(c, m, cmd, playerId, w, slot, res);
         if (slot.mag <= 0) {
@@ -433,7 +445,8 @@ export function stepCombat(c: CombatState, m: MoveState, cmd: InputCmd, playerId
       c.chargeT = Math.max(0, c.chargeT - dt * CHARGE_DECAY_MULT);
     }
   } else {
-    const trigger = w.fireMode === 'semi' ? firePressed : fireDown;
+    // Admin rapid fire turns semi-automatics into automatics (held trigger keeps firing).
+    const trigger = w.fireMode === 'semi' && !c.cheatRapid ? firePressed : fireDown;
     if (trigger && !res.throwRequested) {
       if (slot.mag <= 0) {
         if (canReload(c, slot, w)) startReload(c, slot, res);
@@ -458,7 +471,7 @@ function fire(
   slot: WeaponSlotState,
   res: CombatStepResult,
 ): void {
-  const interval = fireInterval(w.id);
+  const interval = shotInterval(c, w.id);
   // Carry the sub-tick remainder so the average rate matches rpm exactly.
   c.fireCd = Math.max(c.fireCd, -SIM_DT) + interval;
   if (w.fireMode === 'pump' || w.fireMode === 'bolt') c.cycleT = interval;
@@ -468,11 +481,14 @@ function fire(
   const origin = eyePosition(m);
   const dirs = pelletDirections(w.id, aim.yaw, aim.pitch, spread, playerId, cmd.seq | 0);
   // Recoil kick for the NEXT shot (the first shot lands where you aim).
-  const pat = w.recoil.pattern;
-  const kick = pat[Math.min(c.recoilIdx, pat.length - 1)];
-  const k = lerp(1, w.recoil.adsMult, c.adsT);
-  c.recoilPitch = Math.min(MAX_RECOIL_PITCH, c.recoilPitch + kick[0] * k);
-  c.recoilYaw = clamp(c.recoilYaw + kick[1] * k, -MAX_RECOIL_YAW, MAX_RECOIL_YAW);
+  if (!c.cheatNoRecoil) {
+    // (admin no recoil: the view never kicks, so every shot lands where you aim)
+    const pat = w.recoil.pattern;
+    const kick = pat[Math.min(c.recoilIdx, pat.length - 1)];
+    const k = lerp(1, w.recoil.adsMult, c.adsT);
+    c.recoilPitch = Math.min(MAX_RECOIL_PITCH, c.recoilPitch + kick[0] * k);
+    c.recoilYaw = clamp(c.recoilYaw + kick[1] * k, -MAX_RECOIL_YAW, MAX_RECOIL_YAW);
+  }
   c.recoilIdx++;
   c.bloom = Math.min(w.bloomMax, c.bloom + w.bloomPerShot);
   res.shot = { weapon: w.id, origin, dirs };

@@ -353,7 +353,7 @@ export class HostCore {
 
   private adminStateFor(c: ClientState): AdminState {
     if (c.room) return c.room.adminState(c.conn.id);
-    return { authorized: c.admin, god: false, ammo: false, speed: 1, freezeBots: false, inMatch: false };
+    return { authorized: c.admin, god: false, ammo: false, speed: 1, freezeBots: false, noRecoil: false, noSpread: false, rapidFire: false, inMatch: false };
   }
 
   /**

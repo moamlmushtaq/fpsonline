@@ -81,6 +81,14 @@ const _hold = new THREE.Vector3();
 const _feet = [new THREE.Vector3(), new THREE.Vector3()];
 const _footPitch = [0, 0];
 
+/** Bones posed for the admin ESP skeleton (parents before children, as in BONES). */
+const ESP_CHAIN: readonly BoneName[] = ['hips', 'spine', 'chest', 'neck', 'head', 'clavL', 'upperArmL', 'forearmL', 'handL', 'clavR', 'upperArmR', 'forearmR', 'handR', 'thighL', 'shinL', 'footL', 'thighR', 'shinR', 'footR'];
+/**
+ * ESP joints (contracts CharacterView.jointsWorld): head centre, neck, chest,
+ * pelvis, shoulder/elbow/hand L+R, hip/knee/ankle L+R. Index 0 is special-cased (head centre).
+ */
+const ESP_JOINT_BONES: readonly BoneName[] = ['head', 'neck', 'chest', 'hips', 'upperArmL', 'forearmL', 'handL', 'upperArmR', 'forearmR', 'handR', 'thighL', 'shinL', 'footL', 'thighR', 'shinR', 'footR'];
+
 /** Hand orientations in WEAPON space (fingers, knuckles). */
 const GRIP_R_FWD = new THREE.Vector3(0, -0.5, -1);
 const GRIP_R_UP = new THREE.Vector3(1, 0.2, 0);
@@ -108,6 +116,8 @@ export class CharacterInstance implements CharacterView {
   private material: CharMaterial;
   private fx: CharMaterial | null = null;
   private readonly blob: THREE.Mesh | null;
+  /** Admin chams ghost (lazily created by setXray). */
+  private xray: THREE.SkinnedMesh | null = null;
   private weapon: WeaponModelView | null = null;
   private weaponId: WeaponId | null = null;
   private weaponSkin = '';
@@ -262,6 +272,7 @@ export class CharacterInstance implements CharacterView {
     });
     this.bones.weapon.add(w.root);
     this.weapon = w;
+    if (this.root.renderOrder !== 0) this.setGroupOrder(this.root.renderOrder); // chams: keep the gun in the character's group
     this.weaponId = id;
     this.weaponSkin = skin;
     const h = (this.hold = HOLDS[id]);
@@ -329,6 +340,66 @@ export class CharacterInstance implements CharacterView {
     this.highlight = clamp01(k);
   }
 
+  /** Admin ESP: current world positions of the skeleton joints (allocation-free). */
+  jointsWorld(out: Float32Array): boolean {
+    if (out.length < ESP_JOINT_BONES.length * 3) return false;
+    // Root + the bone chain only (not the weapon / secondary bones): positions are this frame's pose.
+    this.root.updateWorldMatrix(true, false);
+    for (const name of ESP_CHAIN) {
+      const b = this.bones[name];
+      b.updateMatrix();
+      b.matrixWorld.multiplyMatrices((b.parent ?? this.root).matrixWorld, b.matrix);
+    }
+    for (let i = 0; i < ESP_JOINT_BONES.length; i++) {
+      const m = this.bones[ESP_JOINT_BONES[i]].matrixWorld;
+      if (i === 0) _a.fromArray(this.rig.headCenter).applyMatrix4(m);
+      else _a.setFromMatrixPosition(m);
+      out[i * 3] = _a.x;
+      out[i * 3 + 1] = _a.y;
+      out[i * 3 + 2] = _a.z;
+    }
+    return true;
+  }
+
+  /**
+   * Admin chams: a flat-colour ghost of the body (same skeleton and geometry)
+   * that shows only where the body is OCCLUDED by other geometry. The ghost is
+   * drawn with no depth test right after the world, then the character itself
+   * draws normally on top (the root Group's renderOrder sorts the whole
+   * character — ghost first, renderOrder −1 — after everything at order 0), so
+   * wherever the body is visible it covers its ghost, self-occlusion included.
+   */
+  setXray(color: string | null): void {
+    if (!color) {
+      if (this.xray) this.xray.visible = false;
+      this.setGroupOrder(0);
+      return;
+    }
+    if (!this.xray) {
+      const mat = new THREE.MeshBasicMaterial({ color, depthTest: false, depthWrite: false, fog: false });
+      const g = new THREE.SkinnedMesh(this.geoNear, mat);
+      g.name = 'xray';
+      g.renderOrder = -1;
+      g.castShadow = false;
+      g.receiveShadow = false;
+      g.boundingSphere = this.body.boundingSphere;
+      this.root.add(g);
+      g.bind(this.body.skeleton, this.body.bindMatrix);
+      this.xray = g;
+    }
+    (this.xray.material as THREE.MeshBasicMaterial).color.set(color);
+    this.xray.visible = true;
+    this.setGroupOrder(2);
+  }
+
+  /** Sort order of the whole character (three.js: a Group's renderOrder orders its subtree; nested groups reset it). */
+  private setGroupOrder(order: number): void {
+    this.root.renderOrder = order;
+    this.weapon?.root.traverse((o) => {
+      if ((o as THREE.Group).isGroup) o.renderOrder = order;
+    });
+  }
+
   /** Switch team (team swap / FFA) — only the material changes. */
   setTeam(team: Team): void {
     if (team === this.team) return;
@@ -366,6 +437,11 @@ export class CharacterInstance implements CharacterView {
   }
 
   dispose(): void {
+    if (this.xray) {
+      (this.xray.material as THREE.Material).dispose();
+      this.xray.removeFromParent();
+      this.xray = null;
+    }
     this.weapon?.dispose();
     this.weapon = null;
     if (this.fx) releaseFxMaterial(this.fx);

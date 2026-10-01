@@ -887,13 +887,21 @@ export class GameSim {
 
   // ── Admin cheats (the host checks authorization; see protocol AdminMsg) ──
 
-  /** Mirrors a player's ammo/speed cheats into the predicted combat state (after every re-equip). */
+  /** Mirrors a player's ammo/speed/weapon cheats into the predicted combat state (after every re-equip). */
   private syncCheats(p: SimPlayer): void {
     const ch = p.cheats;
     if (ch?.ammo) p.combat.cheatAmmo = true;
     else delete p.combat.cheatAmmo;
     if (ch && ch.speed > 1) p.combat.cheatSpeed = ch.speed;
     else delete p.combat.cheatSpeed;
+    if (ch?.norecoil) {
+      p.combat.cheatNoRecoil = true;
+      p.combat.recoilPitch = p.combat.recoilYaw = 0;
+    } else delete p.combat.cheatNoRecoil;
+    if (ch?.nospread) p.combat.cheatNoSpread = true;
+    else delete p.combat.cheatNoSpread;
+    if (ch?.rapid) p.combat.cheatRapid = true;
+    else delete p.combat.cheatRapid;
   }
 
   /** Updates a player's cheats; returns the new set (null if no such player). */
@@ -906,7 +914,11 @@ export class GameSim {
       ammo: patch.ammo ?? cur.ammo,
       speed: patch.speed !== undefined && Number.isFinite(patch.speed) ? clamp(Math.round(patch.speed * 100) / 100, 1, 3) : cur.speed,
     };
-    if (next.god || next.ammo || next.speed > 1) p.cheats = next;
+    // Weapon cheats: only present when on, so ordinary cheat sets stay { god, ammo, speed }.
+    if (patch.norecoil ?? cur.norecoil) next.norecoil = true;
+    if (patch.nospread ?? cur.nospread) next.nospread = true;
+    if (patch.rapid ?? cur.rapid) next.rapid = true;
+    if (next.god || next.ammo || next.speed > 1 || next.norecoil || next.nospread || next.rapid) p.cheats = next;
     else delete p.cheats;
     this.syncCheats(p);
     return next;

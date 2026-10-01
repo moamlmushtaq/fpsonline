@@ -4,7 +4,7 @@
 // room-level cheats (killbots, freezebots, sunspear, teleport, endmatch).
 
 import { describe, expect, it } from 'vitest';
-import { MAX_HEALTH, PROTOCOL_VERSION, SIM_HZ } from '../../src/shared/constants';
+import { MAX_HEALTH, PROTOCOL_VERSION, SIM_DT, SIM_HZ } from '../../src/shared/constants';
 import { HostCore, type HostConnection } from '../../src/shared/host/host-core';
 import type { MapDef } from '../../src/shared/maps/types';
 import { getMap } from '../../src/shared/maps/index';
@@ -12,9 +12,11 @@ import { makeGameConfig } from '../../src/shared/modes';
 import type { ClientMsg, HelloMsg, ServerMsg } from '../../src/shared/protocol';
 import { adminCodeHash, sha256Hex } from '../../src/shared/sha256';
 import { GameSim } from '../../src/shared/sim/game';
-import type { InputCmd } from '../../src/shared/types';
+import type { CombatState, InputCmd, Vec3 } from '../../src/shared/types';
 import { BTN_FIRE } from '../../src/shared/types';
-import { WEAPONS } from '../../src/shared/weapons';
+import { WEAPONS, fireInterval } from '../../src/shared/weapons';
+import { cloneCombatState, createCombatState, currentSpread, shotInterval, stepCombat } from '../../src/shared/combat';
+import { createMoveState } from '../../src/shared/movement';
 import { createHash } from 'node:crypto';
 
 function flatMap(): MapDef {
@@ -176,6 +178,103 @@ describe('GameSim admin cheats', () => {
   });
 });
 
+describe('weapon cheats (no recoil / no spread / rapid fire)', () => {
+  const fireTicks = (c: CombatState, buttons: (i: number) => number, n: number, weapon = 0) => {
+    const m = createMoveState({ x: 0, y: 0, z: 0 });
+    m.onGround = true;
+    let shots = 0;
+    const dirs: Vec3[][] = [];
+    for (let i = 0; i < n; i++) {
+      const r = stepCombat(c, m, { seq: i + 1, mx: 0, mz: 0, yaw: 0.3, pitch: -0.1, buttons: buttons(i), slot: weapon, viewTick: 0 }, 1, SIM_DT);
+      m.prevButtons = buttons(i);
+      if (r.shot) {
+        shots++;
+        dirs.push(r.shot.dirs);
+      }
+    }
+    return { shots, dirs };
+  };
+
+  it('no recoil: sustained fire never kicks the view; without it the recoil builds', () => {
+    const honest = createCombatState({ primary: 'meridian', throwable: 'grenade' });
+    const cheat = createCombatState({ primary: 'meridian', throwable: 'grenade' });
+    cheat.cheatNoRecoil = true;
+    honest.cheatAmmo = cheat.cheatAmmo = true;
+    let maxHonest = 0;
+    const m = createMoveState({ x: 0, y: 0, z: 0 });
+    for (let i = 0; i < SIM_HZ; i++) {
+      const cmd: InputCmd = { seq: i + 1, mx: 0, mz: 0, yaw: 0, pitch: 0, buttons: BTN_FIRE, slot: 0, viewTick: 0 };
+      stepCombat(honest, m, cmd, 1, SIM_DT);
+      stepCombat(cheat, m, cmd, 1, SIM_DT);
+      maxHonest = Math.max(maxHonest, honest.recoilPitch);
+      expect(cheat.recoilPitch).toBe(0);
+      expect(cheat.recoilYaw).toBe(0);
+    }
+    expect(maxHonest).toBeGreaterThan(0.05);
+    expect(cloneCombatState(cheat).cheatNoRecoil).toBe(true);
+    expect(cloneCombatState(honest).cheatNoRecoil).toBeUndefined();
+  });
+
+  it('no spread: zero cone, every pellet flies exactly along the aim (even the Breaker)', () => {
+    const c = createCombatState({ primary: 'breaker', throwable: 'grenade' });
+    c.cheatNoSpread = true;
+    expect(currentSpread(c, createMoveState({ x: 0, y: 0, z: 0 }))).toBe(0);
+    const { shots, dirs } = fireTicks(c, () => BTN_FIRE, SIM_HZ * 2);
+    expect(shots).toBeGreaterThan(1);
+    const aim = { yaw: 0.3, pitch: -0.1 };
+    for (const set of dirs) {
+      expect(set.length).toBe(WEAPONS.breaker.pellets);
+      for (const d of set) {
+        // Recoil offsets the aim between shots; spread never does.
+        const yaw = Math.atan2(-d.x, -d.z);
+        const pitch = Math.asin(d.y);
+        expect(Math.abs(yaw - (aim.yaw - c.recoilYaw)) + Math.abs(pitch - (aim.pitch + c.recoilPitch))).toBeLessThan(0.2);
+        expect(Math.hypot(d.x - set[0].x, d.y - set[0].y, d.z - set[0].z)).toBeLessThan(1e-12);
+      }
+    }
+  });
+
+  it('rapid fire: twice the rate, and a held trigger keeps a semi-automatic firing', () => {
+    const run = (rapid: boolean, weapon: 'meridian' | 'pulse', held: boolean) => {
+      const c = createCombatState({ primary: 'meridian', throwable: 'grenade' });
+      c.cheatAmmo = true;
+      if (rapid) c.cheatRapid = true;
+      const slot = weapon === 'pulse' ? 1 : 0;
+      // Let the swap finish first.
+      fireTicks(c, () => 0, SIM_HZ, slot);
+      return fireTicks(c, (i) => (held || i % 2 === 0 ? BTN_FIRE : 0), SIM_HZ * 2, slot).shots;
+    };
+    const base = run(false, 'meridian', true);
+    const fast = run(true, 'meridian', true);
+    expect(fast / base).toBeGreaterThan(1.8);
+    expect(fast / base).toBeLessThan(2.2);
+    expect(run(false, 'pulse', true)).toBe(1); // semi: one shot per press
+    expect(run(true, 'pulse', true)).toBeGreaterThan(8);
+    expect(shotInterval(createCombatState({ primary: 'meridian', throwable: 'grenade' }), 'meridian')).toBe(fireInterval('meridian'));
+  });
+
+  it('GameSim: setCheats mirrors the weapon cheats into the predicted combat state; they survive respawn', () => {
+    seqs = new Map();
+    const sim = liveSim();
+    const a = sim.addPlayer({ ...human('A'), team: 0 });
+    const b = sim.addPlayer({ ...human('B'), team: 1 });
+    sim.step();
+    expect(sim.setCheats(a.id, { norecoil: true, nospread: true, rapid: true })).toMatchObject({ norecoil: true, nospread: true, rapid: true });
+    const pa = sim.player(a.id)!;
+    expect(pa.combat).toMatchObject({ cheatNoRecoil: true, cheatNoSpread: true, cheatRapid: true });
+    pa.protectedT = 0;
+    expect(sim.applyDamage(pa, sim.player(b.id)!, 500, 'swift', false, pa.move.pos)).toBe(true);
+    for (let i = 0; i < SIM_HZ * 8 && !pa.alive; i++) sim.step();
+    expect(pa.alive).toBe(true);
+    expect(pa.combat).toMatchObject({ cheatNoRecoil: true, cheatNoSpread: true, cheatRapid: true });
+    sim.setCheats(a.id, { norecoil: false, nospread: false, rapid: false });
+    expect(pa.combat.cheatNoRecoil).toBeUndefined();
+    expect(pa.combat.cheatNoSpread).toBeUndefined();
+    expect(pa.combat.cheatRapid).toBeUndefined();
+    expect(pa.cheats).toBeUndefined();
+  });
+});
+
 // ── Host: authorization paths ───────────────────────────────────────────────
 
 class FakeConn implements HostConnection {
@@ -232,6 +331,7 @@ describe('Local host admin authorization', () => {
     expect(c.msgs.some((m) => m.type === 'matchStart')).toBe(true);
     expect(send({ type: 'admin', action: 'cheat', cheat: 'god', value: true })).toEqual({ type: 'admin', ok: false, message: 'unauthorized' });
     expect(send({ type: 'admin', action: 'cheat', cheat: 'killbots' })?.message).toBe('unauthorized');
+    expect(send({ type: 'admin', action: 'cheat', cheat: 'rapidfire', value: true })?.message).toBe('unauthorized');
     expect(send({ type: 'admin', action: 'auth', password: 'halcyon2090' })).toEqual({ type: 'admin', ok: false, message: 'denied' });
     expect(send({ type: 'admin', action: 'cheat', cheat: 'endmatch', value: true })?.message).toBe('unauthorized');
     run(0.2);
@@ -253,6 +353,9 @@ describe('Local host admin authorization', () => {
     expect(send({ type: 'admin', action: 'cheat', cheat: 'ammo' })).toMatchObject({ ok: true, state: { ammo: false } }); // toggle
     expect(send({ type: 'admin', action: 'cheat', cheat: 'speed', value: 7 })).toMatchObject({ ok: false, message: 'bad_value' });
     expect(send({ type: 'admin', action: 'cheat', cheat: 'freezebots', value: true })).toMatchObject({ ok: true, state: { freezeBots: true } });
+    expect(send({ type: 'admin', action: 'cheat', cheat: 'norecoil', value: true })).toMatchObject({ ok: true, state: { noRecoil: true } });
+    expect(send({ type: 'admin', action: 'cheat', cheat: 'nospread' })).toMatchObject({ ok: true, state: { noSpread: true } }); // toggle
+    expect(send({ type: 'admin', action: 'cheat', cheat: 'rapidfire', value: true })).toMatchObject({ ok: true, state: { rapidFire: true, noRecoil: true } });
     expect(send({ type: 'admin', action: 'cheat', cheat: 'sunspear' })?.ok).toBe(true);
     expect(send({ type: 'admin', action: 'cheat', cheat: 'teleport', value: 'b' })?.ok).toBe(true);
     expect(send({ type: 'admin', action: 'cheat', cheat: 'teleport', value: 'Z' })?.message).toBe('bad_value');
@@ -262,6 +365,7 @@ describe('Local host admin authorization', () => {
     run(0.3);
     const snap = [...c.msgs].reverse().find((m) => m.type === 'snap' && m.self) as Extract<ServerMsg, { type: 'snap' }>;
     expect(snap.self?.combat.slots[2]?.id).toBe('sunspear');
+    expect(snap.self?.combat).toMatchObject({ cheatNoRecoil: true, cheatNoSpread: true, cheatRapid: true });
     expect(send({ type: 'admin', action: 'cheat', cheat: 'endmatch', value: true })?.ok).toBe(true);
     run(12);
     const end = c.msgs.find((m) => m.type === 'matchEnd') as Extract<ServerMsg, { type: 'matchEnd' }>;

@@ -156,8 +156,8 @@ export interface RangeCmdMsg {
 // that are not authorized are refused. See README "Admin console".
 
 /** Host-side cheats (client-only ones — wallhack, unlockall, xp — never reach the host). */
-export type AdminCheat = 'god' | 'ammo' | 'speed' | 'sunspear' | 'killbots' | 'freezebots' | 'teleport' | 'endmatch';
-export const ADMIN_CHEATS: readonly AdminCheat[] = ['god', 'ammo', 'speed', 'sunspear', 'killbots', 'freezebots', 'teleport', 'endmatch'];
+export type AdminCheat = 'god' | 'ammo' | 'speed' | 'sunspear' | 'killbots' | 'freezebots' | 'teleport' | 'endmatch' | 'norecoil' | 'nospread' | 'rapidfire';
+export const ADMIN_CHEATS: readonly AdminCheat[] = ['god', 'ammo', 'speed', 'sunspear', 'killbots', 'freezebots', 'teleport', 'endmatch', 'norecoil', 'nospread', 'rapidfire'];
 
 /** Cheat state of the authorized connection (its player + its room). */
 export interface AdminState {
@@ -167,6 +167,10 @@ export interface AdminState {
   /** Movement multiplier 1..3. */
   speed: number;
   freezeBots: boolean;
+  /** Weapon cheats (predicted CombatState flags). Optional: older hosts omit them. */
+  noRecoil?: boolean;
+  noSpread?: boolean;
+  rapidFire?: boolean;
   /** True while the connection is in a running match. */
   inMatch: boolean;
 }
@@ -174,7 +178,7 @@ export interface AdminState {
 export type AdminMsg =
   | { type: 'admin'; action: 'auth'; password: string; /** Local host only: the client already verified the code. */ trusted?: boolean }
   /**
-   * value: god / ammo / freezebots → boolean (omitted = toggle); speed → 1..3;
+   * value: god / ammo / freezebots / norecoil / nospread / rapidfire → boolean (omitted = toggle); speed → 1..3;
    * teleport → 'A' | 'B' | 'C' | 'spawn'; endmatch → true = your team (or you) wins.
    */
   | { type: 'admin'; action: 'cheat'; cheat: AdminCheat; value?: number | string | boolean };

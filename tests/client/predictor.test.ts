@@ -6,12 +6,19 @@ import { mulberry32 } from '../../src/shared/math';
 import type { ClientMsg, MatchStartMsg, ServerMsg, SnapshotMsg } from '../../src/shared/protocol';
 import { worldForMap } from '../../src/shared/sim/game';
 import { sanitizeCmd } from '../../src/shared/sim/player';
-import type { ModeId } from '../../src/shared/types';
+import type { CombatState, ModeId } from '../../src/shared/types';
 import { LocalPlayer, type ActionName, type InputLike } from '../../src/client/game/local-player';
 import { Predictor } from '../../src/client/game/predictor';
 import { WEAPONS } from '../../src/shared/weapons';
 
 const TICK_MS = 1000 / SIM_HZ;
+
+/**
+ * Combat state as compared between prediction and host. Reserve ammo is left out:
+ * the training range refills reserves host-side (never predicted; the next
+ * reconciliation simply adopts it).
+ */
+const combatKey = (c: CombatState): string => JSON.stringify(c, (k, v: unknown) => (k === 'reserve' ? undefined : v));
 
 /** Scripted input device. */
 class ScriptInput implements InputLike {
@@ -49,6 +56,11 @@ class NetSim {
   snaps = 0;
   shots = 0;
   phase = 'countdown';
+  /** Predicted combat state after each command (JSON, keyed by seq) → compared with the host's. */
+  readonly predictedCombat = new Map<number, string>();
+  /** [snapshot index, ack] of every reconciliation whose host combat state differed from our prediction. */
+  readonly combatMismatches: [number, number][] = [];
+  combatChecks = 0;
 
   constructor(private readonly latencyMs: number, private readonly lossRate = 0) {
     this.conn = {
@@ -82,6 +94,12 @@ class NetSim {
     this.snaps++;
     this.phase = s.clock.phase;
     if (!s.self) return;
+    const mine = this.predictedCombat.get(s.self.ack);
+    if (mine !== undefined && s.self.alive) {
+      this.combatChecks++;
+      if (mine !== combatKey(s.self.combat)) this.combatMismatches.push([this.snaps, s.self.ack]);
+    }
+    for (const k of this.predictedCombat.keys()) if (k <= s.self.ack) this.predictedCombat.delete(k);
     const err = { x: 0, y: 0, z: 0 };
     const r = this.predictor!.reconcile(s.self, err);
     if (!r.snapped) this.corrections.push(Math.hypot(err.x, err.y, err.z));
@@ -101,6 +119,7 @@ class NetSim {
     const cmd = this.local.buildCmd(0, p.combat, allowFire);
     const r = p.step(cmd);
     if (r?.shot) this.shots++;
+    if (p.combat && p.alive) this.predictedCombat.set(cmd.seq, combatKey(p.combat));
     this.clientSend({ type: 'input', cmds: p.resendList(8) }, true);
   }
 
@@ -234,6 +253,68 @@ describe('Predictor ⇄ HostCore with admin cheats', () => {
     expect(late.length).toBeGreaterThan(400);
     for (const m of late) expect(m.mag).toBe(m.full); // always a full magazine
     expect(sim.shots).toBeGreaterThan(5);
+  }, 60000);
+});
+
+describe('Predictor ⇄ HostCore with admin weapon cheats', () => {
+  /** Snapshots whose combat state may differ: the one(s) carrying a toggle the host applied mid-flight. */
+  function weaponRun(toggles: [number, ClientMsg][], frames: number) {
+    const sim = new NetSim(50);
+    sim.clientSend({ type: 'admin', action: 'auth', password: '', trusted: true });
+    sim.queue('range');
+    const snapsAt: number[] = [];
+    let maxRecoil = 0;
+    let maxRecoilAfter = 0;
+    let shotsBefore = 0;
+    for (let f = 0; f < frames; f++) {
+      snapsAt.push(sim.snaps);
+      for (const [at, m] of toggles) if (f === at) sim.clientSend(m);
+      script(sim, f);
+      sim.step();
+      const c = sim.predictor?.combat;
+      if (c) {
+        const r = Math.abs(c.recoilPitch) + Math.abs(c.recoilYaw);
+        if (f < toggles[0][0]) maxRecoil = Math.max(maxRecoil, r);
+        else if (f > toggles[toggles.length - 1][0] + 30) maxRecoilAfter = Math.max(maxRecoilAfter, r);
+      }
+      if (f === toggles[0][0]) shotsBefore = sim.shots;
+    }
+    const windows = toggles.map(([at]) => [snapsAt[at], snapsAt[Math.min(frames - 1, at + 20)]] as const);
+    const outside = sim.combatMismatches.filter(([snap]) => !windows.some(([a, b]) => snap > a && snap <= b));
+    return { sim, outside, maxRecoil, maxRecoilAfter, shotsBefore };
+  }
+
+  it('no recoil + no spread + rapid fire: predicted combat state is bit-identical to the host', () => {
+    const { sim, outside, maxRecoil, maxRecoilAfter, shotsBefore } = weaponRun(
+      [
+        [600, { type: 'admin', action: 'cheat', cheat: 'norecoil', value: true }],
+        [610, { type: 'admin', action: 'cheat', cheat: 'nospread', value: true }],
+        [620, { type: 'admin', action: 'cheat', cheat: 'rapidfire', value: true }],
+        [630, { type: 'admin', action: 'cheat', cheat: 'ammo', value: true }],
+      ],
+      1300,
+    );
+    // Exact replay everywhere outside the toggle windows, combat state included.
+    expect(sim.combatChecks).toBeGreaterThan(300);
+    expect(outside).toEqual([]);
+    expect(Math.max(...sim.corrections)).toBe(0);
+    const c = sim.predictor!.combat!;
+    expect(c).toMatchObject({ cheatNoRecoil: true, cheatNoSpread: true, cheatRapid: true, recoilPitch: 0, recoilYaw: 0 });
+    expect(maxRecoil).toBeGreaterThan(0.01); // recoil before the cheat…
+    expect(maxRecoilAfter).toBe(0); // …none after it
+    // Rapid fire: more shots in the second half than the first (same script, 2× rate, no reloads).
+    expect(sim.shots - shotsBefore).toBeGreaterThan(shotsBefore * 1.3);
+  }, 60000);
+
+  it('baseline: the combat-state comparison holds without cheats too', () => {
+    const sim = new NetSim(60);
+    sim.queue('range');
+    for (let f = 0; f < 900; f++) {
+      script(sim, f);
+      sim.step();
+    }
+    expect(sim.combatChecks).toBeGreaterThan(200);
+    expect(sim.combatMismatches).toEqual([]);
   }, 60000);
 });
 

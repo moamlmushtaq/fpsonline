@@ -65,11 +65,17 @@ export interface SimPlayer {
   cheats?: PlayerCheats;
 }
 
-/** Per-player admin cheats. ammo/speed are mirrored into CombatState (predicted); god is host-only. */
+/**
+ * Per-player admin cheats. ammo/speed/norecoil/nospread/rapid are mirrored into
+ * CombatState (predicted); god is host-only.
+ */
 export interface PlayerCheats {
   god: boolean;
   ammo: boolean;
   speed: number;
+  norecoil?: boolean;
+  nospread?: boolean;
+  rapid?: boolean;
 }
 
 export interface Noise {

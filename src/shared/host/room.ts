@@ -239,6 +239,9 @@ export class Room {
       ammo: !!ch?.ammo,
       speed: ch?.speed ?? 1,
       freezeBots: this.sim.botsFrozen,
+      noRecoil: !!ch?.norecoil,
+      noSpread: !!ch?.nospread,
+      rapidFire: !!ch?.rapid,
       inMatch: !!m && !this.completed,
     };
   }
@@ -259,6 +262,15 @@ export class Room {
         break;
       case 'ammo':
         sim.setCheats(pid, { ammo: flag(value, cur.ammo) });
+        break;
+      case 'norecoil':
+        sim.setCheats(pid, { norecoil: flag(value, !!cur.norecoil) });
+        break;
+      case 'nospread':
+        sim.setCheats(pid, { nospread: flag(value, !!cur.nospread) });
+        break;
+      case 'rapidfire':
+        sim.setCheats(pid, { rapid: flag(value, !!cur.rapid) });
         break;
       case 'speed': {
         const k = Number(value);

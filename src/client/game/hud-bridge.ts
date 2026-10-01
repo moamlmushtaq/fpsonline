@@ -279,7 +279,7 @@ export class HudBridge {
           continue;
         }
         const t = this.shotAt.get(id);
-        const wall = adminFlags.wallhack;
+        const wall = adminFlags.radarAll; // admin: radar shows every enemy
         if (t === undefined && !wall) continue;
         const age = t === undefined ? Infinity : now - t;
         if (age > RADAR_SHOT_SHOW && !wall) continue;
@@ -348,8 +348,8 @@ export class HudBridge {
         this.putObjective(e.pos.x, e.pos.y + HEAD_MARK_H - (e.s.c / 100) * 0.55, e.pos.z, key, '', teamColors(e.ident.team).light, 0, 'friendly', false);
       }
     }
-    // Admin wallhack: a small chevron over every on-screen enemy, visible through walls.
-    if (remotes && adminFlags.wallhack && ctx.config.mode !== 'range') {
+    // Admin chams: a small chevron over every on-screen enemy, visible through walls (the ESP replaces it).
+    if (remotes && adminFlags.chams && !adminFlags.esp && ctx.config.mode !== 'range') {
       for (const e of remotes.entries.values()) {
         if (e.isLocal || !e.alive || !e.placed || !ctx.isEnemy(e.ident.id) || this.on >= 16) continue;
         let key = this.friendKeys.get(-e.ident.id);

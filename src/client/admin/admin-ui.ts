@@ -9,8 +9,10 @@
 
 import type { UiSound } from '../contracts';
 import { GAME_VERSION } from '../../shared/constants';
-import { button, h, segmented, toggle } from '../ui/components';
+import { button, h, segmented, slider, toggle } from '../ui/components';
 import { i18n, setAttr, setText } from '../ui/i18n';
+import type { ClientBoolKey, ClientCheats, ClientNumKey } from './admin';
+import type { AimBone } from './flags';
 
 export type LineKind = 'in' | 'out' | 'ok' | 'err' | 'sys';
 
@@ -24,13 +26,23 @@ export interface PanelModel {
   ammo: boolean;
   speed: number;
   freezeBots: boolean;
+  noRecoil: boolean;
+  noSpread: boolean;
+  rapidFire: boolean;
+  /** radar-all + chams + ESP all on. */
   wallhack: boolean;
+  /** Client cheats (combat assist / visuals) and their settings. */
+  client: ClientCheats;
   /** Zone ids available for teleport in this match. */
   zones: string[];
 }
 
 export type PanelAction =
-  | { a: 'god' | 'ammo' | 'freezebots' | 'wallhack'; on: boolean }
+  | { a: 'god' | 'ammo' | 'freezebots' | 'wallhack' | 'norecoil' | 'nospread' | 'rapidfire'; on: boolean }
+  | { a: 'client'; key: ClientBoolKey; on: boolean }
+  /** Slider: `commit` = released (persist + panel refresh); otherwise a live drag value. */
+  | { a: 'clientNum'; key: ClientNumKey; v: number; commit: boolean }
+  | { a: 'aimBone'; v: AimBone }
   | { a: 'speed'; v: number }
   | { a: 'sunspear' | 'killbots' | 'unlockall' | 'xp' | 'console' }
   | { a: 'teleport'; where: string }
@@ -111,6 +123,14 @@ const CSS = `
 .hf-adm-pan__grid--4{grid-template-columns:repeat(4,minmax(0,1fr))}
 .hf-adm-pan__grid .btn{min-height:2.35rem;justify-content:center;padding-inline:.5rem;font-size:.78rem}
 .hf-adm-pan .seg{font-size:.74rem}
+.hf-adm-pan__row .slider{flex:0 1 11.5rem;min-width:0;width:auto;gap:.5rem}
+.hf-adm-pan__row .slider__input{min-width:0;width:100%}
+.hf-adm-pan__row .slider__value{flex:none;min-width:3rem;text-align:end;font:500 .72rem/1 var(--f-mono);color:var(--c-text-dim);direction:ltr;unicode-bidi:isolate}
+.hf-adm-pan__sub{padding-inline-start:.7rem;border-inline-start:2px solid var(--c-line-soft);margin-inline-start:.15rem}
+.hf-adm-pan__sub.is-off,.hf-adm-pan__grid.is-off{opacity:.45}
+.hf-adm-pan__grid--3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.hf-adm-pan__chip[aria-pressed=true]{border-color:rgba(255,90,95,.6);background:rgba(255,90,95,.16);color:var(--c-text)}
+.hf-adm-pan__chip[aria-pressed=false]{opacity:.7}
 .hf-adm-pan__foot{display:flex;gap:.4rem;padding:.6rem .9rem .8rem;border-top:1px solid var(--c-line-soft)}
 .hf-adm-pan__foot .btn{flex:1;justify-content:center}
 .hf-adm-pan.is-disabled .hf-adm-pan__host{opacity:.42;pointer-events:none}
@@ -379,8 +399,29 @@ export class AdminUi {
     const keepScroll = this.panBody?.scrollTop ?? 0;
     const act = (a: PanelAction) => () => this.hd.panel(a);
     const row = (label: string, ctl: HTMLElement) => h('div', { class: 'hf-adm-pan__row' }, h('span', { class: 'hf-adm-pan__lbl', t: label }), ctl);
-    const tg = (label: string, value: boolean, a: 'god' | 'ammo' | 'freezebots' | 'wallhack') =>
+    const tg = (label: string, value: boolean, a: 'god' | 'ammo' | 'freezebots' | 'wallhack' | 'norecoil' | 'nospread' | 'rapidfire') =>
       row(label, toggle({ value, label, onChange: (v) => this.hd.panel({ a, on: v }) }).el);
+    const cl = model.client;
+    const ctg = (label: string, key: ClientBoolKey) => row(label, toggle({ value: cl[key], label, onChange: (v) => this.hd.panel({ a: 'client', key, on: v }) }).el);
+    const sl = (label: string, key: ClientNumKey, min: number, max: number, step: number, scale: number, format: (v: number) => string) =>
+      row(
+        label,
+        slider({
+          min,
+          max,
+          step,
+          value: Math.round(cl[key] * scale * 1000) / 1000,
+          format,
+          label,
+          onInput: (v) => this.hd.panel({ a: 'clientNum', key, v: v / scale, commit: false }),
+          onChange: (v) => this.hd.panel({ a: 'clientNum', key, v: v / scale, commit: true }),
+        }).el,
+      );
+    const chip = (label: string, key: ClientBoolKey) => {
+      const b = button({ label, size: 'sm', variant: 'ghost', cls: 'hf-adm-pan__chip', onClick: () => this.hd.panel({ a: 'client', key, on: !cl[key] }) });
+      b.setAttribute('aria-pressed', String(cl[key]));
+      return b;
+    };
     const btn = (label: string, onClick: () => void, variant?: 'primary' | 'ghost' | 'danger') => button({ label, onClick, size: 'sm', variant });
     const sec = (label: string) => h('div', { class: 'hf-adm-pan__sec', t: label });
 
@@ -420,6 +461,10 @@ export class AdminUi {
       tg('admin.cheat.god', model.god, 'god'),
       tg('admin.cheat.ammo', model.ammo, 'ammo'),
       row('admin.cheat.speed', speed.el),
+      sec('admin.panel.weapon'),
+      tg('admin.cheat.norecoil', model.noRecoil, 'norecoil'),
+      tg('admin.cheat.nospread', model.noSpread, 'nospread'),
+      tg('admin.cheat.rapidfire', model.rapidFire, 'rapidfire'),
       sec('admin.panel.world'),
       tg('admin.cheat.freezebots', model.freezeBots, 'freezebots'),
       h('div', { class: 'hf-adm-pan__grid' }, btn('admin.cheat.sunspear', act({ a: 'sunspear' })), btn('admin.cheat.killbots', act({ a: 'killbots' }))),
@@ -433,14 +478,53 @@ export class AdminUi {
       sec('admin.panel.match'),
       h('div', { class: 'hf-adm-pan__grid' }, btn('admin.cheat.endwin', act({ a: 'endmatch', win: true }), 'primary'), btn('admin.cheat.endmatch', act({ a: 'endmatch', win: false }), 'ghost')),
     );
+    const bone = segmented<AimBone>({
+      options: [
+        { value: 'head', label: 'admin.bone.head' },
+        { value: 'chest', label: 'admin.bone.chest' },
+      ],
+      value: cl.aimBone,
+      onChange: (v) => this.hd.panel({ a: 'aimBone', v }),
+      label: 'admin.set.aimBone',
+    });
+    const aimSub = h(
+      'div',
+      { class: `hf-adm-pan__sub${cl.aimbot ? '' : ' is-off'}` },
+      sl('admin.set.aimFov', 'aimFov', 5, 180, 1, 1, (v) => `${Math.round(v)}°`),
+      sl('admin.set.aimSmooth', 'aimSmooth', 0, 1, 0.05, 1, (v) => v.toFixed(2)),
+      row('admin.set.aimBone', bone.el),
+      ctg('admin.cheat.aimwalls', 'aimWalls'),
+      ctg('admin.cheat.aimalways', 'aimAlways'),
+    );
+    const trigSub = h('div', { class: `hf-adm-pan__sub${cl.trigger ? '' : ' is-off'}` }, sl('admin.set.triggerDelay', 'triggerDelay', 0, 500, 10, 1000, (v) => `${Math.round(v)} ms`));
+    const assist = h('div', {}, sec('admin.panel.assist'), ctg('admin.cheat.aimbot', 'aimbot'), aimSub, ctg('admin.cheat.trigger', 'trigger'), trigSub);
+    const visuals = h(
+      'div',
+      {},
+      sec('admin.panel.visuals'),
+      ctg('admin.cheat.esp', 'esp'),
+      h(
+        'div',
+        { class: `hf-adm-pan__grid hf-adm-pan__grid--3${cl.esp ? '' : ' is-off'}` },
+        chip('admin.esp.boxes', 'espBoxes'),
+        chip('admin.esp.skeleton', 'espSkeleton'),
+        chip('admin.esp.names', 'espNames'),
+        chip('admin.esp.health', 'espHealth'),
+        chip('admin.esp.distance', 'espDistance'),
+        chip('admin.esp.lines', 'espLines'),
+        chip('admin.esp.team', 'espTeam'),
+      ),
+      ctg('admin.cheat.radarall', 'radarAll'),
+      ctg('admin.cheat.chams', 'chams'),
+      tg('admin.cheat.wallhack', model.wallhack, 'wallhack'),
+    );
     const client = h(
       'div',
       {},
       sec('admin.panel.profile'),
-      tg('admin.cheat.wallhack', model.wallhack, 'wallhack'),
       h('div', { class: 'hf-adm-pan__grid' }, btn('admin.cheat.unlockall', act({ a: 'unlockall' })), btn('admin.cheat.xp', act({ a: 'xp' }))),
     );
-    const body = h('div', { class: 'hf-adm-pan__body' }, note, host, client);
+    const body = h('div', { class: 'hf-adm-pan__body' }, note, host, assist, visuals, client);
     const foot = h('div', { class: 'hf-adm-pan__foot' }, button({ label: 'admin.panel.console', icon: 'keyboard', onClick: act({ a: 'console' }), size: 'sm', variant: 'ghost' }));
     this.pan.classList.toggle('is-disabled', model.source === 'none' || (model.source === 'online' && !model.hostOk) || !model.inMatch);
     this.pan.replaceChildren(head, body, foot);

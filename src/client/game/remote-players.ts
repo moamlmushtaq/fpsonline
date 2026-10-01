@@ -19,8 +19,9 @@ import type { PlayerIdentity, PlayerSnap, SurfaceTag, Team } from '../../shared/
 import { PF_ADS, PF_AIR, PF_ALIVE, PF_CHARGING, PF_MANTLE, PF_PROTECTED, PF_RELOAD, PF_SLIDE, PF_SPRINT, WEAPON_IDS } from '../../shared/types';
 import type { MatchContext } from './context';
 import { EntityBuffer, emptySample, type EntitySample } from './interpolator';
-// Admin wallhack: enemies get a soft rim glow (client-only cheat).
+// Admin chams: enemies get a soft rim glow + an x-ray ghost through walls (client-only cheat).
 import { adminFlags } from '../admin/flags';
+import { teamColors } from '../engine/palette';
 
 /** Remote movement sounds are only simulated within this distance of the listener (m). */
 const SOUND_RANGE = 48;
@@ -52,6 +53,8 @@ export interface RemoteEntry {
   deadHold: number;
   /** Spawn-shield glow currently applied. */
   glow: number;
+  /** Admin chams x-ray colour currently applied ('' = off). */
+  xray: string;
 }
 
 export class RemotePlayers {
@@ -115,6 +118,7 @@ export class RemotePlayers {
       },
       deadHold: 0,
       glow: 0,
+      xray: '',
     };
     view.root.visible = false;
     this.entries.set(ident.id, e);
@@ -197,10 +201,17 @@ export class RemotePlayers {
       if (show) {
         e.view.update(dt, a);
         // Spawn shield: a soft pulsing glow tells you shots won't land yet.
-        const glow = (s.f & PF_PROTECTED) !== 0 ? 0.3 + 0.3 * Math.sin(this.time * 9) : adminFlags.wallhack && !e.isLocal && this.ctx.isEnemy(e.ident.id) ? 0.45 : 0;
+        const chams = adminFlags.chams && !e.isLocal && this.ctx.isEnemy(e.ident.id);
+        const glow = (s.f & PF_PROTECTED) !== 0 ? 0.3 + 0.3 * Math.sin(this.time * 9) : chams ? 0.45 : 0;
         if (glow !== e.glow) {
           e.glow = glow;
           e.view.setHighlight(glow);
+        }
+        // Chams x-ray: occluded parts drawn in the (colour-blind aware) enemy colour.
+        const xray = chams ? teamColors(this.ctx.config.mode === 'ffa' ? 2 : e.ident.team).primary : '';
+        if (xray !== e.xray) {
+          e.xray = xray;
+          e.view.setXray?.(xray || null);
         }
       }
 

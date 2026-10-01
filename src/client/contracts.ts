@@ -296,6 +296,13 @@ export interface CharacterView {
   /** Head position in world space (nameplates, headshot FX). */
   headWorld(out: THREE.Vector3): THREE.Vector3;
   setHighlight(k: number): void;
+  /**
+   * Admin ESP (optional): writes the world positions of the ESP skeleton joints
+   * (ESP_JOINTS order in game/admin-assist.ts; xyz triplets) for the current pose.
+   */
+  jointsWorld?(out: Float32Array): boolean;
+  /** Admin chams (optional): draw the OCCLUDED parts of the body in `color` (null = off). */
+  setXray?(color: string | null): void;
   dispose(): void;
 }
 

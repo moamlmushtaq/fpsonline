@@ -204,9 +204,15 @@ export interface CombatState {
    * Admin cheats (absent for everyone else). They live HERE — in the predicted,
    * snapshotted combat state — so client prediction replays them exactly.
    * cheatAmmo: magazines stay full (no reloads). cheatSpeed: movement multiplier 1..3.
+   * cheatNoRecoil: shots add no recoil kick. cheatNoSpread: zero cone (every
+   * pellet flies straight). cheatRapid: fire interval × RAPID_FIRE_MULT and
+   * semi-automatics fire while held.
    */
   cheatAmmo?: boolean;
   cheatSpeed?: number;
+  cheatNoRecoil?: boolean;
+  cheatNoSpread?: boolean;
+  cheatRapid?: boolean;
 }
 
 export interface PlayerMatchStats {

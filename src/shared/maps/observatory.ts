@@ -250,15 +250,21 @@ k.box(55, D, -3, 57, 9, 3, 'concrete', 'hidden'); // pylon anchor block
 k.box(44, D, -1.2, 45.6, D + 1.2, 1.2, 'metal', 'hidden'); // cable drum
 
 // ── Spawns ──────────────────────────────────────────────────────────────────
+// Spawn rows sit at the back of the yard (12–13 m from the wall, more sky over
+// it) and each pilot opens their eyes looking at THEIR way out — the gate the
+// paving chevrons point to — over its baffle: the gate slot, the summit beyond
+// (dome cap, signal masts, the peaks) instead of a wind wall 8 m away.
+const GATE_Z = 43;
+const yard = (x: number, z: number, gx: number): SpawnPoint => spawn(x, 0, z, yawToward(x, z, gx, GATE_Z), 0);
 const south: SpawnPoint[] = [
-  spawn(-46, 0, 51.5, 0, 0),
-  spawn(-35, 0, 50.5, 0, 0),
-  spawn(-23, 0, 51, 0, 0),
-  spawn(-11, 0, 52, 0, 0),
-  spawn(11, 0, 52, 0, 0),
-  spawn(23, 0, 51, 0, 0),
-  spawn(35, 0, 50.5, 0, 0),
-  spawn(46, 0, 51.5, 0, 0),
+  yard(-46, 55.5, -55),
+  yard(-35, 54.5, -55),
+  yard(-23, 55, 0),
+  yard(-11, 56, 0),
+  yard(11, 56, 0),
+  yard(23, 55, 0),
+  yard(35, 54.5, 55),
+  yard(46, 55.5, 55),
 ];
 const ffaHalf: SpawnPoint[] = [
   spawn(-53, R, 16, yawToward(-53, 16, -47, 0), 2),

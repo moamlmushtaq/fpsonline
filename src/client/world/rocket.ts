@@ -7,12 +7,16 @@
 //
 //  • Idle: slow LOX venting from the interstage, cold vapour rolling off the
 //    mount, a warm blinking beacon on the fin tips and the escape tower.
-//  • launch.t 0 → 1.5 s: ignition — the engine bells glow, a gold-white flame
-//    grows, warm steam billows out radially across the pad.
+//  • launch.t 0 → 1.5 s: ignition — a blinding flare at the engines that lights
+//    the whole map (the scene's sky/ground fill light pulses warm; the match adds
+//    an exposure bump, a pooled point light on High and a distance-scaled camera
+//    rumble), a ring of steam billows out across the pad, the gold-white flame
+//    grows with a row of SHOCK DIAMONDS in its core.
 //    1.5 s →: liftoff with smooth acceleration, a gentle pitch-over toward the
-//    sea (+X), a long warm smoke column from the pad to the tail. Beacons and
-//    livery strips glow in the WINNING TEAM's color (teamColors().emissive) —
-//    the only team color in any environment art.
+//    sea (+X), a huge warm smoke column from the pad to the tail that keeps
+//    billowing, widens with age and drifts downwind (it persists through the
+//    outro). Beacons and livery strips glow in the WINNING TEAM's color
+//    (teamColors().emissive) — the only team color in any environment art.
 //
 // Placement: `root` origin = the top of the launch pad (the mount stands on it).
 // Height ≈ 50 m × scale (mount 3.6 m + vehicle 46 m). The launch pitches over
@@ -23,7 +27,7 @@
 // map origin so the silhouette stays readable on the horizon (keep it inside the
 // camera far plane: quality.drawDistance is 260 m on Low).
 //
-// Cost: ~10 draw calls, zero allocations per frame, puffs are one InstancedMesh.
+// Cost: ~12 draw calls, zero allocations per frame, puffs are one InstancedMesh.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as THREE from 'three';
@@ -48,6 +52,20 @@ export const ROCKET_RADIUS = 2.6;
 /** Top of the nose above the mount top (escape tower adds ~5.5 m). */
 const BODY_H = 41;
 const LIFTOFF_T = 1.5;
+/** Seconds from ignition to liftoff. */
+export const ROCKET_LIFTOFF_T = LIFTOFF_T;
+
+/** Climb of the vehicle above its mount (m, scale 1) `t` seconds after ignition. */
+export function rocketAltitude(t: number): number {
+  return 2.4 * Math.pow(Math.max(0, t - LIFTOFF_T), 2.4);
+}
+
+/** Ignition flash envelope 0…1 (fast attack ≈ 0.3 s after ignition, ~1.2 s tail). */
+export function rocketFlash(t: number): number {
+  if (t < 0.18) return 0;
+  if (t < 0.42) return (t - 0.18) / 0.24;
+  return Math.exp(-(t - 0.42) * 2.1);
+}
 
 const C_DARK = '#34302c';
 const C_METAL = ENV.metalLight;
@@ -233,6 +251,16 @@ function paintBody(ctx: CanvasRenderingContext2D, w: number, h: number): void {
 
 // ── Shaders ─────────────────────────────────────────────────────────────────
 
+/**
+ * Fog uniforms for the ADDITIVE shaders. Deliberately not UniformsLib.fog: on
+ * the low preset the in-material grading (painterly.ts) rides on those shared
+ * uniforms and lifts black to a floor colour — fine for surfaces, but an
+ * additive quad would add that floor everywhere it covers (a visible box).
+ */
+function additiveFogUniforms(): Record<string, THREE.IUniform> {
+  return { fogDensity: { value: 0 }, fogNear: { value: 1 }, fogFar: { value: 2000 }, fogColor: { value: new THREE.Color() } };
+}
+
 const PUFF_VERT = /* glsl */ `
 attribute float aAlpha;
 attribute float aSeed;
@@ -240,10 +268,12 @@ varying float vAlpha;
 varying float vSeed;
 varying vec2 vUv;
 varying float vFogD;
+varying float vLocalY;
 void main() {
   vUv = uv;
   vAlpha = aAlpha;
   vSeed = aSeed;
+  vLocalY = instanceMatrix[3].y;
   vec4 c = modelViewMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
   float s = length(instanceMatrix[0].xyz) * length(modelMatrix[0].xyz);
   float r = aSeed * 6.2831;
@@ -257,6 +287,8 @@ const PUFF_FRAG = /* glsl */ `
 uniform vec3 uLit;
 uniform vec3 uShade;
 uniform vec3 uSunW;
+uniform vec3 uFire;
+uniform float uFireY;
 uniform vec3 fogColor;
 uniform float fogDensity;
 uniform float uFogScale;
@@ -264,6 +296,7 @@ varying float vAlpha;
 varying float vSeed;
 varying vec2 vUv;
 varying float vFogD;
+varying float vLocalY;
 void main() {
   vec2 p = vUv - 0.5;
   float d = length(p) * 2.0;
@@ -276,6 +309,8 @@ void main() {
   vec3 nW = (vec4(nV, 0.0) * viewMatrix).xyz;
   float lit = clamp(dot(nW, uSunW) * 0.6 + 0.45 + nW.y * 0.15, 0.0, 1.0);
   vec3 col = mix(uShade, uLit, lit);
+  // Steam lit from below by the engines (ignition flash / exhaust), fading with height.
+  col += uFire * exp(-max(0.0, vLocalY - uFireY) * 0.07) * (0.55 + 0.45 * clamp(0.5 - p.y * 1.6, 0.0, 1.0));
   float fd = vFogD * uFogScale;
   col = mix(col, fogColor, 1.0 - exp(-fogDensity * fogDensity * fd * fd));
   gl_FragColor = vec4(col, a);
@@ -288,23 +323,34 @@ uniform float uTop;
 uniform float uTopX;
 uniform float uSpread;
 uniform float uTime;
+uniform float uLift;
+uniform float uBase;
+uniform vec2 uWind;
 varying vec3 vNW;
 varying vec3 vW;
 varying float vH;
+varying float vY;
 varying float vFogD;
 void main() {
   float h = position.y + 0.5;
   float y = h * uTop;
   float ang = abs(position.x) + abs(position.z) < 1e-6 ? 0.0 : atan(position.z, position.x); // cap centres: atan(0,0) is NaN on Apple GPUs
-  float r = mix(uSpread, 1.4, pow(h, 0.3)) + y * 0.025;
+  // Age of the smoke at this height: when did the tail pass it (inverse of the climb curve)?
+  float pass = pow(max(1e-6, (y - uBase) / 2.4), 1.0 / 2.4); // (pow(0, y) is NaN-prone)
+  float age = max(0.0, uLift - pass);
+  float r = mix(uSpread, 2.4, pow(max(h, 1e-5), 0.35)) + y * 0.04;
+  r *= 1.0 + age * 0.26;
   float lump = sin(y * 0.33 - uTime * 0.7 + ang * 3.0) * 0.45 + sin(y * 0.13 + ang * 5.0 + uTime * 0.25) * 0.35 + sin(y * 0.71 + ang * 7.0 - uTime * 1.1) * 0.2;
-  r *= 1.0 + 0.3 * lump * smoothstep(0.02, 0.2, h);
+  r *= 1.0 + (0.3 + min(0.25, age * 0.05)) * lump * smoothstep(0.02, 0.2, h);
   vec3 p = vec3(position.x * r, y, position.z * r);
   p.x += uTopX * h * h;
+  // Older smoke drifts downwind (the column leans and frays as it ages).
+  p.xz += uWind * age * smoothstep(0.0, 0.12, h);
   vec4 wp = modelMatrix * vec4(p, 1.0);
   vW = wp.xyz;
   vNW = normalize(mat3(modelMatrix) * vec3(position.x, 0.25 - h * 0.2, position.z));
   vH = h;
+  vY = y;
   vec4 mv = viewMatrix * wp;
   vFogD = -mv.z;
   gl_Position = projectionMatrix * mv;
@@ -315,12 +361,16 @@ uniform vec3 uLit;
 uniform vec3 uShade;
 uniform vec3 uSunW;
 uniform float uOpacity;
+uniform vec3 uFire;
+uniform float uBase;
+uniform float uTop;
 uniform vec3 fogColor;
 uniform float fogDensity;
 uniform float uFogScale;
 varying vec3 vNW;
 varying vec3 vW;
 varying float vH;
+varying float vY;
 varying float vFogD;
 void main() {
   vec3 n = normalize(vNW);
@@ -331,6 +381,8 @@ void main() {
   if (a < 0.004) discard;
   float lit = clamp(dot(n, uSunW) * 0.55 + 0.5, 0.0, 1.0);
   vec3 col = mix(uShade, uLit, lit);
+  // The exhaust lights the smoke: warm at the pad, hot just under the tail.
+  col += uFire * (exp(-max(0.0, vY - uBase) * 0.06) * 0.7 + smoothstep(uTop - 26.0, uTop - 2.0, vY) * 1.1);
   float fd = vFogD * uFogScale;
   col = mix(col, fogColor, 1.0 - exp(-fogDensity * fogDensity * fd * fd));
   gl_FragColor = vec4(col, a);
@@ -367,14 +419,106 @@ varying float vFogD;
 void main() {
   float along = vUv.y; // 1 at the nozzle, 0 at the tail
   float facing = abs(dot(normalize(vN), normalize(vV)));
-  float core = pow(facing, 2.2);
+  float core = pow(max(facing, 1e-4), 2.2);
   float flick = 0.82 + 0.18 * sin(uTime * 43.0 + along * 17.0) * sin(uTime * 29.0 - vUv.x * 25.0);
   float fade = smoothstep(0.0, 0.7, along);
   vec3 col = mix(uEdge, uCore, core) * (0.35 + core) * fade * flick;
-  col += uCore * core * pow(max(0.5 + 0.5 * sin(along * 34.0 - uTime * 24.0), 0.0), 8.0) * 0.5 * smoothstep(0.45, 1.0, along);
+  col += uCore * core * pow(max(0.5 + 0.5 * sin(along * 34.0 - uTime * 24.0), 1e-4), 8.0) * 0.5 * smoothstep(0.45, 1.0, along);
   float fd = vFogD * uFogScale;
   col *= exp(-fogDensity * fogDensity * fd * fd) * uPower;
   gl_FragColor = vec4(col, 1.0);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}`;
+
+/** Camera-facing exhaust core with stationary shock diamonds (Mach disks). */
+const DIAMOND_VERT = /* glsl */ `
+uniform float uLen;
+uniform float uWidth;
+varying vec2 vUv;
+varying float vFogD;
+void main() {
+  vec3 o = (modelMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+  vec3 axis = normalize(mat3(modelMatrix) * vec3(0.0, -1.0, 0.0));
+  float sc = length(modelMatrix[1].xyz);
+  vec3 p = o + axis * (position.y + 0.5) * uLen * sc;
+  vec3 side = cross(axis, cameraPosition - p);
+  side = dot(side, side) < 1e-8 ? vec3(1.0, 0.0, 0.0) : normalize(side);
+  p += side * position.x * uWidth * sc;
+  vUv = vec2(position.x * 2.0, position.y + 0.5);
+  vec4 mv = viewMatrix * vec4(p, 1.0);
+  vFogD = -mv.z;
+  gl_Position = projectionMatrix * mv;
+}`;
+
+const DIAMOND_FRAG = /* glsl */ `
+uniform vec3 uColor;
+uniform vec3 uCore;
+uniform float uPower;
+uniform float uCount;
+uniform float uTime;
+uniform float fogDensity;
+uniform float uFogScale;
+varying vec2 vUv;
+varying float vFogD;
+void main() {
+  float v = vUv.y;
+  float u = abs(vUv.x);
+  float k = v * uCount;
+  float f = fract(k);
+  float idx = floor(k);
+  // Each cell: a bright diamond whose width peaks mid-cell, shrinking down the plume.
+  float w = (1.0 - abs(f * 2.0 - 1.0)) * (0.62 - idx * 0.07);
+  float dmd = (1.0 - smoothstep(w * 0.55, w, u)) * (1.0 - idx / uCount);
+  float fv = clamp(1.0 - v, 0.0, 1.0);
+  float fade = fv * sqrt(fv);
+  float jet = exp(-u * u * 22.0) * fade;
+  float flick = 0.9 + 0.1 * sin(uTime * 51.0 + v * 9.0);
+  vec3 c = (uColor * dmd * 1.4 + uCore * jet * 0.8) * uPower * flick;
+  float fd = vFogD * uFogScale;
+  c *= exp(-fogDensity * fogDensity * fd * fd);
+  gl_FragColor = vec4(c, 1.0);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}`;
+
+/** Big camera-facing flare (ignition flash + the exhaust's glare). */
+const FLARE_VERT = /* glsl */ `
+uniform float uSize;
+varying vec2 vUv;
+varying float vFogD;
+void main() {
+  vUv = uv;
+  vec4 c = modelViewMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+  float s = uSize * length(modelMatrix[1].xyz);
+  vFogD = -c.z;
+  // Pulled toward the camera so the pad/ground right at the engines can't clip
+  // the glare into a hard edge; real foreground (buildings) still occludes it.
+  c.z += min(s * 0.5, -c.z * 0.5);
+  c.xy += position.xy * s;
+  gl_Position = projectionMatrix * c;
+}`;
+
+const FLARE_FRAG = /* glsl */ `
+uniform vec3 uColor;
+uniform float uPower;
+uniform float fogDensity;
+uniform float uFogScale;
+varying vec2 vUv;
+varying float vFogD;
+void main() {
+  vec2 p = vUv - 0.5;
+  float d = length(p) * 2.0;
+  // (No pow(): pow(0, y) is NaN-prone on some GPUs / SwiftShader.)
+  float x = clamp(1.0 - d, 0.0, 1.0);
+  float x2 = x * x;
+  float x4 = x2 * x2;
+  float a = x2 * (0.55 + 0.45 * x) + 0.5 * x4 * x4 * x;
+  // Thin horizontal streak (anamorphic glare) through the core.
+  a += 0.35 * exp(-p.y * p.y * 900.0) * clamp(1.0 - abs(p.x) * 2.0, 0.0, 1.0);
+  float fd = vFogD * uFogScale;
+  vec3 c = uColor * a * uPower * exp(-fogDensity * fogDensity * fd * fd * 0.5);
+  gl_FragColor = vec4(max(c, vec3(0.0)), 1.0);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }`;
@@ -385,7 +529,8 @@ uniform float uPower;
 varying vec2 vUv;
 void main() {
   float d = length(vUv - 0.5) * 2.0;
-  float a = pow(max(0.0, 1.0 - d), 2.2);
+  float x = clamp(1.0 - d, 0.0, 1.0);
+  float a = x * x * (0.8 + 0.2 * x); // (no pow(0, y): NaN-prone)
   gl_FragColor = vec4(uColor * a * uPower, 1.0);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
@@ -521,6 +666,8 @@ function makePuffMaterial(fogScale: { value: number }, sunW: THREE.Vector3): THR
         uLit: { value: new THREE.Color('#fff4e8') },
         uShade: { value: new THREE.Color('#bca3a6') },
         uSunW: { value: sunW },
+        uFire: { value: new THREE.Color(0, 0, 0) },
+        uFireY: { value: ROCKET_MOUNT_H },
       },
     ]),
     vertexShader: PUFF_VERT,
@@ -553,6 +700,7 @@ export function createSteamEmitter(quality: QualitySettings, count = 48): SteamE
   const sunDir = new THREE.Vector3(0.9, 0.25, -0.3).normalize();
   const mat = makePuffMaterial({ value: 1 }, sunDir);
   const pool = new PuffPool(Math.max(8, Math.round(count * (0.4 + 0.6 * quality.particles))), mat);
+  pool.mesh.name = 'steam.puffs';
   return {
     mesh: pool.mesh,
     sunDir,
@@ -761,7 +909,7 @@ export function createLaunchRocket(materials: MaterialLibrary, quality: QualityS
   const flameMat = own(
     new THREE.ShaderMaterial({
       uniforms: THREE.UniformsUtils.merge([
-        THREE.UniformsLib.fog,
+        additiveFogUniforms(),
         {
           uCore: { value: new THREE.Color('#fff4dc').multiplyScalar(3.2) },
           uEdge: { value: new THREE.Color('#ffcf94').multiplyScalar(1.4) },
@@ -786,7 +934,66 @@ export function createLaunchRocket(materials: MaterialLibrary, quality: QualityS
   flame.position.y = -0.4;
   flame.visible = false;
   flame.renderOrder = 14;
+  flame.name = 'rocket.flame';
   vehicle.add(flame);
+
+  // Shock diamonds: a camera-facing jet core along the flame axis.
+  const diamondMat = own(
+    new THREE.ShaderMaterial({
+      uniforms: THREE.UniformsUtils.merge([
+        additiveFogUniforms(),
+        {
+          uLen: { value: 14 },
+          uWidth: { value: 1.6 },
+          uColor: { value: new THREE.Color('#fff1d0').multiplyScalar(2.6) },
+          uCore: { value: new THREE.Color('#ffe2b4').multiplyScalar(2.2) },
+          uPower: { value: 0 },
+          uCount: { value: 6 },
+          uTime: { value: 0 },
+          uFogScale: fogScale,
+        },
+      ]),
+      vertexShader: DIAMOND_VERT,
+      fragmentShader: DIAMOND_FRAG,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+      fog: true,
+    }),
+  );
+  diamondMat.uniforms.uFogScale = fogScale;
+  const diamonds = new THREE.Mesh(new THREE.PlaneGeometry(1, 1, 1, 1), diamondMat);
+  diamonds.position.y = -0.55;
+  diamonds.frustumCulled = false;
+  diamonds.visible = false;
+  diamonds.renderOrder = 15;
+  diamonds.name = 'rocket.diamonds';
+  vehicle.add(diamonds);
+
+  // Flare at the engines: the ignition flash, then the exhaust's glare.
+  const flareMat = own(
+    new THREE.ShaderMaterial({
+      uniforms: THREE.UniformsUtils.merge([
+        additiveFogUniforms(),
+        { uColor: { value: new THREE.Color('#ffd9a6') }, uPower: { value: 0 }, uSize: { value: 20 }, uFogScale: fogScale },
+      ]),
+      vertexShader: FLARE_VERT,
+      fragmentShader: FLARE_FRAG,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      fog: true,
+    }),
+  );
+  flareMat.uniforms.uFogScale = fogScale;
+  const flare = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), flareMat);
+  flare.position.y = -2.2;
+  flare.frustumCulled = false;
+  flare.visible = false;
+  flare.renderOrder = 16;
+  flare.name = 'rocket.flare';
+  vehicle.add(flare);
 
   // Ignition glow on the pad (flat additive disc).
   const glowMat = own(
@@ -803,6 +1010,7 @@ export function createLaunchRocket(materials: MaterialLibrary, quality: QualityS
   glow.position.y = 0.08;
   glow.visible = false;
   glow.renderOrder = 13;
+  glow.name = 'rocket.padGlow';
   root.add(glow);
 
   // Smoke trail column.
@@ -816,6 +1024,10 @@ export function createLaunchRocket(materials: MaterialLibrary, quality: QualityS
           uTopX: { value: 0 },
           uSpread: { value: 4 },
           uTime: { value: 0 },
+          uLift: { value: 0 },
+          uBase: { value: ROCKET_MOUNT_H },
+          uWind: { value: new THREE.Vector2(-2.2, 0.6) },
+          uFire: { value: new THREE.Color(0, 0, 0) },
           uOpacity: { value: 0 },
           uLit: { value: new THREE.Color('#fff0de') },
           uShade: { value: new THREE.Color('#b7a0aa') },
@@ -836,11 +1048,18 @@ export function createLaunchRocket(materials: MaterialLibrary, quality: QualityS
   trail.frustumCulled = false;
   trail.visible = false;
   trail.renderOrder = 11;
+  trail.name = 'rocket.trail';
   root.add(trail);
 
-  // Steam / smoke puffs.
+  // Steam / smoke puffs (the ignition steam ring + the column's billows need a big pool).
   const puffMat = own(makePuffMaterial(fogScale, sunW));
-  const puffs = new PuffPool(Math.round(24 + 96 * quality.particles), puffMat);
+  // Puffs are big transparent quads: fill rate, not count, is the cost on phones.
+  // The budget falls off as particles^1.5 (Low ≈ 1/5 of
+  // High) and the fewer puffs grow a little to keep the cloud's silhouette.
+  const pk = Math.max(0.25, quality.particles);
+  const puffK = pk * Math.sqrt(pk);
+  const puffGrow = 1 + (1 - pk) * 0.45;
+  const puffs = new PuffPool(Math.round(36 + 180 * puffK), puffMat);
   root.add(puffs.mesh);
 
   // ── Optional standalone complex: lattice umbilical tower + apron ──
@@ -908,6 +1127,16 @@ export function createLaunchRocket(materials: MaterialLibrary, quality: QualityS
   let emitAcc = 0;
   let sunFound = false;
   let sunTries = 0;
+  let ringAcc = 0;
+  // Scene fill light pulsed by the ignition flash (restored afterwards).
+  let hemi: THREE.HemisphereLight | null = null;
+  let hemiTries = 0;
+  let hemiBase = 0;
+  let hemiWritten = -1;
+  const hemiSky = new THREE.Color();
+  const hemiGround = new THREE.Color();
+  const warmSky = new THREE.Color('#ffd7a8');
+  const warmGround = new THREE.Color('#ffb070');
   const wp = new THREE.Vector3();
   let seed = 1337;
   const rnd = (): number => {
@@ -931,12 +1160,39 @@ export function createLaunchRocket(materials: MaterialLibrary, quality: QualityS
     }
   };
 
+  const findHemi = (): void => {
+    if (hemi || hemiTries > 30) return;
+    hemiTries++;
+    let top: THREE.Object3D = root;
+    while (top.parent) top = top.parent;
+    if (top === root) return;
+    for (const c of top.children) {
+      if ((c as THREE.HemisphereLight).isHemisphereLight) {
+        hemi = c as THREE.HemisphereLight;
+        break;
+      }
+    }
+  };
+
+  /** Restores the fill light we pulsed (end of the finale / dispose). */
+  const restoreHemi = (): void => {
+    if (!hemi || hemiWritten < 0) return;
+    if (hemi.intensity === hemiWritten) hemi.intensity = hemiBase;
+    hemi.color.copy(hemiSky);
+    hemi.groundColor.copy(hemiGround);
+    hemiWritten = -1;
+  };
+
   const idleVisual = (): void => {
     vehicle.position.set(0, H, 0);
     vehicle.rotation.set(0, 0, 0);
     flame.visible = false;
+    diamonds.visible = false;
+    flare.visible = false;
     glow.visible = false;
     trail.visible = false;
+    (puffMat.uniforms.uFire.value as THREE.Color).setRGB(0, 0, 0);
+    restoreHemi();
     if (arms) arms.rotation.y = 0;
     matLivery.color.copy(liveryIdle);
   };
@@ -981,9 +1237,17 @@ export function createLaunchRocket(materials: MaterialLibrary, quality: QualityS
 
     // ── Launch sequence ──
     const t = Math.max(0, launch.t);
+    findHemi();
     if (!wasLaunching) {
       wasLaunching = true;
       emitAcc = 0;
+      ringAcc = 0;
+      if (hemi) {
+        hemiBase = hemi.intensity;
+        hemiSky.copy(hemi.color);
+        hemiGround.copy(hemi.groundColor);
+        hemiWritten = -1;
+      }
     }
     const tc = teamColors(launch.team);
     if (tc.emissive !== teamKey) {
@@ -992,7 +1256,7 @@ export function createLaunchRocket(materials: MaterialLibrary, quality: QualityS
     }
     const ign = THREE.MathUtils.smoothstep(t, 0.05, 1.2);
     const lift = Math.max(0, t - LIFTOFF_T);
-    const y = 2.4 * Math.pow(lift, 2.4);
+    const y = rocketAltitude(t);
     const tilt = Math.min(0.32, Math.max(0, lift - 2.4) * 0.07);
     vehicle.position.set(y * Math.sin(tilt) * 0.55, H + y, 0);
     vehicle.rotation.set(0, 0, -tilt);
@@ -1002,38 +1266,79 @@ export function createLaunchRocket(materials: MaterialLibrary, quality: QualityS
     matLivery.color.copy(liveryIdle).lerp(cTeam, ign).multiplyScalar(1 + ign * 1.8);
     // Swing arms retract.
     if (arms) arms.rotation.y = THREE.MathUtils.smoothstep(t, 0.2, 1.4) * 1.15;
-    // Flame + pad glow.
+    // Flame + shock diamonds + pad glow.
     flame.visible = true;
     const thrust = THREE.MathUtils.smoothstep(t, 0.3, 1.6);
+    const flash = rocketFlash(t);
     const len = 4 + thrust * (16 + Math.min(14, lift * 3));
     flame.scale.set(0.55 + thrust * 0.45, len, 0.55 + thrust * 0.45);
-    flameMat.uniforms.uPower.value = 0.35 + thrust * 0.95;
+    flameMat.uniforms.uPower.value = 0.35 + thrust * 1.1 + flash * 0.6;
     flameMat.uniforms.uTime.value = tt;
+    diamonds.visible = thrust > 0.02;
+    diamondMat.uniforms.uPower.value = thrust * (1 + flash * 0.5);
+    diamondMat.uniforms.uLen.value = len * 0.62;
+    diamondMat.uniforms.uWidth.value = 1.1 + thrust * 0.8;
+    diamondMat.uniforms.uTime.value = tt;
+    // Flare: the ignition flash (huge, blinding), then the exhaust's steady glare.
+    flare.visible = true;
+    flareMat.uniforms.uPower.value = 0.25 + thrust * 0.9 + flash * 3.2;
+    flareMat.uniforms.uSize.value = 14 + thrust * 10 + flash * 46;
     glow.visible = true;
-    glowMat.uniforms.uPower.value = (0.4 + thrust * 1.4) * Math.exp(-Math.max(0, y - 6) * 0.03);
-    // Smoke column from the pad to the tail.
+    glowMat.uniforms.uPower.value = (0.4 + thrust * 1.4 + flash * 2.2) * Math.exp(-Math.max(0, y - 6) * 0.03);
+    // The flash lights the whole map: the sky/ground fill light pulses warm.
+    // (A light added now would recompile every material; pulsing one is free.)
+    if (hemi) {
+      // Someone else (quality change) rewrote it since our last frame: re-base.
+      if (hemiWritten >= 0 && hemi.intensity !== hemiWritten) hemiBase = hemi.intensity;
+      const near = THREE.MathUtils.clamp(150 / Math.max(1, Math.hypot(wp.x, wp.z)), 0.4, 1);
+      const sustain = thrust * 0.22 * Math.exp(-y * 0.012);
+      const k = (flash * 1.5 + sustain) * near;
+      hemi.intensity = hemiBase * (1 + k);
+      hemiWritten = hemi.intensity;
+      const w = Math.min(0.6, k * 0.45);
+      hemi.color.copy(hemiSky).lerp(warmSky, w);
+      hemi.groundColor.copy(hemiGround).lerp(warmGround, w);
+    }
+    // Smoke column from the pad to the tail: billows, widens and drifts with age.
     trail.visible = lift > 0.05;
     trailMat.uniforms.uTop.value = Math.max(1, H + y - 1);
     trailMat.uniforms.uTopX.value = vehicle.position.x;
-    trailMat.uniforms.uSpread.value = 3 + Math.min(12, lift * 2.6);
+    trailMat.uniforms.uSpread.value = 3.5 + Math.min(14, lift * 3);
     trailMat.uniforms.uTime.value = tt;
-    trailMat.uniforms.uOpacity.value = Math.min(0.92, lift * 0.8);
+    trailMat.uniforms.uLift.value = lift;
+    trailMat.uniforms.uOpacity.value = Math.min(0.94, lift * 0.8);
+    (trailMat.uniforms.uFire.value as THREE.Color).setRGB(1, 0.62, 0.3).multiplyScalar(thrust * 0.55 + flash * 0.4);
+    (puffMat.uniforms.uFire.value as THREE.Color).setRGB(1, 0.6, 0.28).multiplyScalar(flash * 1.6 + thrust * 0.5 * Math.exp(-y * 0.03));
+    // Ignition steam ring: a burst of puffs racing out radially along the pad,
+    // half of them boiling upward into the launch cloud.
+    if (t > 0.22 && t < 1.5) {
+      ringAcc += dt * 50 * puffK;
+      while (ringAcc >= 1) {
+        ringAcc -= 1;
+        const a = rnd() * Math.PI * 2;
+        const rise = rnd() < 0.45;
+        const sp = rise ? 4 + rnd() * 5 : 11 + rnd() * 9;
+        puffs.emit(Math.cos(a) * 5, 0.8 + rnd() * 1.6, Math.sin(a) * 5, Math.cos(a) * sp, rise ? 5 + rnd() * 6 : 0.8 + rnd() * 2, Math.sin(a) * sp, 7 + rnd() * 3, 4 * puffGrow, (rise ? 20 + rnd() * 10 : 16 + rnd() * 9) * puffGrow, 0.95, 0.5);
+      }
+    }
     // Billowing steam: radial at the base during ignition, then along the climb.
-    emitAcc += dt * (t < 3.2 ? 26 : 9) * (0.4 + quality.particles * 0.6);
+    emitAcc += dt * (t < 3.2 ? 24 : 16) * Math.max(0.2, puffK);
     while (emitAcc >= 1) {
       emitAcc -= 1;
       const a = rnd() * Math.PI * 2;
-      if (t < 3.2 || rnd() < 0.5) {
-        const sp = 6 + rnd() * 7;
-        puffs.emit(Math.cos(a) * 4.2, 1.0 + rnd() * 2.2, Math.sin(a) * 4.2, Math.cos(a) * sp, 1.2 + rnd() * 2.8, Math.sin(a) * sp, 5.5 + rnd() * 3, 3.2, 12 + rnd() * 7, 0.9, 0.6);
+      if (t < 3.2 || rnd() < 0.35) {
+        const sp = 5 + rnd() * 6;
+        puffs.emit(Math.cos(a) * 4.2, 1.0 + rnd() * 2.2, Math.sin(a) * 4.2, Math.cos(a) * sp, 2 + rnd() * 3.5, Math.sin(a) * sp, 6.5 + rnd() * 3, 3.6 * puffGrow, (14 + rnd() * 9) * puffGrow, 0.9, 0.5);
       } else {
-        puffs.emit(vehicle.position.x + (rnd() - 0.5) * 2, H + y - 3 - rnd() * 3, (rnd() - 0.5) * 2, (rnd() - 0.5) * 2, -2, (rnd() - 0.5) * 2, 4.5 + rnd() * 2, 2.2, 7 + rnd() * 3, 0.7, 0.8);
+        const r = 1.5 + rnd() * 2.5;
+        puffs.emit(vehicle.position.x + Math.cos(a) * r, H + y - 4 - rnd() * 6, Math.sin(a) * r, Math.cos(a) * 2.2, -3, Math.sin(a) * 2.2, 5.5 + rnd() * 2.5, 3.5 * puffGrow, (10 + rnd() * 6) * puffGrow, 0.75, 0.6);
       }
     }
     puffs.update(dt, windX, windZ);
   };
 
   const dispose = (): void => {
+    restoreHemi();
     root.traverse((o) => {
       const m = o as THREE.Mesh;
       if (m.isMesh && m !== puffs.mesh) m.geometry.dispose();

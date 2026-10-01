@@ -9,10 +9,14 @@
 //  • End: victory / defeat stinger + banner (MVP or launching team), then the
 //    outro camera — Launch Control winners launch the last rocket
 //    (MapRuntimeState.rocketLaunch), other modes orbit the MVP / final kill.
+//    The launch's ignition flash also bumps the exposure (all presets) and
+//    fires the pooled point light at the pad (High); the camera director adds
+//    a distance-scaled rumble (reduced-shake aware).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as THREE from 'three';
 import { UI } from '../engine/palette';
+import { rocketFlash, ROCKET_MOUNT_H } from '../world/rocket';
 import type { ScoreboardRow } from '../../shared/protocol';
 import { clamp } from '../../shared/math';
 import type { AnnouncerKey, MatchPhase, Team } from '../../shared/types';
@@ -32,6 +36,9 @@ export class MatchFlow {
   private lastCountdown = -1;
   private lastLeader = 0;
   private lastLeadCall = -1e9;
+  /** Exposure before the ignition flash (NaN = not bumped). */
+  private baseExposure = NaN;
+  private readonly expo = { exposure: 1 };
 
   constructor(
     private readonly ctx: MatchContext,
@@ -56,6 +63,8 @@ export class MatchFlow {
     if (!view) return;
     const range = ctx.config.mode === 'range';
     const dur = ctx.clock.phase === 'countdown' ? clamp(phaseLeft + 0.3, 1.3, 3.2) : range ? 1.1 : 1.4;
+    // The fly-in avoids visible geometry too (decor-only roofs / facades).
+    this.director.setOccluders(view.map.scene);
     this.director.startIntro(view.map.showcase('intro'), dur);
     this.overlays()?.setCinematic(true);
     const title = range ? this.t('match.range.welcome') : this.hudBridge.modeName();
@@ -104,7 +113,38 @@ export class MatchFlow {
       this.lastCountdown = sec;
     }
     if (phase === 'live' && ctx.config.timeLimit > 90 && phaseLeft <= 60 && ctx.config.mode !== 'range') this.setFinalMusic();
-    if (this.rocket) this.rocket.t += dt;
+    if (this.rocket) {
+      this.rocket.t += dt;
+      this.finaleLight();
+    }
+  }
+
+  /** Ignition flash: exposure bump (+ the pad light on High), then back to the map's grading. */
+  private finaleLight(): void {
+    const r = this.rocket;
+    const engine = this.ctx.app.engine;
+    if (!r) return;
+    if (r.t > 4.5) {
+      if (!Number.isNaN(this.baseExposure)) {
+        engine.setGrading({ exposure: this.baseExposure });
+        this.baseExposure = NaN;
+      }
+      return;
+    }
+    if (Number.isNaN(this.baseExposure)) {
+      this.baseExposure = engine.getGrading().exposure;
+      // Pad light (pooled point light; a no-op below High). Nearby rockets light the
+      // structures around them; horizon rockets are too far for a point light to matter.
+      const def = this.ctx.def.rocket;
+      const fx = this.ctx.view?.effects;
+      if (fx && Math.hypot(def.pos.x, def.pos.z) < 160) {
+        const p = new THREE.Vector3(def.pos.x, def.pos.y + ROCKET_MOUNT_H * def.scale + 2, def.pos.z);
+        fx.flare(p, '#ffc98a', 260 * def.scale, 140 * def.scale, 3.2);
+      }
+    }
+    const f = rocketFlash(r.t);
+    this.expo.exposure = this.baseExposure * (1 + 0.32 * f);
+    engine.setGrading(this.expo);
   }
 
   /** Lead taken / lost callouts derived from team scores. */
@@ -139,7 +179,8 @@ export class MatchFlow {
     ctx.app.hud.scoreboard(false, [], ctx.config.mode);
     if (ctx.config.mode === 'control' && winner !== 2) {
       this.rocket = { team: winner, t: 0 };
-      this.director.startOutro(ctx.camera, 'rocket', ctx.view.map.showcase('outro'), null);
+      this.director.setShakeScale(ctx.app.settings.value.reducedShake ? 0.25 : 1);
+      this.director.startOutro(ctx.camera, 'rocket', ctx.view.map.showcase('outro'), null, ctx.def.rocket);
     } else {
       this.director.startOutro(ctx.camera, 'orbit', null, this.outroCenter(new THREE.Vector3()));
     }

@@ -15,6 +15,12 @@
 // shadow-map texels in light space so edges never shimmer while moving; PCF
 // with a per-preset kernel radius (soft, long golden-hour penumbrae) and a
 // fade toward the box edge so the shadow range never ends in a hard line.
+// Low preset: no per-frame shadow pass — the map's static content casts ONE
+// whole-map shadow map baked on the first frame (setStaticShadowCasters),
+// sampled through a 4-tap bilinear lookup, so long golden shadows survive.
+//
+// Sunset / golden skies also get painted cloud strata near the horizon with
+// sun-lit rims; on low the sky (like every material) is graded in-shader.
 //
 // Weather: ONE Points draw call; particles live in a box that wraps around the
 // camera entirely in the vertex shader (zero CPU work per frame).
@@ -25,6 +31,7 @@ import type { Atmosphere, QualitySettings } from '../contracts';
 import type { MapLighting } from '../../shared/maps/types';
 import type { Vec3 } from '../../shared/types';
 import { ENV } from './palette';
+import { gradeUniforms } from './painterly';
 
 /** Half-size (m) of the sun's shadow box; texel = 2·half / mapSize. */
 const SHADOW_HALF: Record<QualitySettings['shadows'], number> = { off: 35, low: 34, high: 40 };
@@ -66,6 +73,7 @@ uniform vec3 uSunDir;
 uniform float uTime;
 uniform float uStars;
 uniform float uClouds;
+uniform float uBands;
 varying vec3 vDir;
 
 float hash12(vec2 p) {
@@ -121,6 +129,46 @@ void main() {
     vec3 bright = mix(uHorizon, uSunGlow, 0.65) * 1.08;
     vec3 cloud = mix(shade, bright, lit);
     col = mix(col, cloud, c * 0.85);
+  }
+
+  // Painted cloud bands (book-cover sunset): three long horizontal strata near
+  // the horizon with ragged, brushy edges. Their undersides catch the low sun
+  // (warm) on the sun side and turn cool violet away from it. The azimuth is
+  // measured from the sun, so the atan wrap sits opposite the sun where the
+  // bands have faded out (no seam).
+  vec2 hxz = d.xz;
+  float hl = length(hxz);
+  if (uBands > 0.0 && h > -0.03 && h < 0.4 && hl > 1e-4) {
+    vec2 sxz = normalize(uSunDir.xz + vec2(1e-5, 0.0));
+    vec2 dd = vec2(dot(hxz, sxz), dot(hxz, vec2(-sxz.y, sxz.x))) / hl;
+    float azr = atan(dd.y, dd.x);
+    float side = smoothstep(-0.97, -0.3, dd.x);
+    float streak = fbm(vec2(azr * 2.4 + uTime * 0.003, h * 44.0));
+    float bristle = vnoise(vec2(azr * 11.0, h * 150.0));
+    float bands = 0.0;
+    float rim = 0.0;
+    float sunH = uSunDir.y;
+    for (int i = 0; i < 3; i++) {
+      float fi = float(i);
+      float c0 = 0.04 + fi * 0.07 + (vnoise(vec2(azr * 0.85 + fi * 5.1, fi * 3.3)) - 0.5) * 0.06;
+      float th = 0.015 + fi * 0.008 + vnoise(vec2(azr * 1.4 - fi * 7.3, 1.0 + fi)) * 0.026;
+      float x = (h - c0) / th;
+      float env = exp(-x * x);
+      float m = smoothstep(0.48, 0.62, env * (0.42 + streak * 1.0) + (bristle - 0.5) * 0.18);
+      m *= 1.0 - fi * 0.18;
+      bands = max(bands, m);
+      // The edge facing the sun's elevation catches the light (top edge when
+      // the sun is above the stratum, underside when it has sunk below it).
+      float toward = sunH > c0 ? x : -x;
+      rim = max(rim, m * smoothstep(-0.2, 0.9, toward));
+    }
+    bands *= side * uBands;
+    // Body: a cooler, deeper version of the sky behind it (lavender-mauve
+    // strata, never grey); rim: warm sun-lit cream, brightest toward the sun.
+    vec3 body = col * vec3(0.84, 0.81, 0.94) + uZenith * 0.05;
+    vec3 glow = mix(uSunGlow, vec3(1.0, 0.95, 0.86), 0.3) * 1.12;
+    float rk = clamp(rim * (0.3 + 0.7 * pow(sd, 2.0)), 0.0, 1.0);
+    col = mix(col, mix(body, glow, rk), bands * 0.88);
   }
 
   // Horizon haze band = fog color (sun-tinted exactly like the geometry fog,
@@ -309,6 +357,9 @@ export function installSunFog(): void {
 		float hfSa = max( dot( normalize( vFogView ), hfSunV ), 0.0 );
 		hfFogColor = mix( fogColor, fogSunColor, fogSunDir.w * hfSa * hfSa * hfSa );
 	}
+	#ifdef TONE_MAPPING
+		hfFogColor = hfGrade( hfFogColor ); // low preset: graded like the sky's haze band (identity otherwise)
+	#endif
 	gl_FragColor.rgb = mix( gl_FragColor.rgb, hfFogColor, fogFactor );`,
     );
   if (ok) {
@@ -341,6 +392,17 @@ export function installSunFog(): void {
 			shadow *= 0.2;
 			#undef HF_BILIN`,
   );
+  // Basic shadow maps are used ONLY by the low preset's one-time baked sun
+  // shadow (AtmosphereImpl.runBake). That map is not three's RGBA-packed depth
+  // but a linearly FILTERABLE half-float depth, so ONE hardware-bilinear fetch
+  // + a narrow smoothstep compare gives smooth, stair-free contours (the edge
+  // sits where the interpolated occluder depth crosses the receiver) — the
+  // cheapest soft-looking shadow there is: 1 fetch, ~4 ALU.
+  patchChunk(
+    'shadowmap_pars_fragment',
+    'shadow = texture2DCompare( shadowMap, shadowCoord.xy, shadowCoord.z );',
+    `shadow = smoothstep( shadowCoord.z - 0.0016, shadowCoord.z + 0.0001, texture2D( shadowMap, shadowCoord.xy ).r );`,
+  );
   // Whitespace-agnostic: the published build strips the blank lines that the
   // chunk sources contain (an exact-string find silently failed there). The
   // first match is getShadow() (directional/spot), not getPointShadow().
@@ -350,7 +412,8 @@ export function installSunFog(): void {
     `}
 		// Halcyon: fade toward the shadow frustum edge (no hard cut-off line).
 		vec2 hfEdge = abs( shadowCoord.xy * 2.0 - 1.0 );
-		shadow = mix( shadow, 1.0, smoothstep( 0.8, 0.97, max( hfEdge.x, hfEdge.y ) ) );
+		// (Not for the low preset's whole-map baked shadow, which uses radius 1.)
+		shadow = mix( shadow, 1.0, shadowRadius > 1.05 ? smoothstep( 0.8, 0.97, max( hfEdge.x, hfEdge.y ) ) : 0.0 );
 		return mix( 1.0, shadow, shadowIntensity );
 	}`,
   );
@@ -398,6 +461,12 @@ class AtmosphereImpl implements Atmosphere {
   private time = 0;
   private quality: QualitySettings;
   private shadowHalf = 35;
+  /** Static content allowed to cast into the low preset's baked shadow map. */
+  private staticRoots: THREE.Object3D[] = [];
+  private readonly staticBounds = new THREE.Box3();
+  private bakedMode = false;
+  private readonly bakeOff: THREE.Object3D[] = [];
+  private readonly bakeOn: THREE.Object3D[] = [];
   /** Hemisphere intensity without the shadow fill (see SHADOW_FILL_RATIO). */
   private hemiBase = 1;
   /** Fog color looking toward the sun (aerial perspective): the sun glow scattered in the haze. */
@@ -465,6 +534,10 @@ class AtmosphereImpl implements Atmosphere {
         uTime: { value: 0 },
         uStars: { value: 0 },
         uClouds: { value: l.mood === 'dusk' ? 0.75 : 1 },
+        // Painted strata for the sunset / golden skies (Observatory's dusk sky keeps its look).
+        uBands: { value: l.mood === 'dusk' ? 0 : 1 },
+        // In-material grading on the low preset (no post pass); identity otherwise.
+        ...gradeUniforms(),
       },
       defines: { OCTAVES: quality.preset === 'low' ? 3 : 4 },
       vertexShader: SKY_VERT,
@@ -485,23 +558,46 @@ class AtmosphereImpl implements Atmosphere {
 
   setQuality(q: QualitySettings): void {
     this.quality = q;
-    const cast = q.shadows !== 'off';
+    const live = q.shadows !== 'off';
+    // Low preset: no per-frame shadow pass, but the map's static sun shadows
+    // are baked ONCE into a whole-map shadow map (see setStaticShadowCasters) — the long
+    // golden-hour shadows are the signature look on every preset.
+    const baked = !live && this.staticRoots.length > 0 && bakedShadowSupported;
+    const cast = live || baked;
     this.sun.castShadow = cast;
     this.hemi.intensity = cast ? Math.max(this.hemiBase * 1.12, this.sun.intensity * SHADOW_FILL_RATIO) : this.hemiBase;
-    this.shadowHalf = SHADOW_HALF[q.shadows];
-    const sc = this.sun.shadow.camera;
-    if (sc.right !== this.shadowHalf) {
-      sc.left = -this.shadowHalf;
-      sc.right = this.shadowHalf;
-      sc.top = this.shadowHalf;
-      sc.bottom = -this.shadowHalf;
-      sc.updateProjectionMatrix();
-    }
-    this.sun.shadow.radius = SHADOW_RADIUS[q.shadows];
-    if (cast && this.sun.shadow.mapSize.x !== q.shadowMapSize) {
-      this.sun.shadow.mapSize.set(q.shadowMapSize, q.shadowMapSize);
-      this.sun.shadow.map?.dispose();
-      this.sun.shadow.map = null;
+    const sh = this.sun.shadow;
+    if (baked) {
+      this.enterBaked();
+    } else {
+      if (this.bakedMode) {
+        this.bakedMode = false;
+        sh.autoUpdate = true;
+        sh.bias = -0.0004;
+        sh.normalBias = 0.03;
+        this.scene.userData.hfShadowBake = undefined;
+        if (sh.map === this.bakeTarget) sh.map = null;
+        this.bakeTarget?.dispose();
+        this.bakeTarget = null;
+        sh.mapSize.set(0, 0); // forces three's own map at the live size below
+      }
+      this.shadowHalf = SHADOW_HALF[q.shadows];
+      const sc = sh.camera;
+      if (sc.right !== this.shadowHalf || sc.top !== this.shadowHalf) {
+        sc.left = -this.shadowHalf;
+        sc.right = this.shadowHalf;
+        sc.top = this.shadowHalf;
+        sc.bottom = -this.shadowHalf;
+        sc.near = 1;
+        sc.far = 320;
+        sc.updateProjectionMatrix();
+      }
+      sh.radius = SHADOW_RADIUS[q.shadows];
+      if (cast && (sh.mapSize.x !== q.shadowMapSize || sh.mapSize.y !== q.shadowMapSize)) {
+        sh.mapSize.set(q.shadowMapSize, q.shadowMapSize);
+        sh.map?.dispose();
+        sh.map = null;
+      }
     }
     const oct = q.preset === 'low' ? 3 : 4;
     if (this.skyMat.defines.OCTAVES !== oct) {
@@ -509,6 +605,165 @@ class AtmosphereImpl implements Atmosphere {
       this.skyMat.needsUpdate = true;
     }
     this.buildWeather();
+  }
+
+  // ── Baked static sun shadow (low preset) ──────────────────────────────────
+
+  /**
+   * Registers the map's static content (merged solids, decor, backdrop) and its
+   * bounds. On the low preset the sun then casts ONE baked whole-map shadow
+   * map, rendered on the first frame (and again only after a quality change),
+   * from these roots only — players, effects and anything added later never
+   * enter it. Decor that does not cast/receive on low (its builders key off
+   * quality.shadows) is opted in here: opaque lit meshes cast (cutout foliage
+   * included), every lit mesh receives.
+   */
+  setStaticShadowCasters(roots: THREE.Object3D[], bounds: THREE.Box3): void {
+    this.staticRoots = roots.slice();
+    this.staticBounds.copy(bounds);
+    this.setQuality(this.quality);
+  }
+
+  private enterBaked(): void {
+    const sh = this.sun.shadow;
+    this.bakedMode = true;
+    // three never renders this light's map itself (the bake does, once).
+    sh.autoUpdate = false;
+    sh.needsUpdate = false;
+    sh.radius = 1;
+    // Back faces are what the bake renders, so a small bias suffices even at a
+    // grazing golden-hour sun.
+    sh.bias = -0.0004;
+    sh.normalBias = 0.04;
+    // Fit an orthographic box around the static bounds in light space.
+    const b = this.staticBounds;
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+    const p = this.tmp;
+    for (let i = 0; i < 8; i++) {
+      p.set(i & 1 ? b.max.x : b.min.x, i & 2 ? b.max.y : b.min.y, i & 4 ? b.max.z : b.min.z);
+      const px = p.dot(this.lx), py = p.dot(this.ly), pz = p.dot(this.sunDir);
+      x0 = Math.min(x0, px); x1 = Math.max(x1, px);
+      y0 = Math.min(y0, py); y1 = Math.max(y1, py);
+      z0 = Math.min(z0, pz); z1 = Math.max(z1, pz);
+    }
+    const t = this.sun.target.position;
+    t.set(0, 0, 0).addScaledVector(this.lx, (x0 + x1) / 2).addScaledVector(this.ly, (y0 + y1) / 2).addScaledVector(this.sunDir, z0 - 2);
+    const dist = z1 - z0 + 12;
+    this.sun.position.copy(t).addScaledVector(this.sunDir, dist);
+    this.sun.target.updateMatrixWorld();
+    this.sun.updateMatrixWorld();
+    const sc = sh.camera;
+    sc.left = -(x1 - x0) / 2;
+    sc.right = (x1 - x0) / 2;
+    sc.bottom = -(y1 - y0) / 2;
+    sc.top = (y1 - y0) / 2;
+    sc.near = 1;
+    sc.far = dist + 4;
+    sc.updateProjectionMatrix();
+    // ≈ 9 cm texels (bilinear-filtered → soft painterly edges), ≤ 2048 a side:
+    // a typical 130 m map bakes into ~2048 × 1024 (8 MB) once.
+    const sx = THREE.MathUtils.clamp(Math.ceil((x1 - x0) / 0.09 / 256) * 256, 512, 2048);
+    const sy = THREE.MathUtils.clamp(Math.ceil((y1 - y0) / 0.09 / 256) * 256, 512, 2048);
+    if (sh.map && sh.map !== this.bakeTarget) sh.map.dispose();
+    sh.map = null;
+    sh.mapSize.set(sx, sy);
+    // Receivers: every lit mesh of the static content (decor turns receiving
+    // off on low; the bake makes it worth having again).
+    for (const r of this.staticRoots) {
+      r.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (m.isMesh && isLitMaterial(m.material)) m.receiveShadow = true;
+      });
+    }
+    this.bake.pending = true;
+    this.scene.userData.hfShadowBake = this.bake;
+  }
+
+  private bakeTarget: THREE.WebGLRenderTarget | null = null;
+
+  /** Bake hook run by the Renderer right before the next draw of this scene. */
+  private readonly bake: StaticShadowBake = {
+    pending: false,
+    run: (renderer) => this.runBake(renderer),
+  };
+
+  /**
+   * Renders the static content's sun-space depth ONCE into a half-float RED
+   * target (linear filtering → 1-fetch smooth lookups, see the Basic branch
+   * patch) and hands it to three as the sun's shadow map. Only the registered
+   * static roots are drawn: everything else in the scene (sky, water, players,
+   * effects, gameplay markers) is hidden for this one draw. Opaque surfaces
+   * render their back faces (three's default shadowSide, acne-free at a
+   * grazing sun); alpha-tested foliage renders both sides through its cutout.
+   */
+  private runBake(renderer: THREE.WebGLRenderer): void {
+    this.bake.pending = false;
+    const sh = this.sun.shadow;
+    const sx = sh.mapSize.x;
+    const sy = sh.mapSize.y;
+    let rt = this.bakeTarget;
+    if (!rt || rt.width !== sx || rt.height !== sy) {
+      rt?.dispose();
+      rt = new THREE.WebGLRenderTarget(sx, sy, {
+        type: THREE.HalfFloatType,
+        format: THREE.RedFormat,
+        minFilter: THREE.LinearFilter,
+        magFilter: THREE.LinearFilter,
+        generateMipmaps: false,
+        depthBuffer: true,
+      });
+      rt.texture.name = 'Halcyon.bakedSunDepth';
+      this.bakeTarget = rt;
+    }
+    this.sun.updateMatrixWorld();
+    this.sun.target.updateMatrixWorld();
+    sh.updateMatrices(this.sun);
+    sh.map = rt;
+
+    const hidden: THREE.Object3D[] = [];
+    const swapped: THREE.Mesh[] = [];
+    const originals: (THREE.Material | THREE.Material[])[] = [];
+    const casters = new Set<THREE.Object3D>();
+    for (const r of this.staticRoots) {
+      r.traverseVisible((o) => {
+        if (o.userData.hfCast === false || o.userData.noShadow) return;
+        const m = o as THREE.Mesh;
+        if (m.isMesh && castsInBake(m.material)) casters.add(o);
+      });
+    }
+    this.scene.traverseVisible((o) => {
+      const any = o as THREE.Mesh;
+      if (!(any.isMesh || (o as THREE.Points).isPoints || (o as THREE.Line).isLine || (o as THREE.Sprite).isSprite)) return;
+      if (casters.has(o)) {
+        swapped.push(any);
+        originals.push(any.material);
+        any.material = Array.isArray(any.material) ? any.material.map((x) => bakeDepthMaterial(x)) : bakeDepthMaterial(any.material);
+      } else {
+        o.visible = false;
+        hidden.push(o);
+      }
+    });
+
+    const bg = this.scene.background;
+    const prevTarget = renderer.getRenderTarget();
+    const prevClear = renderer.getClearColor(new THREE.Color());
+    const prevAlpha = renderer.getClearAlpha();
+    const prevAuto = renderer.autoClear;
+    const prevShadows = renderer.shadowMap.enabled;
+    this.scene.background = null;
+    renderer.shadowMap.enabled = false;
+    renderer.setRenderTarget(rt);
+    renderer.setClearColor(0xffffff, 1);
+    renderer.autoClear = true;
+    renderer.clear();
+    renderer.render(this.scene, sh.camera);
+    renderer.setRenderTarget(prevTarget);
+    renderer.setClearColor(prevClear, prevAlpha);
+    renderer.autoClear = prevAuto;
+    renderer.shadowMap.enabled = prevShadows;
+    this.scene.background = bg;
+    for (const o of hidden) o.visible = true;
+    for (let i = 0; i < swapped.length; i++) swapped[i].material = originals[i];
   }
 
   private buildWeather(): void {
@@ -578,6 +833,10 @@ class AtmosphereImpl implements Atmosphere {
     su.uTime.value = this.time;
     su.uStars.value = THREE.MathUtils.clamp(starAmount, 0, 1);
 
+    if (this.bakedMode) {
+      this.updateWeather(camera);
+      return;
+    }
     // Shadow frustum: centred ahead of the view, snapped to texels in light space.
     camera.getWorldDirection(this.fwd);
     this.fwd.y = 0;
@@ -592,9 +851,13 @@ class AtmosphereImpl implements Atmosphere {
     this.sun.position.copy(t).addScaledVector(this.sunDir, 150);
     this.sun.target.updateMatrixWorld();
 
+    this.updateWeather(camera);
+  }
+
+  private updateWeather(camera: THREE.Camera): void {
     if (this.weather && this.weatherPreset) {
       const u = (this.weather.material as THREE.ShaderMaterial).uniforms;
-      u.uCam.value.copy(cam);
+      u.uCam.value.copy(camera.position);
       u.uTime.value = this.time;
       const persp = camera as THREE.PerspectiveCamera;
       if (persp.isPerspectiveCamera) {
@@ -620,10 +883,106 @@ class AtmosphereImpl implements Atmosphere {
     }
     if (this.scene.fog === this.fog) this.scene.fog = null;
     if (this.scene.userData.fogSun) delete this.scene.userData.fogSun;
+    if (this.scene.userData.hfShadowBake) delete this.scene.userData.hfShadowBake;
+    this.staticRoots = [];
+    if (this.sun.shadow.map === this.bakeTarget) this.sun.shadow.map = null;
+    this.bakeTarget?.dispose();
+    this.bakeTarget = null;
   }
 }
 
+/** Renderer hook: renders the low preset's baked sun depth before the next frame. */
+export interface StaticShadowBake {
+  pending: boolean;
+  run(renderer: THREE.WebGLRenderer): void;
+}
+
+let bakedShadowSupported = true;
+
+/**
+ * Called once by the Renderer: the baked sun shadow needs a renderable,
+ * filterable half-float target (EXT_color_buffer_float / _half_float — nearly
+ * universal on WebGL2). Without it low simply keeps no sun shadow.
+ */
+export function setBakedShadowSupport(renderer: THREE.WebGLRenderer): void {
+  const ext = renderer.extensions;
+  bakedShadowSupported = ext.has('EXT_color_buffer_float') || ext.has('EXT_color_buffer_half_float');
+}
+
+const BAKE_VERT = /* glsl */ `
+#ifdef HF_CUTOUT
+varying vec2 vUv;
+#endif
+void main() {
+#ifdef HF_CUTOUT
+  vUv = uv;
+#endif
+  vec4 p = vec4(position, 1.0);
+#ifdef USE_INSTANCING
+  p = instanceMatrix * p;
+#endif
+  gl_Position = projectionMatrix * modelViewMatrix * p;
+}`;
+
+const BAKE_FRAG = /* glsl */ `
+#ifdef HF_CUTOUT
+uniform sampler2D map;
+uniform float alphaTest;
+varying vec2 vUv;
+#endif
+void main() {
+#ifdef HF_CUTOUT
+  if (texture2D(map, vUv).a < alphaTest) discard;
+#endif
+  gl_FragColor = vec4(gl_FragCoord.z, 0.0, 0.0, 1.0);
+}`;
+
+const bakeMats = new Map<string, THREE.ShaderMaterial>();
+
+/** Depth-only material for the bake (cached per side / cutout texture). */
+function bakeDepthMaterial(src: THREE.Material): THREE.ShaderMaterial {
+  const cut = src.alphaTest > 0 && !!(src as THREE.MeshStandardMaterial).map;
+  const map = cut ? (src as THREE.MeshStandardMaterial).map : null;
+  const side = cut || src.side === THREE.DoubleSide ? THREE.DoubleSide : src.side === THREE.BackSide ? THREE.FrontSide : THREE.BackSide;
+  const key = `${side}|${map ? map.uuid : ''}|${cut ? src.alphaTest : 0}`;
+  let m = bakeMats.get(key);
+  if (!m) {
+    m = new THREE.ShaderMaterial({
+      vertexShader: BAKE_VERT,
+      fragmentShader: BAKE_FRAG,
+      side,
+      defines: cut ? { HF_CUTOUT: '' } : {},
+      uniforms: cut ? { map: { value: map }, alphaTest: { value: src.alphaTest } } : {},
+      fog: false,
+      lights: false,
+      toneMapped: false,
+    });
+    m.name = 'bakeDepth';
+    bakeMats.set(key, m);
+  }
+  return m;
+}
+
+function litMat(m: THREE.Material): boolean {
+  return !!((m as THREE.MeshStandardMaterial).isMeshStandardMaterial || (m as THREE.MeshLambertMaterial).isMeshLambertMaterial || (m as THREE.MeshPhongMaterial).isMeshPhongMaterial);
+}
+
+function isLitMaterial(mat: THREE.Material | THREE.Material[]): boolean {
+  return Array.isArray(mat) ? mat.some(litMat) : litMat(mat);
+}
+
+/** Opaque lit surfaces (and alpha-tested cutouts like foliage) cast in the bake; glows, glass and FX never do. */
+function castsInBake(mat: THREE.Material | THREE.Material[]): boolean {
+  const m = Array.isArray(mat) ? mat[0] : mat;
+  if (!m || !litMat(m)) return false;
+  if (m.transparent && m.alphaTest <= 0) return false;
+  if (m.side === THREE.DoubleSide && m.alphaTest <= 0) return false;
+  return true;
+}
+
 export type AtmosphereView = Atmosphere & {
+  /** Low preset: registers the map's static content for the one-time baked sun shadow. */
+  setStaticShadowCasters(roots: THREE.Object3D[], bounds: THREE.Box3): void;
   readonly hemi: THREE.HemisphereLight;
   readonly fill: THREE.DirectionalLight;
   readonly sky: THREE.Mesh;

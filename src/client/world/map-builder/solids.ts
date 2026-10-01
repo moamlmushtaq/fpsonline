@@ -223,11 +223,20 @@ export function makeShade(ctx: Ctx, s: Solid, base: V3, onGround: boolean, patch
       k *= 0.95 + 0.09 * THREE.MathUtils.smoothstep(y, baseY, topY);
       if (ny > 0.1) k *= 1.1; // top chamfers catch light (worn, bleached edges)
     }
+    // Edge highlights: chamfer bevels (normals between two axes) read as worn,
+    // sun-bleached edges — strongest on top edges, a warm lift on vertical
+    // corners — the painter's "catch light" that separates planes.
+    let warm = 0;
+    if (Math.max(Math.abs(nx), Math.abs(ny), Math.abs(nz)) < 0.93 && ny > -0.3) {
+      const top = ny > 0.2;
+      k *= top ? 1.22 : 1.12;
+      warm = top ? 0.05 : 0.03;
+    }
     // Low-frequency painterly variation (value + a faint warm/cool drift).
     const n = vnoise2(x * 0.14 + 3.1, z * 0.14 - 7.7) - 0.5;
     const w = vnoise2(x * 0.05 - 1.3, (z + y) * 0.05 + 9.2) - 0.5;
     k *= 1 + n * 0.12;
-    return [col[0] * k * (1 + w * 0.06), col[1] * k, col[2] * k * (1 - w * 0.06)];
+    return [col[0] * k * (1 + w * 0.06 + warm), col[1] * k * (1 + warm * 0.4), col[2] * k * (1 - w * 0.06 - warm * 0.6)];
   };
 }
 

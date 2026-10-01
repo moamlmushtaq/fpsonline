@@ -8,14 +8,16 @@
 // projectiles with blinking lights. The LOCAL player's flash is drawn in the
 // viewmodel overlay (attachOverlay) so the gun never hides it. Every flash and
 // particle is guaranteed at least one rendered frame, even when dt > life.
-// Budgets scale with quality.particles; a single pooled point light adds
-// muzzle/explosion light on the high preset only.
+// Eliminations are body-shaped dissolves (see dissolve.ts). Budgets scale with
+// quality.particles; a single pooled point light adds muzzle/explosion light
+// (and the rocket finale's ignition flare) on the high preset only.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as THREE from 'three';
 import type { Effects, QualitySettings } from '../contracts';
 import type { Faction, SurfaceTag, Team, ThrowableId, Vec3, WeaponId } from '../../shared/types';
 import { findElimFx } from '../../shared/cosmetics';
+import { Dissolver, type DissolveStyle } from './dissolve';
 import { DANGER_COLOR, ENV, PICKUP_COLOR, teamColors } from './palette';
 import { FLASH_CELL, flashAtlas, glowTexture, ParticlePool, SPRITE } from './particles';
 
@@ -71,9 +73,6 @@ const TRACER_OF: Record<WeaponId, 'bullet' | 'heavy' | 'pellet'> = {
   pulse: 'bullet',
   sunspear: 'heavy',
 };
-
-const ORIGAMI = [ENV.bone, ENV.pastelPink, ENV.pastelBlue, ENV.pastelYellow];
-const PRISM_HUES = [0.0, 0.14, 0.33, 0.55, 0.75];
 
 /** Parsed palette colors, cached (read-only!): effect events must not allocate. */
 const PAL = new Map<string, THREE.Color>();
@@ -142,7 +141,6 @@ const _v2 = new THREE.Vector3();
 const _m4 = new THREE.Matrix4();
 const _fwd = new THREE.Vector3(0, 0, -1);
 const _c1 = new THREE.Color();
-const _c2 = new THREE.Color();
 
 // ── Sunspear beam ribbon ────────────────────────────────────────────────────
 
@@ -234,6 +232,12 @@ export class EffectsSystem implements Effects {
   private light: THREE.PointLight | null = null;
   private lightT = 0;
   private lightK = 0;
+  /** Long, wide light pulse (rocket ignition) — owns the pooled light while it lasts. */
+  private flareT = 0;
+  private flareDur = 0;
+  private flareK = 0;
+  private flareDist = 0;
+  private readonly dissolver: Dissolver;
   private q: QualitySettings;
   private time = 0;
   private readonly tmp = new THREE.Vector3();
@@ -244,6 +248,7 @@ export class EffectsSystem implements Effects {
     this.q = quality;
     this.add = new ParticlePool(scene, Math.round(1800 * Math.max(0.35, quality.particles)), true, 'additive');
     this.alpha = new ParticlePool(scene, Math.round(1100 * Math.max(0.35, quality.particles)), false, 'alpha');
+    this.dissolver = new Dissolver(scene, this.add, this.alpha, quality.particles);
     for (const w of Object.keys(MUZZLE) as WeaponId[]) this.flashGeos[w] = flashGeometry(FLASH_CELL[w], MUZZLE[w].side);
     for (let i = 0; i < 10; i++) {
       const f = this.makeFlash(false);
@@ -300,6 +305,7 @@ export class EffectsSystem implements Effects {
 
   setQuality(q: QualitySettings): void {
     this.q = q;
+    this.dissolver?.setBudget(q.particles);
     if (q.preset === 'high' && !this.light) {
       this.light = new THREE.PointLight('#ffcf94', 0, 9, 2);
       this.light.name = 'fx.light';
@@ -315,7 +321,7 @@ export class EffectsSystem implements Effects {
   }
 
   private pulseLight(pos: THREE.Vector3, color: string, k: number, dur: number): void {
-    if (!this.light) return;
+    if (!this.light || this.flareT > 0) return;
     this.light.position.copy(pos);
     this.light.color.copy(pal(color));
     this.lightK = k;
@@ -590,107 +596,29 @@ export class EffectsSystem implements Effects {
 
   elimination(pos: Vec3, yaw: number, faction: Faction, team: Team, fxId: string, crouch: number): void {
     const style = findElimFx(fxId).style;
-    const tc = teamColors(team);
-    const h = 1.8 * (1 - 0.33 * Math.max(0, Math.min(1, crouch)));
-    const body = (): [number, number, number] => {
-      const y = rnd() * h;
-      const w = y > h * 0.82 ? 0.14 : y < h * 0.5 ? 0.2 : 0.26;
-      return [pos.x + rr(-w, w) * Math.cos(yaw), pos.y + y, pos.z + rr(-w, w) * Math.sin(yaw) + rr(-0.1, 0.1)];
-    };
-    const kind = style === 'faction' ? (faction === 1 ? 'petals' : 'shards') : style;
-    const count = this.n(60);
-    switch (kind) {
-      case 'petals': {
-        // Bloom: the body unravels into drifting petals of light (team primary,
-        // a third in the secondary violet) that rise, curl and fade — plus a few
-        // soft glowing motes and a brief silhouette glow.
-        const a = _c1.set(tc.primary), b = _c2.set(tc.secondary);
-        const n = this.n(90);
-        for (let i = 0; i < n; i++) {
-          const [x, y, z] = body();
-          const c = i % 3 === 0 ? b : a;
-          const dx = x - pos.x, dz = z - pos.z;
-          const k = rr(2, 2.6);
-          this.add.spawn({
-            x, y, z, vx: dx * 0.9 + rr(-0.35, 0.35), vy: rr(0.35, 1.3), vz: dz * 0.9 + rr(-0.35, 0.35), life: rr(1.3, 2.1), size: rr(0.13, 0.22), size1: 0.05,
-            r: c.r * k, g: c.g * k, b: c.b * k, a: 1, a1: 0, fadeIn: 0.1, drag: 0.9, swirl: 1.8, sprite: SPRITE.petal, rot: rnd() * 6, spin: rr(-2.5, 2.5), flip: rr(2.5, 6),
-          });
-        }
-        for (let i = 0; i < this.n(24); i++) {
-          const [x, y, z] = body();
-          this.add.spawn({ x, y, z, vx: rr(-0.25, 0.25), vy: rr(0.5, 1.4), vz: rr(-0.25, 0.25), life: rr(1.2, 2), size: rr(0.035, 0.06), r: a.r * 3, g: a.g * 3, b: a.b * 3, a: 1, a1: 0, swirl: 1.2, sprite: SPRITE.ember });
-        }
-        this.add.spawn({ x: pos.x, y: pos.y + h * 0.55, z: pos.z, vy: 0.4, life: 0.5, size: 1.1, size1: 2.1, r: a.r * 1.4, g: a.g * 1.4, b: a.b * 1.4, a: 0.55, sprite: SPRITE.glow });
-        break;
-      }
-      case 'shards': {
-        // Halcyon: the ceramic shell breaks into clean white shards that burst
-        // outward, tumble and fall; warm team-colored glints on the edges and a
-        // puff of bone-white ceramic dust.
-        const glint = _c1.set(tc.primary);
-        const bone = _c2.set(ENV.bone);
-        const n = this.n(72);
-        for (let i = 0; i < n; i++) {
-          const [x, y, z] = body();
-          const dx = x - pos.x, dz = z - pos.z;
-          const l = Math.hypot(dx, dz) || 1;
-          const sp = rr(1.4, 3.8);
-          const w = rr(0.9, 1.02);
-          this.alpha.spawn({
-            x, y, z, vx: (dx / l) * sp + rr(-0.4, 0.4), vy: rr(0.6, 3), vz: (dz / l) * sp + rr(-0.4, 0.4), life: rr(1.1, 1.8), size: rr(0.07, 0.15),
-            r: w, g: w * 0.98, b: w * 0.95, a: 1, a1: 0, gravity: 6, drag: 1.1, sprite: SPRITE.shard, rot: rnd() * 6, spin: rr(-9, 9), flip: rr(6, 14),
-          });
-        }
-        for (let i = 0; i < this.n(22); i++) {
-          const [x, y, z] = body();
-          this.add.spawn({ x, y, z, vx: rr(-2, 2), vy: rr(0.5, 2.5), vz: rr(-2, 2), life: rr(0.3, 0.7), size: rr(0.05, 0.1), r: glint.r * 3, g: glint.g * 3, b: glint.b * 3, gravity: 4, sprite: SPRITE.flare, rot: rnd() * 3 });
-        }
-        for (let i = 0; i < this.n(7); i++) {
-          const [x, y, z] = body();
-          this.alpha.spawn({ x, y, z, vx: rr(-0.6, 0.6), vy: rr(0.1, 0.6), vz: rr(-0.6, 0.6), life: rr(0.8, 1.2), size: rr(0.25, 0.4), size1: rr(0.7, 1), r: bone.r, g: bone.g, b: bone.b, a: 0.35, drag: 2.5, sprite: SPRITE.dust, rot: rnd() * 6 });
-        }
-        this.add.spawn({ x: pos.x, y: pos.y + h * 0.55, z: pos.z, life: 0.3, size: 1, size1: 1.9, r: 1.6, g: 1.45, b: 1.25, a: 0.5, sprite: SPRITE.glow });
-        break;
-      }
-      case 'embers': {
-        for (let i = 0; i < count; i++) {
-          const [x, y, z] = body();
-          const hot = rnd();
-          this.add.spawn({ x, y, z, vx: rr(-0.3, 0.3), vy: rr(0.8, 2), vz: rr(-0.3, 0.3), life: rr(0.9, 1.6), size: rr(0.03, 0.06), r: 3, g: 1.2 + hot, b: 0.3, a: 1, swirl: 2.2, sprite: SPRITE.ember });
-        }
-        for (let i = 0; i < this.n(20); i++) {
-          const [x, y, z] = body();
-          this.alpha.spawn({ x, y, z, vx: rr(-0.3, 0.3), vy: rr(0.4, 1.2), vz: rr(-0.3, 0.3), life: rr(1, 1.6), size: rr(0.04, 0.07), r: 0.2, g: 0.18, b: 0.17, a: 0.9, swirl: 1.5, sprite: SPRITE.chunk, spin: rr(-3, 3), flip: 6 });
-        }
-        break;
-      }
-      case 'origami': {
-        const cols = ORIGAMI;
-        for (let i = 0; i < Math.round(count * 0.6); i++) {
-          const [x, y, z] = body();
-          const c = pal(cols[i % cols.length]);
-          this.alpha.spawn({ x, y, z, vx: rr(-1.5, 1.5), vy: rr(0.5, 2), vz: rr(-1.5, 1.5), life: rr(1.2, 1.7), size: rr(0.08, 0.14), r: c.r, g: c.g, b: c.b, a: 1, a1: 0, gravity: 1.5, drag: 1.8, swirl: 2.5, sprite: SPRITE.paper, rot: rnd() * 6, spin: rr(-2, 2), flip: rr(4, 9) });
-        }
-        break;
-      }
-      case 'starfall': {
-        for (let i = 0; i < Math.round(count * 0.7); i++) {
-          const x = pos.x + rr(-0.6, 0.6), z = pos.z + rr(-0.6, 0.6), y = pos.y + h + rr(0.5, 2.5);
-          this.add.spawn({ x, y, z, vx: rr(-0.3, 0.3), vy: rr(-5, -2.5), vz: rr(-0.3, 0.3), life: rr(0.5, 1.1), size: rr(0.05, 0.1), r: 3, g: 2.7, b: 1.9, a: 1, sprite: SPRITE.star, rot: rnd() * 3, spin: rr(-4, 4) });
-        }
-        this.add.spawn({ x: pos.x, y: pos.y + h * 0.55, z: pos.z, life: 0.9, size: 0.4, size1: 2.2, r: 2.2, g: 2, b: 1.4, a: 0.8, sprite: SPRITE.ring });
-        break;
-      }
-      case 'prism': {
-        const hues = PRISM_HUES;
-        for (let i = 0; i < Math.round(count * 0.7); i++) {
-          const [x, y, z] = body();
-          const c = _c1.setHSL(hues[i % hues.length], 0.55, 0.72);
-          this.add.spawn({ x, y, z, vx: rr(-1.8, 1.8), vy: rr(0.2, 1.6), vz: rr(-1.8, 1.8), life: rr(0.9, 1.5), size: rr(0.06, 0.12), r: c.r * 2, g: c.g * 2, b: c.b * 2, a: 1, drag: 2, sprite: SPRITE.prism, rot: rnd() * 6, spin: rr(-5, 5), flip: rr(4, 10) });
-        }
-        break;
-      }
-    }
+    const kind: DissolveStyle = style === 'faction' ? (faction === 1 ? 'petals' : 'shards') : style;
+    this.dissolver.play(kind, pos, yaw, faction, team, crouch);
+  }
+
+  /**
+   * Extra (not in the Effects contract): a big, slow warm light pulse — the
+   * rocket finale's ignition lighting the pad and the structures around it.
+   * Uses the pooled point light, so it exists on the high preset only (adding
+   * a light mid-match would recompile every lit material).
+   */
+  flare(pos: THREE.Vector3, color: string, intensity: number, distance: number, duration: number): void {
+    if (!this.light) return;
+    this.light.position.copy(pos);
+    this.light.color.copy(pal(color));
+    this.flareK = intensity;
+    this.flareDist = distance;
+    this.flareDur = Math.max(0.05, duration);
+    this.flareT = this.flareDur;
+  }
+
+  /** Live 3D dissolve pieces + particles (dev readouts). */
+  get liveCounts(): { additive: number; alpha: number; pieces: number } {
+    return { additive: this.add.count, alpha: this.alpha.count, pieces: this.dissolver.pieces };
   }
 
   explosion(pos: THREE.Vector3): void {
@@ -920,13 +848,27 @@ export class EffectsSystem implements Effects {
       p.light.visible = on;
       p.light.position.set(0, 0.07, 0);
     }
-    if (this.light) {
+    if (this.light && this.flareT > 0) {
+      this.flareT -= dt;
+      const u = 1 - Math.max(0, this.flareT) / this.flareDur;
+      // Fast attack, long warm tail.
+      const env = Math.min(1, u / 0.06) * Math.pow(1 - u, 1.6);
+      this.light.distance = this.flareDist;
+      this.light.decay = 1;
+      this.light.intensity = this.flareK * env;
+      if (this.flareT <= 0) {
+        this.light.distance = 9;
+        this.light.decay = 2;
+        this.light.intensity = 0;
+      }
+    } else if (this.light) {
       if (this.lightT > 0) {
         this.lightT -= dt;
         this.light.intensity = this.lightK * Math.max(0, this.lightT) * 12;
       } else this.light.intensity = 0;
     }
     this.updateSmokes(dt);
+    this.dissolver.update(dt);
     this.add.update(dt, fog);
     this.alpha.update(dt, fog);
   }
@@ -934,6 +876,7 @@ export class EffectsSystem implements Effects {
   dispose(): void {
     this.add.dispose();
     this.alpha.dispose();
+    this.dissolver.dispose();
     this.attachOverlay(null, null);
     for (const f of this.flashes) {
       f.group.removeFromParent();

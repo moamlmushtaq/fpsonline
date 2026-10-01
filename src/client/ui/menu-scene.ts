@@ -22,6 +22,8 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import type { App } from '../app';
 import type { Atmosphere, CharacterAnim, CharacterView, ScreenId, WeaponModel } from '../contracts';
 import { createAtmosphere } from '../engine/atmosphere';
+import { WOOD_COLOR, contactShadowGeometry, contactShadowMaterial } from '../engine/materials';
+import { enablePainterly } from '../engine/painterly';
 import { EffectsSystem } from '../engine/effects';
 import { createLaunchRocket, type LaunchRocket } from '../world/rocket';
 import { ENV } from '../engine/palette';
@@ -332,19 +334,9 @@ export class MenuScene {
     sea.translate(0, -0.9, 0);
     this.addMesh(sea, water, false);
 
-    // Props on the apron: rounded crates, a lamp post and a small antenna.
-    const crates: THREE.BufferGeometry[] = [];
-    const place = (g: THREE.BufferGeometry, x: number, y: number, z: number, ry: number) => {
-      g.rotateY(ry);
-      g.translate(x, y, z);
-      crates.push(g);
-    };
-    place(new RoundedBoxGeometry(1.1, 0.8, 0.9, 2, 0.08), -3.6, 0.2, -1.4, 0.3);
-    place(new RoundedBoxGeometry(0.8, 0.6, 0.7, 2, 0.07), -3.1, 0.9, -1.2, -0.2);
-    place(new RoundedBoxGeometry(1.4, 0.7, 1.0, 2, 0.08), 3.8, 0.15, -2.6, -0.5);
-    const crateGeo = mergeGeometries(crates, false);
-    for (const g of crates) g.dispose();
-    if (crateGeo) this.addMesh(crateGeo, bone, true);
+    // Launch-site props on the apron (1970s ground-support equipment): a stack
+    // of ribbed equipment cases, a cable reel and a fuel cart, plus a lamp post.
+    this.buildLaunchProps(quality?.preset === 'low', quality ? quality.shadows !== 'off' : false);
 
     const pole = new THREE.CylinderGeometry(0.06, 0.08, 5.2, 8);
     pole.translate(-5.5, 2.4, -3.5);
@@ -387,6 +379,192 @@ export class MenuScene {
     this.addMesh(blob, blobMat, false);
 
     this.buildDust();
+  }
+
+  /**
+   * Small, recognisable launch-site props composed AROUND the hero (behind the
+   * platform, within ~2.5 m of the character's screen position), so they sit in
+   * the screen strip that stays free of the UI in both LTR and RTL, desktop and
+   * phone, and never read as blank blocks: ribbed, latched, stencilled cases in
+   * sage and bone, a cable reel with coiled cable, and a pale-yellow fuel cart.
+   * Everything shares ONE vertex-colored painterly material (+ one stencil decal
+   * mesh + one contact-shadow mesh): 3 draw calls.
+   */
+  private buildLaunchProps(low: boolean, shadows: boolean): void {
+    const parts: THREE.BufferGeometry[] = [];
+    const decals: THREE.BufferGeometry[] = [];
+    const blobs: THREE.BufferGeometry[] = [];
+    const col = new THREE.Color();
+    const m4 = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const e = new THREE.Euler();
+    const v = new THREE.Vector3();
+    const sc = new THREE.Vector3(1, 1, 1);
+    /** Adds a geometry with a flat color under `parent` × local transform. */
+    const add = (g0: THREE.BufferGeometry, hex: string, parent: THREE.Matrix4, x: number, y: number, z: number, rx = 0, ry = 0, rz = 0): void => {
+      const g = g0.index ? g0.toNonIndexed() : g0;
+      if (g !== g0) g0.dispose();
+      g.deleteAttribute('uv');
+      m4.compose(v.set(x, y, z), q.setFromEuler(e.set(rx, ry, rz)), sc);
+      g.applyMatrix4(m4).applyMatrix4(parent);
+      col.set(hex);
+      const n = g.attributes.position.count;
+      const c = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) {
+        c[i * 3] = col.r;
+        c[i * 3 + 1] = col.g;
+        c[i * 3 + 2] = col.b;
+      }
+      g.setAttribute('color', new THREE.BufferAttribute(c, 3));
+      parts.push(g);
+    };
+    /** Stencil decal quad (atlas cell u0..u1 × v0..v1) facing +Z of `parent`. */
+    const decal = (parent: THREE.Matrix4, x: number, y: number, z: number, w: number, h: number, cell: [number, number, number, number], ry = 0): void => {
+      const g = new THREE.PlaneGeometry(w, h);
+      const uv = g.attributes.uv as THREE.BufferAttribute;
+      for (let i = 0; i < uv.count; i++) uv.setXY(i, cell[0] + uv.getX(i) * (cell[2] - cell[0]), cell[1] + uv.getY(i) * (cell[3] - cell[1]));
+      m4.compose(v.set(x, y, z), q.setFromEuler(e.set(0, ry, 0)), sc);
+      g.applyMatrix4(m4).applyMatrix4(parent);
+      decals.push(g);
+    };
+    const place = (x: number, z: number, ry: number, y = -0.15): THREE.Matrix4 => new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, ry, 0)), new THREE.Vector3(1, 1, 1));
+    const seg = low ? 10 : 18;
+    const RUBBER = '#3a3532';
+    const DARK = ENV.metalDark;
+    const STEEL = ENV.metalLight;
+
+    /** Ribbed equipment case: body, lid seam, ribs, corner caps, latches, handle. */
+    const caseAt = (T: THREE.Matrix4, w: number, h: number, d: number, body: string, trim: string, stencil: [number, number, number, number]): void => {
+      add(new RoundedBoxGeometry(w, h, d, 2, Math.min(0.05, h * 0.12)), body, T, 0, h / 2, 0);
+      // Lid seam (a darker band, slightly proud of the shell).
+      add(new THREE.BoxGeometry(w + 0.012, 0.022, d + 0.012), DARK, T, 0, h * 0.7, 0);
+      // Two wrap-around ribs.
+      for (const sx of [-1, 1]) add(new THREE.BoxGeometry(0.045, h + 0.016, d + 0.02), trim, T, sx * w * 0.3, h / 2, 0);
+      // Corner caps.
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) for (const sy of [0, 1]) add(new THREE.BoxGeometry(0.07, 0.07, 0.07), DARK, T, sx * (w / 2 - 0.025), sy ? h - 0.025 : 0.025, sz * (d / 2 - 0.025));
+      // Latches on the front, straddling the seam.
+      for (const sx of [-1, 1]) {
+        add(new THREE.BoxGeometry(0.075, 0.095, 0.022), STEEL, T, sx * w * 0.16, h * 0.7, d / 2 + 0.012);
+        add(new THREE.CylinderGeometry(0.012, 0.012, 0.06, 6), DARK, T, sx * w * 0.16, h * 0.7 - 0.03, d / 2 + 0.026, 0, 0, Math.PI / 2);
+      }
+      // Carry handle on the lid.
+      add(new THREE.BoxGeometry(w * 0.32, 0.022, 0.035), DARK, T, 0, h + 0.05, 0);
+      for (const sx of [-1, 1]) add(new THREE.BoxGeometry(0.025, 0.05, 0.03), DARK, T, sx * w * 0.15, h + 0.025, 0);
+      decal(T, 0, h * 0.36, d / 2 + 0.004, w * 0.5, h * 0.26, stencil);
+      blobs.push(contactShadowGeometry(0, 0, 0, w * 0.75, d * 0.85).applyMatrix4(T));
+    };
+
+    // ── Case stack on a pallet (behind-right of the hero, by the sun) ──────
+    // (Placed relative to the hero shot's camera axis: ~3.4 m behind the hero,
+    // 1.3 m to the right; the pallet lifts the stack clear of the platform rim.)
+    const P0 = place(2.25, -2.87, -0.3);
+    for (const sz of [-0.33, 0, 0.33]) add(new THREE.BoxGeometry(1.0, 0.09, 0.09), WOOD_COLOR, P0, 0, 0.045, sz);
+    for (let k = 0; k < 5; k++) add(new THREE.BoxGeometry(0.15, 0.025, 0.8), k % 2 ? WOOD_COLOR : '#a58d73', P0, -0.42 + k * 0.21, 0.1, 0);
+    blobs.push(contactShadowGeometry(0, 0, 0, 0.75, 0.6).applyMatrix4(P0));
+    const S0 = new THREE.Matrix4().multiplyMatrices(P0, new THREE.Matrix4().makeRotationY(0.12).setPosition(-0.06, 0.112, 0.02));
+    caseAt(S0, 0.78, 0.46, 0.5, ENV.sage, ENV.olive, [0, 0.5, 0.5, 1]);
+    const S1 = new THREE.Matrix4().multiplyMatrices(S0, new THREE.Matrix4().makeRotationY(-0.28).setPosition(0.04, 0.47, 0.02));
+    caseAt(S1, 0.52, 0.32, 0.38, ENV.bone, ENV.terracottaFaded, [0.5, 0.5, 1, 1]);
+    // A loose wheel chock beside the pallet.
+    const C0 = place(1.45, -2.55, 0.5);
+    const chock = new THREE.BufferGeometry();
+    {
+      const w = 0.18, l = 0.3, hh = 0.13;
+      const pts = [
+        [-w, 0, -l], [w, 0, -l], [w, 0, l], [-w, 0, l], [-w, hh, -l], [w, hh, -l],
+      ];
+      const tri = (a: number, b: number, c: number): number[] => [...pts[a], ...pts[b], ...pts[c]];
+      const pos = [...tri(0, 2, 1), ...tri(0, 3, 2), ...tri(0, 1, 5), ...tri(0, 5, 4), ...tri(3, 4, 5), ...tri(3, 5, 2), ...tri(0, 4, 3), ...tri(1, 2, 5)];
+      chock.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      chock.computeVertexNormals();
+    }
+    add(chock, ENV.pastelYellow, C0, 0, 0, 0);
+    blobs.push(contactShadowGeometry(0, 0, 0, 0.3, 0.42).applyMatrix4(C0));
+
+    // ── Cable reel (behind-left): flanged drum, coiled cable, trailing lead ──
+    const R0 = place(-0.65, -3.34, 0.88);
+    const rr = 0.42;
+    for (const sz of [-1, 1]) {
+      add(new THREE.CylinderGeometry(rr, rr, 0.04, seg * 2), WOOD_COLOR, R0, 0, rr, sz * 0.2, Math.PI / 2);
+      // Hub and a rim band on the outer face.
+      add(new THREE.CylinderGeometry(0.09, 0.09, 0.06, seg), DARK, R0, 0, rr, sz * 0.23, Math.PI / 2);
+      add(new THREE.TorusGeometry(rr - 0.02, 0.014, 4, seg * 2), ENV.rust, R0, 0, rr, sz * 0.222);
+    }
+    add(new THREE.CylinderGeometry(0.2, 0.2, 0.36, seg), DARK, R0, 0, rr, 0, Math.PI / 2);
+    for (let k = 0; k < 5; k++) add(new THREE.TorusGeometry(0.255 + (k % 2) * 0.012, 0.034, 6, seg * 2), RUBBER, R0, 0, rr, -0.15 + k * 0.075);
+    // Lead running off the drum across the apron toward the platform.
+    {
+      const curve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(0, rr + 0.24, 0.05),
+        new THREE.Vector3(0.35, 0.18, 0.15),
+        new THREE.Vector3(0.7, 0.03, 0.35),
+        new THREE.Vector3(1.2, 0.03, 0.2),
+        new THREE.Vector3(1.6, 0.03, 0.55),
+      ]);
+      add(new THREE.TubeGeometry(curve, low ? 16 : 28, 0.028, 6, false), RUBBER, R0, 0, 0, 0);
+    }
+    // Two feet so the reel stands.
+    for (const sz of [-1, 1]) add(new THREE.BoxGeometry(0.5, 0.06, 0.07), DARK, R0, 0, 0.03, sz * 0.2);
+    decal(R0, 0, rr + 0.24, 0.224, 0.34, 0.12, [0, 0.25, 0.5, 0.5], 0);
+    blobs.push(contactShadowGeometry(0, 0, 0, 0.55, 0.4).applyMatrix4(R0));
+
+    // ── Fuel cart (far back on the right, backlit by the low sun) ─────────
+    const F0 = place(6.1, -7.54, -0.24);
+    const tankR = 0.29;
+    const tankL = 1.05;
+    const ty = 0.36 + tankR;
+    add(new THREE.BoxGeometry(1.34, 0.07, 0.6), DARK, F0, 0, 0.3, 0);
+    for (const sx of [-1, 1]) add(new THREE.BoxGeometry(1.34, 0.12, 0.05), DARK, F0, 0, 0.27, sx * 0.29);
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+      add(new THREE.CylinderGeometry(0.16, 0.16, 0.09, seg), RUBBER, F0, sx * 0.45, 0.16, sz * 0.35, Math.PI / 2);
+      add(new THREE.CylinderGeometry(0.075, 0.075, 0.1, seg), ENV.bone, F0, sx * 0.45, 0.16, sz * 0.355, Math.PI / 2);
+    }
+    // Tank on two saddles, domed ends, faded bands, valve gear on top.
+    for (const sx of [-1, 1]) add(new THREE.BoxGeometry(0.1, 0.12, 0.5), DARK, F0, sx * 0.32, 0.38, 0);
+    add(new THREE.CylinderGeometry(tankR, tankR, tankL, seg * 2), ENV.pastelYellow, F0, 0, ty, 0, 0, 0, Math.PI / 2);
+    for (const sx of [-1, 1]) {
+      const cap = new THREE.SphereGeometry(tankR, seg * 2, Math.max(6, seg / 2), 0, Math.PI * 2, 0, Math.PI / 2);
+      cap.scale(1, 0.42, 1);
+      add(cap, ENV.pastelYellow, F0, sx * (tankL / 2), ty, 0, 0, 0, -sx * Math.PI / 2);
+      add(new THREE.CylinderGeometry(tankR + 0.008, tankR + 0.008, 0.07, seg * 2, 1, true), ENV.terracottaFaded, F0, sx * tankL * 0.3, ty, 0, 0, 0, Math.PI / 2);
+    }
+    add(new THREE.CylinderGeometry(0.06, 0.07, 0.1, seg), STEEL, F0, 0.08, ty + tankR + 0.04, 0);
+    add(new THREE.TorusGeometry(0.075, 0.012, 6, seg), DARK, F0, 0.08, ty + tankR + 0.11, 0, Math.PI / 2);
+    add(new THREE.CylinderGeometry(0.025, 0.025, 0.32, 6), STEEL, F0, -0.2, ty + tankR + 0.02, 0.0, 0, 0, Math.PI / 2);
+    // Hose coil hung at the back + tow bar with a ring at the front.
+    add(new THREE.TorusGeometry(0.16, 0.03, 6, seg * 2), RUBBER, F0, -0.72, 0.48, 0.0, 0, Math.PI / 2);
+    add(new THREE.BoxGeometry(0.55, 0.04, 0.04), DARK, F0, 0.92, 0.26, 0, 0, 0, 0.18);
+    add(new THREE.TorusGeometry(0.06, 0.014, 6, seg), DARK, F0, 1.2, 0.2, 0, Math.PI / 2);
+    // Stencil on the tank's camera-facing flank.
+    decal(F0, 0.0, ty + 0.02, tankR + 0.012, 0.5, 0.17, [0.5, 0.25, 1, 0.5]);
+    blobs.push(contactShadowGeometry(0.1, 0, 0, 0.95, 0.55).applyMatrix4(F0));
+
+    // ── Lamp-post base gets a contact shadow too ───────────────────────────
+    blobs.push(contactShadowGeometry(-5.5, -0.15, -3.5, 0.35, 0.35));
+
+    const merged = mergeGeometries(parts, false);
+    for (const g of parts) g.dispose();
+    if (merged) {
+      const mat = this.own(
+        low ? new THREE.MeshLambertMaterial({ vertexColors: true }) : new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.66, metalness: 0.05 }),
+      );
+      enablePainterly(mat);
+      const mesh = this.addMesh(merged, mat, true);
+      mesh.castShadow = shadows;
+      mesh.name = 'menu.props';
+    }
+    const dm = mergeGeometries(decals, false);
+    for (const g of decals) g.dispose();
+    if (dm) {
+      const tex = this.app.materials ? this.app.materials.canvasTexture('menu.stencils', 512, 256, drawStencils) : null;
+      const mat = this.own(
+        new (low ? THREE.MeshLambertMaterial : THREE.MeshStandardMaterial)({ map: tex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }),
+      );
+      this.addMesh(dm, mat, true).renderOrder = 1;
+    }
+    const bm = mergeGeometries(blobs, false);
+    for (const g of blobs) g.dispose();
+    if (bm) this.addMesh(bm, contactShadowMaterial(), false).renderOrder = 1;
   }
 
   private buildLaunchComplex(metal: THREE.Material, bone: THREE.Material, stripe: THREE.Material): void {
@@ -798,4 +976,62 @@ export class MenuScene {
     this.rocket?.update(dt, null, this.time);
     this.atmosphere?.update(dt, cam, 0);
   }
+}
+
+/**
+ * Stencil atlas for the menu props (512×256, transparent): spray-painted
+ * equipment markings in faded dark grey / terracotta with a worn edge.
+ *  [0,.5]-[.5,1] "GSE 07" + arrows · [.5,.5]-[1,1] "LC-2" + chevrons
+ *  [0,.25]-[.5,.5] "CABLE 400V" · [.5,.25]-[1,.5] "FUEL · RP-1"
+ */
+function drawStencils(ctx: CanvasRenderingContext2D, w: number, h: number): void {
+  ctx.clearRect(0, 0, w, h);
+  const ink = 'rgba(52,47,44,0.82)';
+  const rust = 'rgba(150,84,60,0.85)';
+  const cell = (cx: number, cy: number, cw: number, ch: number, draw: () => void): void => {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(cx, cy, cw, ch);
+    ctx.clip();
+    draw();
+    ctx.restore();
+  };
+  const stencilText = (t: string, x: number, y: number, size: number, color: string): void => {
+    ctx.font = `700 ${size}px "Space Grotesk", "Arial Narrow", Arial, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = color;
+    ctx.fillText(t, x, y);
+  };
+  // Canvas y grows downward: atlas v=1 is the top row.
+  cell(0, 0, w / 2, h / 2, () => {
+    stencilText('GSE 07', w / 4, h / 4 - 10, 46, ink);
+    ctx.fillStyle = ink;
+    for (let i = 0; i < 3; i++) ctx.fillRect(28 + i * 74, h / 4 + 26, 52, 8);
+  });
+  cell(w / 2, 0, w / 2, h / 2, () => {
+    stencilText('LC-2', (w * 3) / 4, h / 4 - 8, 52, ink);
+    ctx.fillStyle = rust;
+    for (let i = 0; i < 6; i++) {
+      const x = w / 2 + 30 + i * 34;
+      ctx.beginPath();
+      ctx.moveTo(x, h / 4 + 22);
+      ctx.lineTo(x + 18, h / 4 + 22);
+      ctx.lineTo(x + 30, h / 4 + 34);
+      ctx.lineTo(x + 12, h / 4 + 34);
+      ctx.closePath();
+      ctx.fill();
+    }
+  });
+  cell(0, h / 2, w / 2, h / 4, () => stencilText('CABLE 400V', w / 4, (h * 5) / 8, 34, 'rgba(240,232,214,0.85)'));
+  cell(w / 2, h / 2, w / 2, h / 4, () => stencilText('FUEL · RP-1', (w * 3) / 4, (h * 5) / 8, 36, rust));
+  // Worn spray edges: knock random speckles out of the ink.
+  ctx.globalCompositeOperation = 'destination-out';
+  let seed = 7;
+  const rnd = (): number => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296);
+  for (let i = 0; i < 900; i++) {
+    ctx.fillStyle = `rgba(0,0,0,${0.25 + rnd() * 0.6})`;
+    ctx.fillRect(rnd() * w, rnd() * h, 1 + rnd() * 3, 1 + rnd() * 2);
+  }
+  ctx.globalCompositeOperation = 'source-over';
 }

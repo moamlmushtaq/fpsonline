@@ -99,6 +99,9 @@ export class Bucket {
     g.computeBoundingBox();
     const mesh = new THREE.Mesh(g, this.material);
     mesh.castShadow = this.cast && castEnabled;
+    // Read by the low preset's one-time baked sun shadow (atmosphere.ts): ground
+    // slabs and the backdrop skirt never cast, everything else does.
+    mesh.userData.hfCast = this.cast;
     mesh.receiveShadow = receive;
     mesh.matrixAutoUpdate = false;
     mesh.updateMatrix();

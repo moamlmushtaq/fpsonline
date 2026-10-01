@@ -20,6 +20,7 @@ import { hashString, mulberry32 } from '../../shared/math';
 import { createAtmosphere, type AtmosphereView } from '../engine/atmosphere';
 import { Materials } from '../engine/materials';
 import { ENV } from '../engine/palette';
+import { paintTree } from '../engine/painterly';
 import { buildBackdrop, dominantGround } from './map-builder/backdrop';
 import { loadDecor } from './map-builder/decor';
 import { GameplayVisuals } from './map-builder/gameplay';
@@ -29,6 +30,31 @@ import { addSolid, SolidGrid, type Ctx } from './map-builder/solids';
 export type { BackdropOptions } from './map-builder/backdrop';
 export { prefetchDecorModules } from './map-builder/decor';
 export { defaultShowcase } from './map-builder/showcase';
+
+/**
+ * Bounds of the static content that can throw sun shadows into the play space:
+ * the decor/solid extent, clipped to the map bounds plus a margin (tall set
+ * pieces just outside still shade the edge; the far backdrop does not count).
+ */
+function staticShadowBounds(def: MapDef, roots: THREE.Object3D[]): THREE.Box3 {
+  const box = new THREE.Box3();
+  const tmp = new THREE.Box3();
+  for (const r of roots) {
+    r.updateMatrixWorld(true);
+    tmp.setFromObject(r);
+    if (!tmp.isEmpty()) box.union(tmp);
+  }
+  const m = 24;
+  const b = def.bounds;
+  if (box.isEmpty()) box.set(new THREE.Vector3(b.min.x, b.min.y, b.min.z), new THREE.Vector3(b.max.x, b.max.y, b.max.z));
+  box.min.x = Math.max(box.min.x, b.min.x - m);
+  box.min.z = Math.max(box.min.z, b.min.z - m);
+  box.max.x = Math.min(box.max.x, b.max.x + m);
+  box.max.z = Math.min(box.max.z, b.max.z + m);
+  box.min.y = Math.max(box.min.y, b.min.y);
+  box.max.y = Math.min(box.max.y, b.min.y + 160);
+  return box;
+}
 
 /** Grading derived from a map's lighting mood (applied by buildMapView). */
 export function gradingForLighting(l: MapLighting): Partial<GradingSettings> {
@@ -166,6 +192,13 @@ export async function buildMapView(def: MapDef, ctx: { engine: RenderEngine; mat
       console.error(`[map] decor builder for '${def.id}' threw`, err);
     }
   }
+  // Painterly finish on every environment surface the decor modules built with
+  // their own materials (library materials carry it already) — characters,
+  // weapons, gameplay markers and effects are never part of these roots.
+  paintTree(decorRoot);
+  for (const o of backdrop) paintTree(o);
+  // Low preset: the static content casts one baked whole-map sun shadow.
+  view.atmosphere.setStaticShadowCasters([staticRoot, decorRoot], staticShadowBounds(def, [staticRoot, decorRoot]));
   view.collectTickers(view.scene);
   return view;
 }

@@ -88,6 +88,78 @@ export function disposeProceduralTextures(): void {
   cache.clear();
 }
 
+let paintNoise: THREE.DataTexture | null = null;
+
+/**
+ * Tileable 128² RGBA "paint noise" sampled in WORLD space by the painterly
+ * material chunk (engine/painterly.ts). Pure data (no DOM), built once:
+ *  R  soft blotches (fbm, 4 cells/tile)        → large value mottling
+ *  G  brush strokes (anisotropic fbm, 2×10)    → mid-scale stroke marks
+ *  B  very low-frequency drift (2 cells/tile)  → warm/cool hue shift
+ *  A  fine bristle grain (fbm, 16 cells/tile)  → small dabs
+ */
+export function paintNoiseTexture(): THREE.DataTexture {
+  if (paintNoise) return paintNoise;
+  const N = 128;
+  const data = new Uint8Array(N * N * 4);
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      const u = x / N;
+      const v = y / N;
+      const i = (y * N + x) * 4;
+      const r = fbm(u, v, 4, 4, 501);
+      // Strokes: lattice stretched 5:1 (period 2 across, 10 along) + a warp so
+      // marks wander like a loaded brush instead of ruled lines.
+      const w = fbm(u, v, 3, 2, 509) - 0.5;
+      let g = 0;
+      let amp = 0.5;
+      let norm = 0;
+      for (let o = 0; o < 3; o++) {
+        const px = 2 << o;
+        const py = 10 << o;
+        g += pnoise2(u * px + w * 0.9, v * py, px, py, 517 + o * 13) * amp;
+        norm += amp;
+        amp *= 0.5;
+      }
+      g /= norm;
+      const b = fbm(u, v, 2, 3, 523);
+      const a = fbm(u, v, 16, 2, 541);
+      // Stretch contrast around the mean (fbm clusters near 0.5).
+      data[i] = clamp255((r - 0.5) * 1.9 * 255 + 128);
+      data[i + 1] = clamp255((g - 0.5) * 2.2 * 255 + 128);
+      data[i + 2] = clamp255((b - 0.5) * 2.0 * 255 + 128);
+      data[i + 3] = clamp255((a - 0.5) * 2.0 * 255 + 128);
+    }
+  }
+  const t = new THREE.DataTexture(data, N, N, THREE.RGBAFormat, THREE.UnsignedByteType);
+  t.name = 'tex.paintNoise';
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.magFilter = THREE.LinearFilter;
+  t.minFilter = THREE.LinearMipmapLinearFilter;
+  t.generateMipmaps = true;
+  t.colorSpace = THREE.NoColorSpace;
+  t.needsUpdate = true;
+  paintNoise = t;
+  return t;
+}
+
+/** Periodic value noise with independent x/y periods (tileable, anisotropic). */
+function pnoise2(x: number, y: number, periodX: number, periodY: number, seed: number): number {
+  const x0 = Math.floor(x);
+  const y0 = Math.floor(y);
+  const fx = x - x0;
+  const fy = y - y0;
+  const sx = fx * fx * (3 - 2 * fx);
+  const sy = fy * fy * (3 - 2 * fy);
+  const mx = (v: number): number => ((v % periodX) + periodX) % periodX;
+  const my = (v: number): number => ((v % periodY) + periodY) % periodY;
+  const a = lat(mx(x0), my(y0), seed);
+  const b = lat(mx(x0 + 1), my(y0), seed);
+  const c = lat(mx(x0), my(y0 + 1), seed);
+  const d = lat(mx(x0 + 1), my(y0 + 1), seed);
+  return a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy;
+}
+
 export function makeCanvas(w: number, h: number): HTMLCanvasElement {
   const c = document.createElement('canvas');
   c.width = w;
@@ -274,10 +346,15 @@ const RECIPES: Record<TexName, Recipe> = {
     });
     const k = s / 512;
     // Brush-stroke noise: short, mostly horizontal marks.
+    // Two scales: broad loaded-brush swipes, then short dabs.
+    for (let i = 0; i < 160; i++) {
+      const light = rng() < 0.5;
+      stroke(ctx, s, rng() * s, rng() * s, (50 + rng() * 90) * k, (10 + rng() * 18) * k, (rng() - 0.5) * 0.35, tone(light ? 240 : 182, light ? 1 : -1, 0.07 + rng() * 0.07));
+    }
     for (let i = 0; i < 900; i++) {
       const light = rng() < 0.5;
       const v = light ? 236 + rng() * 14 : 176 + rng() * 22;
-      stroke(ctx, s, rng() * s, rng() * s, (10 + rng() * 34) * k, (2 + rng() * 5) * k, (rng() - 0.5) * 0.5, tone(v, light ? 1 : -1, 0.1 + rng() * 0.12));
+      stroke(ctx, s, rng() * s, rng() * s, (10 + rng() * 34) * k, (2 + rng() * 5) * k, (rng() - 0.5) * 0.5, tone(v, light ? 1 : -1, 0.14 + rng() * 0.14));
     }
     // Form-work lines (every half tile vertically, every tile horizontally) + tie holes.
     for (const y of [0, s / 2]) {
@@ -328,9 +405,9 @@ const RECIPES: Record<TexName, Recipe> = {
     });
     const k = s / 512;
     // Trowel marks: broad, faint, curved.
-    for (let i = 0; i < 260; i++) {
+    for (let i = 0; i < 300; i++) {
       const light = rng() < 0.55;
-      stroke(ctx, s, rng() * s, rng() * s, (30 + rng() * 60) * k, (8 + rng() * 14) * k, rng() * Math.PI, tone(light ? 246 : 196, light ? 1 : -1, 0.06 + rng() * 0.06));
+      stroke(ctx, s, rng() * s, rng() * s, (30 + rng() * 60) * k, (8 + rng() * 14) * k, rng() * Math.PI, tone(light ? 246 : 192, light ? 1 : -1, 0.09 + rng() * 0.09));
     }
     for (let i = 0; i < 6; i++) crack(ctx, s, rng, rng() * s, rng() * s, 8 + ((rng() * 10) | 0), 7 * k, rng() * Math.PI * 2, 0.9 * k, rgb(120, 112, 104, 0.3));
     for (let i = 0; i < 400; i++) {
@@ -519,8 +596,11 @@ const RECIPES: Record<TexName, Recipe> = {
       return [b + 4, b, b - 6];
     });
     const k = s / 512;
+    for (let i = 0; i < 120; i++) {
+      stroke(ctx, s, rng() * s, rng() * s, (40 + rng() * 80) * k, (8 + rng() * 14) * k, (rng() - 0.5) * 0.3, tone(rng() < 0.5 ? 242 : 190, 1, 0.08));
+    }
     for (let i = 0; i < 500; i++) {
-      stroke(ctx, s, rng() * s, rng() * s, (8 + rng() * 22) * k, (2 + rng() * 4) * k, (rng() - 0.5) * 0.4, tone(rng() < 0.5 ? 244 : 186, 1, 0.08));
+      stroke(ctx, s, rng() * s, rng() * s, (8 + rng() * 22) * k, (2 + rng() * 4) * k, (rng() - 0.5) * 0.4, tone(rng() < 0.5 ? 244 : 186, 1, 0.12));
     }
     grain(ctx, s, 11, 21, 3);
   },

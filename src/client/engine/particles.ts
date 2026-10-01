@@ -4,9 +4,14 @@
 // One pool = ONE instanced draw call: a unit quad instanced N times, all
 // per-particle data in preallocated typed arrays (no allocation per frame).
 // Billboarding, rotation, velocity stretching (tracers / sparks) and a fake
-// 3D tumble ("flip", for shards and petals) happen in the vertex shader; a
-// 4×4 procedural sprite atlas provides the shapes. Fog fades particles into
+// 3D tumble ("flip", for shards and petals) happen in the vertex shader; an
+// 8×4 procedural sprite atlas provides the shapes. Fog fades particles into
 // the haze (additive → toward black, alpha → toward the fog color).
+//
+// Dissolve support: a particle can HOLD in place for `delay` seconds before it
+// starts to live (eliminations build the body's silhouette out of held petals /
+// flakes and release them from the feet up), ORBIT a vertical axis (spiral
+// drift) and shift its colour over its life (`r1 g1 b1`).
 //
 // Slots are fixed (free-list), so effects can hold "managed" particles (smoke
 // puffs, beam sparkles) and move them every frame through `set*` accessors.
@@ -15,7 +20,7 @@
 import * as THREE from 'three';
 import { makeCanvas } from './textures';
 
-/** Atlas cells (4×4). */
+/** Atlas cells (8 columns × 4 rows). */
 export const SPRITE = {
   glow: 0,
   starburst: 1,
@@ -33,7 +38,26 @@ export const SPRITE = {
   flare: 13,
   droplet: 14,
   chunk: 15,
+  /** Long luminous petal: pointed tip, bright heart, soft edge (Bloom dissolve). */
+  petalLight: 16,
+  /** Thin 4-point sparkle (sun glints on ceramic, star twinkles). */
+  glint: 17,
+  /** Soft vertical capsule glow (a body part's luminous ghost). */
+  ghost: 18,
+  /** Irregular ash / char flake (alpha pool, tinted dark). */
+  ash: 19,
+  /** The same flake's glowing rim (additive, tinted ember orange). */
+  emberRim: 20,
+  /** 6-ray twinkling star with a halo. */
+  twinkle: 21,
+  /** Thin soft ring (ground shock rings). */
+  softRing: 22,
+  /** Soft light orb with a brighter rim (bokeh mote). */
+  bokeh: 23,
 } as const;
+
+const ATLAS_COLS = 8;
+const ATLAS_ROWS = 4;
 
 export interface Particle {
   x: number;
@@ -69,6 +93,18 @@ export interface Particle {
   flip?: number;
   /** Swirl strength (m/s) — gentle curl around the vertical axis. */
   swirl?: number;
+  /** Seconds held motionless (age < 0) before the particle starts to live. */
+  delay?: number;
+  /** Alpha multiplier while held (default 1). */
+  holdA?: number;
+  /** Spiral drift: rad/s around the vertical axis through (ox, oz). */
+  orbit?: number;
+  ox?: number;
+  oz?: number;
+  /** End-of-life colour (default = start colour). */
+  r1?: number;
+  g1?: number;
+  b1?: number;
 }
 
 const VERT = /* glsl */ `
@@ -103,9 +139,9 @@ void main() {
   }
   mv.xy += off;
   gl_Position = projectionMatrix * mv;
-  float col = mod(sprite, 4.0);
-  float row = floor(sprite / 4.0);
-  vUv = (vec2(col, 3.0 - row) + (c + 0.5)) * 0.25;
+  float col = mod(sprite, 8.0);
+  float row = floor(sprite / 8.0);
+  vUv = (vec2(col, 3.0 - row) + (c + 0.5)) * vec2(0.125, 0.25);
   vColor = iColor;
   vFogDepth = -mv.z;
 }`;
@@ -270,17 +306,16 @@ export function glowTexture(): THREE.Texture {
   return glowTex;
 }
 
-/** The shared 512² procedural sprite atlas (white shapes; tinted per particle). */
+/** The shared 1024×512 procedural sprite atlas (white shapes; tinted per particle). */
 export function particleAtlas(): THREE.Texture {
   if (atlasTex) return atlasTex;
-  const S = 512;
   const C = 128;
-  const cv = makeCanvas(S, S);
+  const cv = makeCanvas(C * ATLAS_COLS, C * ATLAS_ROWS);
   const x = cv.getContext('2d') as CanvasRenderingContext2D;
-  x.clearRect(0, 0, S, S);
+  x.clearRect(0, 0, cv.width, cv.height);
   const cell = (i: number, draw: (cx: number, cy: number, r: number) => void): void => {
-    const cx = (i % 4) * C + C / 2;
-    const cy = Math.floor(i / 4) * C + C / 2;
+    const cx = (i % ATLAS_COLS) * C + C / 2;
+    const cy = Math.floor(i / ATLAS_COLS) * C + C / 2;
     x.save();
     x.beginPath();
     x.rect(cx - C / 2, cy - C / 2, C, C);
@@ -478,6 +513,135 @@ export function particleAtlas(): THREE.Texture {
     x.closePath();
     x.fill();
   });
+  // 16 luminous petal: pointed tip up, rounded heart, bright core near the base,
+  // a faint central vein and a soft glowing edge (reads as light, not paper).
+  cell(16, (cx, cy, r) => {
+    const petal = (k: number): void => {
+      x.beginPath();
+      x.moveTo(cx, cy - r * 0.96 * k);
+      x.bezierCurveTo(cx + r * 0.62 * k, cy - r * 0.42 * k, cx + r * 0.52 * k, cy + r * 0.62 * k, cx, cy + r * 0.86 * k);
+      x.bezierCurveTo(cx - r * 0.52 * k, cy + r * 0.62 * k, cx - r * 0.62 * k, cy - r * 0.42 * k, cx, cy - r * 0.96 * k);
+      x.closePath();
+    };
+    x.save();
+    x.shadowColor = 'rgba(255,255,255,0.9)';
+    x.shadowBlur = r * 0.16;
+    const g = x.createRadialGradient(cx, cy + r * 0.32, 0, cx, cy + r * 0.1, r * 0.95);
+    g.addColorStop(0, 'rgba(255,255,255,1)');
+    g.addColorStop(0.45, 'rgba(255,255,255,0.78)');
+    g.addColorStop(1, 'rgba(255,255,255,0.42)');
+    x.fillStyle = g;
+    petal(0.92);
+    x.fill();
+    x.restore();
+    x.strokeStyle = 'rgba(255,255,255,0.55)';
+    x.lineWidth = r * 0.04;
+    x.beginPath();
+    x.moveTo(cx, cy + r * 0.7);
+    x.quadraticCurveTo(cx + r * 0.05, cy, cx, cy - r * 0.7);
+    x.stroke();
+  });
+  // 17 glint: thin 4-point sparkle, long vertical/horizontal rays, short diagonals.
+  cell(17, (cx, cy, r) => {
+    const ray = (a: number, len: number, w: number): void => {
+      const g = x.createLinearGradient(cx, cy, cx + Math.cos(a) * len, cy + Math.sin(a) * len);
+      g.addColorStop(0, 'rgba(255,255,255,1)');
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      x.fillStyle = g;
+      x.beginPath();
+      x.moveTo(cx + Math.cos(a + Math.PI / 2) * w, cy + Math.sin(a + Math.PI / 2) * w);
+      x.lineTo(cx + Math.cos(a) * len, cy + Math.sin(a) * len);
+      x.lineTo(cx + Math.cos(a - Math.PI / 2) * w, cy + Math.sin(a - Math.PI / 2) * w);
+      x.closePath();
+      x.fill();
+    };
+    for (let i = 0; i < 4; i++) ray((i * Math.PI) / 2, r * 0.98, r * 0.06);
+    for (let i = 0; i < 4; i++) ray(Math.PI / 4 + (i * Math.PI) / 2, r * 0.42, r * 0.04);
+    radial(cx, cy, r * 0.3, [[0, 1], [0.4, 0.6], [1, 0]]);
+  });
+  // 18 ghost: soft vertical capsule glow.
+  cell(18, (cx, cy, r) => {
+    x.save();
+    x.translate(cx, cy);
+    x.scale(0.5, 1);
+    const g = x.createRadialGradient(0, 0, 0, 0, 0, r);
+    g.addColorStop(0, 'rgba(255,255,255,0.85)');
+    g.addColorStop(0.5, 'rgba(255,255,255,0.4)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    x.fillStyle = g;
+    x.fillRect(-r, -r, r * 2, r * 2);
+    x.restore();
+  });
+  // 19 ash flake + 20 its glowing rim: the same jagged outline (seeded), filled / stroked.
+  const flakePts: [number, number][] = [];
+  for (let i = 0; i < 11; i++) {
+    const a = (i / 11) * Math.PI * 2 + (rnd() - 0.5) * 0.35;
+    flakePts.push([Math.cos(a) * (0.5 + rnd() * 0.38), Math.sin(a) * (0.5 + rnd() * 0.38)]);
+  }
+  const flake = (cx: number, cy: number, r: number): void => {
+    x.beginPath();
+    flakePts.forEach(([px, py], i) => (i ? x.lineTo(cx + px * r, cy + py * r) : x.moveTo(cx + px * r, cy + py * r)));
+    x.closePath();
+  };
+  cell(19, (cx, cy, r) => {
+    x.fillStyle = 'rgba(255,255,255,1)';
+    flake(cx, cy, r);
+    x.fill();
+    for (let i = 0; i < 70; i++) {
+      const a = rnd() * Math.PI * 2;
+      const d = Math.sqrt(rnd()) * r * 0.45;
+      x.fillStyle = `rgba(150,150,150,${0.25 + rnd() * 0.35})`;
+      x.fillRect(cx + Math.cos(a) * d, cy + Math.sin(a) * d, 4, 4);
+    }
+  });
+  cell(20, (cx, cy, r) => {
+    x.save();
+    x.shadowColor = '#fff';
+    x.shadowBlur = r * 0.18;
+    x.strokeStyle = 'rgba(255,255,255,1)';
+    x.lineWidth = r * 0.1;
+    x.lineJoin = 'round';
+    flake(cx, cy, r);
+    x.stroke();
+    x.restore();
+    radial(cx, cy, r * 0.6, [[0, 0.18], [1, 0]]);
+  });
+  // 21 twinkle: 6 rays (2 long) with a soft halo.
+  cell(21, (cx, cy, r) => {
+    radial(cx, cy, r * 0.7, [[0, 0.5], [0.3, 0.18], [1, 0]]);
+    x.fillStyle = '#fff';
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2 - Math.PI / 2;
+      const len = r * (i % 3 === 0 ? 0.98 : 0.5);
+      x.beginPath();
+      x.moveTo(cx + Math.cos(a) * len, cy + Math.sin(a) * len);
+      x.lineTo(cx + Math.cos(a + 0.5) * r * 0.08, cy + Math.sin(a + 0.5) * r * 0.08);
+      x.lineTo(cx + Math.cos(a - 0.5) * r * 0.08, cy + Math.sin(a - 0.5) * r * 0.08);
+      x.closePath();
+      x.fill();
+    }
+    radial(cx, cy, r * 0.22, [[0, 1], [1, 0]]);
+  });
+  // 22 soft ring.
+  cell(22, (cx, cy, r) => {
+    const g = x.createRadialGradient(cx, cy, r * 0.55, cx, cy, r * 0.98);
+    g.addColorStop(0, 'rgba(255,255,255,0)');
+    g.addColorStop(0.6, 'rgba(255,255,255,0.9)');
+    g.addColorStop(0.75, 'rgba(255,255,255,0.55)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    x.fillStyle = g;
+    x.fillRect(cx - r, cy - r, r * 2, r * 2);
+  });
+  // 23 bokeh orb: soft disc, slightly brighter rim.
+  cell(23, (cx, cy, r) => {
+    const g = x.createRadialGradient(cx, cy, 0, cx, cy, r * 0.8);
+    g.addColorStop(0, 'rgba(255,255,255,0.55)');
+    g.addColorStop(0.75, 'rgba(255,255,255,0.7)');
+    g.addColorStop(0.9, 'rgba(255,255,255,0.35)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    x.fillStyle = g;
+    x.fillRect(cx - r, cy - r, r * 2, r * 2);
+  });
   atlasTex = new THREE.CanvasTexture(cv);
   atlasTex.colorSpace = THREE.SRGBColorSpace;
   atlasTex.generateMipmaps = true;
@@ -505,6 +669,9 @@ export class ParticlePool {
   private a0: Float32Array; private a1: Float32Array; private fin: Float32Array;
   private drag: Float32Array; private grav: Float32Array; private swirl: Float32Array;
   private sprite: Float32Array; private stretch: Float32Array;
+  private holdA: Float32Array;
+  private orb: Float32Array; private ox: Float32Array; private oz: Float32Array;
+  private cr1: Float32Array; private cg1: Float32Array; private cb1: Float32Array;
   private alive: Uint8Array;
   private managed: Uint8Array;
   /** Spawned since the last update: shown once before it starts aging, so short-lived
@@ -532,6 +699,9 @@ export class ParticlePool {
     this.a0 = F(); this.a1 = F(); this.fin = F();
     this.drag = F(); this.grav = F(); this.swirl = F();
     this.sprite = F(); this.stretch = F();
+    this.holdA = F();
+    this.orb = F(); this.ox = F(); this.oz = F();
+    this.cr1 = F(); this.cg1 = F(); this.cb1 = F();
     this.alive = new Uint8Array(n);
     this.managed = new Uint8Array(n);
     this.fresh = new Uint8Array(n);
@@ -590,7 +760,7 @@ export class ParticlePool {
     this.fresh[i] = 1;
     this.px[i] = p.x; this.py[i] = p.y; this.pz[i] = p.z;
     this.vx[i] = p.vx ?? 0; this.vy[i] = p.vy ?? 0; this.vz[i] = p.vz ?? 0;
-    this.age[i] = 0;
+    this.age[i] = -Math.max(0, p.delay ?? 0);
     this.life[i] = Math.max(0.001, p.life);
     this.s0[i] = p.size;
     this.s1[i] = p.size1 ?? p.size;
@@ -606,6 +776,13 @@ export class ParticlePool {
     this.swirl[i] = p.swirl ?? 0;
     this.sprite[i] = p.sprite ?? 0;
     this.stretch[i] = p.stretch ?? 0;
+    this.holdA[i] = p.holdA ?? 1;
+    this.orb[i] = p.orbit ?? 0;
+    this.ox[i] = p.ox ?? p.x;
+    this.oz[i] = p.oz ?? p.z;
+    this.cr1[i] = p.r1 ?? p.r;
+    this.cg1[i] = p.g1 ?? p.g;
+    this.cb1[i] = p.b1 ?? p.b;
     return i;
   }
 
@@ -634,6 +811,9 @@ export class ParticlePool {
     this.cr[i] = r;
     this.cg[i] = g;
     this.cb[i] = b;
+    this.cr1[i] = r;
+    this.cg1[i] = g;
+    this.cb1[i] = b;
   }
   setRot(i: number, r: number): void {
     this.rot[i] = r;
@@ -659,53 +839,75 @@ export class ParticlePool {
       if (!this.alive[i]) continue;
       const managed = this.managed[i] === 1;
       let t = 0;
+      let held = false;
       const fdt = this.fresh[i] ? 0 : dt;
       this.fresh[i] = 0;
       if (!managed) {
-        const dt = fdt;
-        this.age[i] += dt;
-        t = this.age[i] / this.life[i];
-        if (t >= 1) {
-          this.kill(i);
-          continue;
+        const age0 = this.age[i];
+        this.age[i] += fdt;
+        if (this.age[i] < 0) {
+          // Still holding its place (dissolve silhouettes): no motion yet.
+          held = true;
+        } else {
+          // Only the part of this frame after the release moves the particle.
+          const dt = age0 < 0 ? this.age[i] : fdt;
+          t = this.age[i] / this.life[i];
+          if (t >= 1) {
+            this.kill(i);
+            continue;
+          }
+          const d = this.drag[i];
+          if (d > 0) {
+            const k = Math.exp(-d * dt);
+            this.vx[i] *= k;
+            this.vy[i] *= k;
+            this.vz[i] *= k;
+          }
+          this.vy[i] -= this.grav[i] * dt;
+          const sw = this.swirl[i];
+          if (sw !== 0) {
+            const ph = this.age[i] * 2.1 + i;
+            this.vx[i] += Math.cos(ph) * sw * dt;
+            this.vz[i] += Math.sin(ph) * sw * dt;
+          }
+          this.px[i] += this.vx[i] * dt;
+          this.py[i] += this.vy[i] * dt;
+          this.pz[i] += this.vz[i] * dt;
+          const ob = this.orb[i];
+          if (ob !== 0) {
+            // Spiral: position and velocity co-rotate about the vertical axis.
+            const a = ob * dt;
+            const cs = Math.cos(a), sn = Math.sin(a);
+            const rx = this.px[i] - this.ox[i], rz = this.pz[i] - this.oz[i];
+            this.px[i] = this.ox[i] + rx * cs - rz * sn;
+            this.pz[i] = this.oz[i] + rx * sn + rz * cs;
+            const vx = this.vx[i], vz = this.vz[i];
+            this.vx[i] = vx * cs - vz * sn;
+            this.vz[i] = vx * sn + vz * cs;
+          }
+          this.rot[i] += this.spin[i] * dt;
         }
-        const d = this.drag[i];
-        if (d > 0) {
-          const k = Math.exp(-d * dt);
-          this.vx[i] *= k;
-          this.vy[i] *= k;
-          this.vz[i] *= k;
-        }
-        this.vy[i] -= this.grav[i] * dt;
-        const sw = this.swirl[i];
-        if (sw !== 0) {
-          const ph = this.age[i] * 2.1 + i;
-          this.vx[i] += Math.cos(ph) * sw * dt;
-          this.vz[i] += Math.sin(ph) * sw * dt;
-        }
-        this.px[i] += this.vx[i] * dt;
-        this.py[i] += this.vy[i] * dt;
-        this.pz[i] += this.vz[i] * dt;
-        this.rot[i] += this.spin[i] * dt;
       }
       const fi = this.fin[i];
       let alpha = this.a0[i] + (this.a1[i] - this.a0[i]) * t;
-      if (fi > 0 && t < fi) alpha *= t / fi;
+      if (held) alpha *= this.holdA[i];
+      else if (fi > 0 && t < fi) alpha *= t / fi;
       const size = this.s0[i] + (this.s1[i] - this.s0[i]) * t;
       P[n * 3] = this.px[i];
       P[n * 3 + 1] = this.py[i];
       P[n * 3 + 2] = this.pz[i];
-      C[n * 4] = this.cr[i];
-      C[n * 4 + 1] = this.cg[i];
-      C[n * 4 + 2] = this.cb[i];
+      C[n * 4] = this.cr[i] + (this.cr1[i] - this.cr[i]) * t;
+      C[n * 4 + 1] = this.cg[i] + (this.cg1[i] - this.cg[i]) * t;
+      C[n * 4 + 2] = this.cb[i] + (this.cb1[i] - this.cb[i]) * t;
       C[n * 4 + 3] = alpha;
       M[n * 4] = size;
       M[n * 4 + 1] = this.rot[i];
       M[n * 4 + 2] = this.sprite[i];
-      M[n * 4 + 3] = this.flip[i] !== 0 ? Math.cos(this.age[i] * this.flip[i] + i) : 1;
-      V[n * 4] = this.vx[i];
-      V[n * 4 + 1] = this.vy[i];
-      V[n * 4 + 2] = this.vz[i];
+      // Held pieces face the camera; the tumble starts at the release (cos 0 = 1).
+      M[n * 4 + 3] = this.flip[i] !== 0 && !held ? Math.cos(this.age[i] * this.flip[i]) : 1;
+      V[n * 4] = held ? 0 : this.vx[i];
+      V[n * 4 + 1] = held ? 0 : this.vy[i];
+      V[n * 4 + 2] = held ? 0 : this.vz[i];
       V[n * 4 + 3] = this.stretch[i];
       n++;
     }

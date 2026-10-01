@@ -11,8 +11,9 @@
 
 import * as THREE from 'three';
 import type { GradingSettings, QualityPreset, QualitySettings, RenderEngine } from '../contracts';
-import { applySceneFogSun } from './atmosphere';
+import { applySceneFogSun, setBakedShadowSupport, type StaticShadowBake } from './atmosphere';
 import { ENV } from './palette';
+import { setDirectGrading } from './painterly';
 import { PostPipeline } from './post';
 import { AdaptiveQuality, detectInitialPreset, resolveQuality, type ResolvedPreset } from './quality';
 
@@ -97,6 +98,7 @@ export class Renderer implements RenderEngine {
       renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
     }
     this.renderer = renderer;
+    setBakedShadowSupport(renderer);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = this.grading.exposure;
@@ -162,6 +164,13 @@ export class Renderer implements RenderEngine {
     }
     this.renderer.toneMappingExposure = this.grading.exposure;
     this.post?.setGrading(this.grading);
+    this.syncDirectGrading();
+  }
+
+  /** Low preset (no post): the same grade is applied inside every material (painterly.ts). */
+  private syncDirectGrading(): void {
+    const px = this.q.pixelRatio;
+    setDirectGrading(this.post ? null : this.grading, Math.round(this.size.width * px), Math.round(this.size.height * px));
   }
 
   /** Current merged grading (read-only copy). */
@@ -204,6 +213,7 @@ export class Renderer implements RenderEngine {
     this.applyRendererQuality();
     if (prev.post !== next.post || !this.post) this.rebuildPost();
     else this.post.setOptions(this.postOptions());
+    this.syncDirectGrading();
     if (shadowChange) this.markSceneMaterialsDirty();
     this.resizeDirty = true;
     for (const cb of this.qualityListeners) cb(next);
@@ -211,7 +221,12 @@ export class Renderer implements RenderEngine {
 
   private applyRendererQuality(): void {
     const r = this.renderer;
-    r.shadowMap.enabled = this.q.shadows !== 'off';
+    // Always on: medium/high follow the view with a live PCF shadow map; low
+    // has no per-frame shadow pass but samples the map's sun shadow baked once
+    // (atmosphere.ts setStaticShadowCasters) through a 4-tap bilinear BASIC lookup. Scenes
+    // without a casting light (menu on low) compile no shadow code at all.
+    r.shadowMap.enabled = true;
+    r.shadowMap.type = this.q.shadows === 'off' ? THREE.BasicShadowMap : THREE.PCFShadowMap;
     r.shadowMap.needsUpdate = true;
     r.setPixelRatio(this.q.pixelRatio);
   }
@@ -227,16 +242,19 @@ export class Renderer implements RenderEngine {
   private rebuildPost(): void {
     this.post?.dispose();
     this.post = null;
-    if (!this.q.post) return;
-    try {
-      this.post = new PostPipeline(this.renderer, this.size.width, this.size.height, this.q.pixelRatio, this.postOptions());
-      this.post.setScenes(this.scene, this.camera, this.overlay, this.overlayCamera);
-      this.post.setGrading(this.grading);
-    } catch (err) {
-      // Missing HalfFloat render target support etc. → direct rendering.
-      console.warn('[renderer] post pipeline unavailable, rendering directly', err);
-      this.post = null;
+    if (this.q.post) {
+      try {
+        this.post = new PostPipeline(this.renderer, this.size.width, this.size.height, this.q.pixelRatio, this.postOptions());
+        this.post.setScenes(this.scene, this.camera, this.overlay, this.overlayCamera);
+        this.post.setGrading(this.grading);
+      } catch (err) {
+        // Missing HalfFloat render target support etc. → direct rendering.
+        console.warn('[renderer] post pipeline unavailable, rendering directly', err);
+        this.post = null;
+      }
     }
+    // Without post (low, or no HalfFloat support) the grade moves into the materials.
+    this.syncDirectGrading();
   }
 
   /** Shadow on/off changes shader programs; ask three to rebuild them. */
@@ -277,6 +295,7 @@ export class Renderer implements RenderEngine {
     this.resizeDirty = false;
     const changed = this.measure();
     this.post?.setSize(this.size.width, this.size.height, this.q.pixelRatio);
+    this.syncDirectGrading();
     this.syncCamera(this.camera);
     this.syncCamera(this.overlayCamera);
     if (changed) {
@@ -310,6 +329,9 @@ export class Renderer implements RenderEngine {
 
     // Aerial perspective: this scene's sun-tinted fog (0 when it has none).
     applySceneFogSun(this.scene);
+    // Low preset: render the map's one-time baked sun depth first (atmosphere.ts).
+    const bake = this.scene?.userData.hfShadowBake as StaticShadowBake | undefined;
+    if (bake?.pending) bake.run(r);
     if (this.post) {
       this.post.render(dt);
     } else {

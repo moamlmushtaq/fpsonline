@@ -20,6 +20,7 @@ import * as THREE from 'three';
 import type { MaterialLibrary, QualitySettings } from '../contracts';
 import type { SurfaceTag } from '../../shared/types';
 import { ENV } from './palette';
+import { enablePainterly } from './painterly';
 import { disposeProceduralTextures, makeCanvas, proceduralTexture, TEX_TILE, type TexName } from './textures';
 
 /** Faded timber (derived from the ENV neutrals; not a gameplay color). */
@@ -180,6 +181,8 @@ export class Materials implements MaterialLibrary {
         });
       }
     }
+    // Hand-painted finish (world-space mottling, hue drift, painted form): every preset.
+    enablePainterly(m);
     m.name = `surface.${tag}.${style || 'default'}`;
     this.cache.set(key, m);
     return m;
@@ -202,6 +205,8 @@ export class Materials implements MaterialLibrary {
         ? new THREE.MeshLambertMaterial(common)
         : new THREE.MeshStandardMaterial({ ...common, roughness: opts.roughness ?? 0.85, metalness: opts.metalness ?? 0 });
     if (opts.transparent) m.depthWrite = false;
+    // Flat stylized props still read hand-painted (skipped for see-through ones).
+    enablePainterly(m);
     m.name = `painted.${color}`;
     this.cache.set(key, m);
     return m;
@@ -297,4 +302,69 @@ export function boxProjectUVs(geo: THREE.BufferGeometry, tex: TexName | number =
     }
   }
   geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+}
+
+// ── Contact shadows (blob AO decals) ────────────────────────────────────────
+//
+// Cheap grounding for props and characters on every preset (and the only
+// dynamic-object shadow on low): a soft elliptical darkening decal in the
+// palette's cool shadow color. Merge many quads into ONE mesh with
+// contactShadowGeometry() + contactShadowMaterial() (one draw call).
+
+let contactTex: THREE.DataTexture | null = null;
+let contactMat: THREE.MeshBasicMaterial | null = null;
+
+/** Soft radial falloff (64², DOM-free), alpha = occlusion. */
+export function contactShadowTexture(): THREE.DataTexture {
+  if (contactTex) return contactTex;
+  const N = 64;
+  const d = new Uint8Array(N * N * 4);
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      const dx = (x + 0.5) / N - 0.5;
+      const dy = (y + 0.5) / N - 0.5;
+      const r = Math.min(1, Math.hypot(dx, dy) * 2);
+      // Dense core (contact) fading into a wide soft skirt.
+      const a = Math.pow(1 - r, 1.6) * 0.85 + Math.pow(Math.max(0, 1 - r * 1.8), 2) * 0.15;
+      const i = (y * N + x) * 4;
+      d[i] = d[i + 1] = d[i + 2] = 255;
+      d[i + 3] = Math.round(THREE.MathUtils.clamp(a, 0, 1) * 255);
+    }
+  }
+  contactTex = new THREE.DataTexture(d, N, N, THREE.RGBAFormat);
+  contactTex.name = 'tex.contactShadow';
+  contactTex.magFilter = THREE.LinearFilter;
+  contactTex.minFilter = THREE.LinearMipmapLinearFilter;
+  contactTex.generateMipmaps = true;
+  contactTex.needsUpdate = true;
+  return contactTex;
+}
+
+/** Shared contact-shadow material (cool violet-brown, never black; fogged). */
+export function contactShadowMaterial(): THREE.MeshBasicMaterial {
+  if (contactMat) return contactMat;
+  contactMat = new THREE.MeshBasicMaterial({
+    map: contactShadowTexture(),
+    color: new THREE.Color(ENV.shadowWarm).lerp(new THREE.Color(ENV.shadowCool), 0.5),
+    transparent: true,
+    opacity: 0.62,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
+  });
+  contactMat.name = 'contactShadow';
+  return contactMat;
+}
+
+/**
+ * Ground quad for one contact shadow: centred at (x, y, z), radii rx/rz (m),
+ * yaw `ry`. Merge several (mergeGeometries) and draw with contactShadowMaterial().
+ */
+export function contactShadowGeometry(x: number, y: number, z: number, rx: number, rz: number, ry = 0): THREE.BufferGeometry {
+  const g = new THREE.PlaneGeometry(rx * 2, rz * 2);
+  g.rotateX(-Math.PI / 2);
+  g.rotateY(ry);
+  g.translate(x, y + 0.01, z);
+  return g;
 }

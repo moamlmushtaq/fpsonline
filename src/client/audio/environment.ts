@@ -447,16 +447,18 @@ export class Environment {
         lpf.frequency.value = 260;
         lpf.connect(gain);
         em.nodes.push(lpf);
-        const { g } = osc('sawtooth', 46, 0.05, lpf);
+        const { g } = osc('sawtooth', 46, 0.03, lpf);
         const lfo = ctx.createOscillator();
         lfo.frequency.value = 6.5;
         const lg = ctx.createGain();
-        lg.gain.value = 0.02;
+        lg.gain.value = 0.012;
         lfo.connect(lg).connect(g.gain);
         lfo.start();
         em.sources.push(lfo);
         em.nodes.push(lg);
-        loopInto(n.brown, 'lowpass', 400, 0.05);
+        loopInto(n.brown, 'lowpass', 400, 0.022);
+        // Engine-block chatter (mid band) so it reads on small speakers too.
+        loopInto(n.pink, 'bandpass', 900, 0.006);
         break;
       }
       case 'waves':

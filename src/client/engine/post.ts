@@ -168,7 +168,7 @@ void main() {
   vec3 shadowHue = uShadowTint * vec3(1.07, 0.95, 1.0);
   shadowHue /= max(luma(shadowHue), 1e-4);
   col = mix(col, col * shadowHue, sh * uShadowSplit);
-  col += uShadowTint * uShadowFloor * (1.0 - smoothstep(0.0, 0.05, l));
+  col += uShadowTint * uShadowFloor * (1.0 - smoothstep(0.0, 0.07, l));
 
   // Soft oval vignette.
   vec2 q = (uv - 0.5) * vec2(uResolution.x / uResolution.y, 1.0);
@@ -211,7 +211,7 @@ class GradingPass extends Pass {
         uGrain: { value: 0.04 },
         uPaintRadius: { value: 1.6 },
         uShadowSplit: { value: 0.34 },
-        uShadowFloor: { value: 0.32 },
+        uShadowFloor: { value: 0.45 },
       },
       defines: painterly ? { PAINTERLY: '' } : {},
       vertexShader: GRADING_VERT,

@@ -65,7 +65,7 @@ body.q-low .hf-range { backdrop-filter: none; -webkit-backdrop-filter: none; bac
 .hf-range__seg button.on { background: var(--c-accent, #f0b35b); color: var(--c-ink, #1d1712); }
 .hf-range__speedlbl { font-size: .62rem; letter-spacing: .12em; text-transform: uppercase; color: rgba(243,236,224,.5); margin-top: .5rem; }
 .hf-range__toggle { display: none; }
-body.touch-ui .hf-range { left: calc(var(--safe-l, 0px) + 11.6rem); top: calc(var(--safe-t, 0px) + .55rem); width: auto; max-width: 16rem; padding: .4rem .55rem; font-size: .72rem; }
+body.touch-ui .hf-range { left: calc(var(--safe-l, 0px) + 12.2rem); top: calc(var(--safe-t, 0px) + .55rem); width: auto; max-width: 16rem; padding: .4rem .55rem; font-size: .72rem; }
 body.touch-ui .hf-range__toggle { display: inline-grid; place-items: center; min-width: 48px; min-height: 40px; border-radius: 8px; border: 1px solid rgba(243,236,224,.28); background: rgba(243,236,224,.06); color: inherit; font: 600 .78rem var(--f-mono); direction: ltr; }
 body.touch-ui .hf-range:not(.is-open) .hf-range__body, body.touch-ui .hf-range:not(.is-open) .hf-range__title, body.touch-ui .hf-range:not(.is-open) .hf-range__clock { display: none; }
 body.touch-ui .hf-range:not(.is-open) .hf-range__head { margin: 0; }

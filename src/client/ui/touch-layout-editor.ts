@@ -83,7 +83,7 @@ html[lang='ar'] .hf-tle__eyebrow{letter-spacing:0;font-family:var(--f-arabic,'IB
 .hf-tle__acts .btn{min-height:40px}
 .hf-tle__chip{position:absolute;left:0;top:0;display:none;align-items:center;gap:4px;padding:4px;border-radius:999px;background:rgba(24,22,20,.9);border:1px solid rgba(240,179,91,.45);box-shadow:0 8px 24px -10px rgba(0,0,0,.7);white-space:nowrap}
 .hf-tle__chip.on{display:inline-flex}
-.hf-tle__chip button{width:44px;height:44px;border-radius:50%;border:1px solid rgba(243,236,224,.3);background:rgba(243,236,224,.06);color:var(--c-text,#f3ece0);font:600 20px/1 var(--f-mono,'JetBrains Mono',monospace);display:grid;place-items:center;padding:0;cursor:pointer;touch-action:manipulation;transition:transform 120ms cubic-bezier(.2,.8,.2,1),background-color 120ms}
+.hf-tle__chip button{width:48px;height:48px;border-radius:50%;border:1px solid rgba(243,236,224,.3);background:rgba(243,236,224,.06);color:var(--c-text,#f3ece0);font:600 20px/1 var(--f-mono,'JetBrains Mono',monospace);display:grid;place-items:center;padding:0;cursor:pointer;touch-action:manipulation;transition:transform 120ms cubic-bezier(.2,.8,.2,1),background-color 120ms}
 .hf-tle__chip button:active{transform:scale(.94);background:rgba(240,179,91,.2)}
 .hf-tle__chip .lbl{display:flex;flex-direction:column;align-items:center;padding:0 8px;min-width:4.5rem}
 .hf-tle__chip .lbl b{font:600 13px/1.1 var(--f-mono,'JetBrains Mono',monospace);color:var(--c-accent-hi,#f8cc80)}

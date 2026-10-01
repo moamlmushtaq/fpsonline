@@ -269,9 +269,9 @@ export class Sfx {
     this.lastHit = t;
     const v = close ? jit(0.03) : 1;
     if (kind === 'body') {
-      syn.noise(d, t, { filter: 'bandpass', freq: 4300, q: 1.2, gain: 0.16, decay: 0.006, attack: 0.0005 });
-      syn.tone(d, t, { freq: 3000 * v, gain: 0.12, decay: 0.04, attack: 0.001 });
-      syn.tone(d, t, { freq: 1500 * v, gain: 0.05, decay: 0.02, attack: 0.001 });
+      syn.noise(d, t, { filter: 'bandpass', freq: 4300, q: 1.2, gain: 0.24, decay: 0.006, attack: 0.0005 });
+      syn.tone(d, t, { freq: 3000 * v, gain: 0.2, decay: 0.045, attack: 0.001 });
+      syn.tone(d, t, { freq: 1500 * v, gain: 0.07, decay: 0.022, attack: 0.001 });
       syn.tone(d, t, { freq: 170, freqEnd: 110, gain: 0.08, decay: 0.03 });
       return;
     }

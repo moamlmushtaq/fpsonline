@@ -64,7 +64,7 @@ const V: Record<WeaponId, WeaponVoice> = {
     casing: 0.5,
   },
   swift: {
-    vol: 1,
+    vol: 0.82,
     crack: { f: 4600, q: 0.9, g: 0.7, d: 0.016 },
     body: { f0: 270, f1: 140, drop: 0.03, g: 0.6, d: 0.06, wave: 'triangle', h2: 0 },
     blast: { f0: 3500, f1: 1200, g: 1.2, d: 0.08 },
@@ -106,7 +106,7 @@ const V: Record<WeaponId, WeaponVoice> = {
     casing: 0,
   },
   pulse: {
-    vol: 1.4,
+    vol: 1.15,
     crack: { f: 3800, q: 1, g: 0.6, d: 0.012 },
     body: { f0: 260, f1: 120, drop: 0.04, g: 0.45, d: 0.07, wave: 'triangle', h2: 0 },
     blast: { f0: 2600, f1: 900, g: 0.8, d: 0.05 },

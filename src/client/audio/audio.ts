@@ -277,7 +277,7 @@ export class Audio implements AudioSystem {
     c.buses.music.gain.setTargetAtTime(sq(this.volumes.music) * 1.25, t, 0.03);
     c.buses.sfx.gain.setTargetAtTime(sq(this.volumes.sfx), t, 0.03);
     c.buses.voice.gain.setTargetAtTime(sq(this.volumes.voice), t, 0.03);
-    c.buses.ui.gain.setTargetAtTime(sq(this.volumes.ui) * 1.1, t, 0.03);
+    c.buses.ui.gain.setTargetAtTime(sq(this.volumes.ui) * 1.6, t, 0.03);
   }
 
   setHrtf(on: boolean): void {

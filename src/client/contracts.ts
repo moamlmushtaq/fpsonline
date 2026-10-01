@@ -539,6 +539,36 @@ export interface HudState {
   ping: number;
   fps: number;
   showFps: boolean;
+  /** Radar (circular minimap) contents; null hides the radar (e.g. training range). */
+  radar?: HudRadar | null;
+}
+
+/** One radar contact. Positions are world x/z; the HUD rotates them player-up. */
+export interface HudRadarBlip {
+  x: number;
+  z: number;
+  kind: 'friend' | 'enemy' | 'zone' | 'pickup';
+  color: string;
+  /** 0..1 opacity (enemies fade out after they stop firing). */
+  alpha: number;
+  /** Zone letter ('' otherwise). */
+  label: string;
+  /** Facing yaw (friends' arrows). */
+  yaw: number;
+  /** Contested / being captured. */
+  pulse: boolean;
+}
+
+export interface HudRadar {
+  /** Local view position (world x/z) and yaw. */
+  x: number;
+  z: number;
+  yaw: number;
+  /** Horizontal field of view (radians) for the view cone. */
+  fov: number;
+  /** Reused array; only the first `count` entries are valid. */
+  blips: HudRadarBlip[];
+  count: number;
 }
 
 export interface KillFeedEntry {
@@ -582,6 +612,10 @@ export interface Hud {
   scoreboard(visible: boolean, rows: ScoreboardEntry[], mode: ModeId): void;
   setScale(k: number): void;
   setVisible(v: boolean): void;
+  /** Paints the radar's map layer for the current match (null clears). */
+  setRadarMap?(def: MapDef | null): void;
+  /** Radar on/off from settings. */
+  setRadarEnabled?(on: boolean): void;
   unmount(): void;
 }
 
@@ -671,6 +705,8 @@ export interface Settings {
   hudScale: number;
   reducedShake: boolean;
   showFps: boolean;
+  /** Show the radar minimap during matches. */
+  radar: boolean;
   crosshair: 'dot' | 'cross' | 'circle';
   crosshairColor: string;
 }

@@ -245,11 +245,12 @@ describe('default touch layout', () => {
       expect(Math.hypot(it.x - cx, it.y - cy), `${w}x${h}`).toBeGreaterThan(it.r);
     }
   });
-  it('PAUSE / SCOREBOARD follow the HUD vitals to the right in RTL', async () => {
+  it('PAUSE / SCOREBOARD stay in the top-left vitals column in LTR and RTL (touch HUD is not mirrored)', async () => {
     const { resolveLayout, NO_INSETS } = await load();
-    const ltr = resolveLayout({}, 844, 390, NO_INSETS, false).get('pause')!;
-    const rtl = resolveLayout({}, 844, 390, NO_INSETS, true).get('pause')!;
-    expect(ltr.x).toBeLessThan(844 / 2);
-    expect(rtl.x).toBeGreaterThan(844 / 2);
+    for (const rtl of [false, true]) {
+      const pause = resolveLayout({}, 844, 390, NO_INSETS, rtl).get('pause')!;
+      expect(pause.x).toBeLessThan(844 / 2);
+      expect(pause.y).toBeLessThan(390 * 0.6);
+    }
   });
 });

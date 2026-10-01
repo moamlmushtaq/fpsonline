@@ -79,6 +79,8 @@ export default {
   'settings.quality.desc': 'يتكيّف الوضع التلقائي ليحافظ على سلاسة اللعب، وتحتفظ كل المستويات بالهوية الفنية نفسها.',
   'settings.quality.current': 'الجودة الحالية: {preset}',
   'settings.renderScale': 'دقة العرض',
+  'settings.radar': 'الرادار (الخريطة المصغّرة)',
+  'settings.radar.desc': 'يعرض الخريطة من حولك وزملاءك والأهداف والأعداء الذين يطلقون النار.',
   'settings.showFps': 'إظهار معدل الإطارات وزمن الاستجابة',
 
   'settings.vol.master': 'الصوت العام',

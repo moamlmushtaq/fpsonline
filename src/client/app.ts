@@ -284,6 +284,7 @@ export class App {
     this.announcer.setVolume(s.volumes.voice);
     this.hud.setScale(s.hudScale);
     this.hud.setCrosshair(s.crosshair, s.crosshairColor);
+    this.hud.setRadarEnabled(s.radar);
     document.documentElement.style.setProperty('--hud-scale', String(s.hudScale));
   }
 

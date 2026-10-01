@@ -18,6 +18,8 @@ import { h } from '../components';
 import { clock, i18n, setText } from '../i18n';
 import { icon, weaponIcon } from '../icons';
 import { Compass, ObjectiveMarkers, ScoreboardView } from './parts';
+import { Radar } from './radar';
+import type { MapDef } from '../../../shared/maps/types';
 
 const EASE = 'cubic-bezier(.2,.8,.2,1)';
 const FEED_MAX = 5;
@@ -39,6 +41,8 @@ export class GameHud implements Hud {
 
   // Parts
   private readonly compass = new Compass();
+  /** Circular player-up minimap (top inline-start corner). */
+  private readonly radar = new Radar();
   private readonly objectives = new ObjectiveMarkers();
   private readonly sb = new ScoreboardView();
 
@@ -239,6 +243,7 @@ export class GameHud implements Hud {
       this.objectives.el,
       this.scope,
       top,
+      this.radar.el,
       this.feed,
       this.perf,
       center,
@@ -252,6 +257,7 @@ export class GameHud implements Hud {
       this.sb.el,
     );
     this.applyCrosshair();
+    this.radar.setNorthLabel(i18n.t('hud.compass.N'));
     i18n.onChange(() => this.onLang());
   }
 
@@ -285,6 +291,7 @@ export class GameHud implements Hud {
     this.zonesEl.replaceChildren();
     this.ffaEl.replaceChildren();
     this.objectives.clear();
+    this.radar.setMap(null);
     this.sb.show(false, [], this.mode, this.teamScores);
     this.subs.classList.remove('is-on');
     this.killerName = '';
@@ -305,6 +312,16 @@ export class GameHud implements Hud {
     this.root.style.setProperty('--hud-scale', String(this.scale));
   }
 
+  /** Paints the radar's map layer for this match (null clears it). */
+  setRadarMap(def: MapDef | null): void {
+    this.radar.setMap(def);
+  }
+
+  /** Radar on/off (settings). */
+  setRadarEnabled(on: boolean): void {
+    this.radar.setEnabled(on);
+  }
+
   setVisible(v: boolean): void {
     this.root.classList.toggle('is-hidden', !v);
   }
@@ -322,6 +339,7 @@ export class GameHud implements Hud {
   }
 
   private onLang(): void {
+    this.radar.setNorthLabel(i18n.t('hud.compass.N'));
     // Force re-render of text cached by value.
     this.c.status = '__';
     this.c.phase = '__';
@@ -342,6 +360,7 @@ export class GameHud implements Hud {
     this.updateAmmo(s);
     this.updateTop(s);
     this.compass.update(s.yaw, s.compass);
+    this.radar.update(dt, s.radar);
     this.objectives.update(s.objectives, window.innerWidth, window.innerHeight);
 
     // Crosshair: spread, fades while aiming, hidden when scoped/sprinting/dead.

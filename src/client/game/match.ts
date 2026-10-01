@@ -254,6 +254,8 @@ export class ClientMatch implements MatchContext, MatchApi {
     // HUD-side overlays, range stats, feedback.
     app.hud.setScale(app.settings.value.hudScale);
     app.hud.setCrosshair(app.settings.value.crosshair, app.settings.value.crosshairColor);
+    app.hud.setRadarMap(this.def);
+    app.hud.setRadarEnabled(app.settings.value.radar);
     this.overlays = new MatchOverlays(app.hud.root);
     if (this.config.mode === 'range') {
       // Range stats panel + stations (rack / reset / speed) + floating hit numbers.

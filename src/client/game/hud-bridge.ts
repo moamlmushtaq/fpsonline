@@ -12,7 +12,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as THREE from 'three';
-import type { HudCompassMarker, HudObjective, HudState, ScoreboardEntry } from '../contracts';
+import type { HudCompassMarker, HudObjective, HudRadar, HudRadarBlip, HudState, ScoreboardEntry } from '../contracts';
 import { NEUTRAL_OBJECTIVE, PICKUP_COLOR, UI, teamColors } from '../engine/palette';
 import { keyLabel } from '../state/settings';
 import { activeSlot, activeWeapon, currentSpread, reloadProgress } from '../../shared/combat';
@@ -26,6 +26,8 @@ import type { PickupDef, ZoneDef } from '../../shared/maps/types';
 import type { MatchContext } from './context';
 
 const ZONE_MARK_H = 2.6;
+/** Seconds an enemy stays on the radar after firing (fades out). */
+const RADAR_SHOT_SHOW = 2.6;
 const HEAD_MARK_H = 2.15;
 
 function yawTo(from: Vec3, x: number, z: number): number {
@@ -52,6 +54,9 @@ export class HudBridge {
   private readonly zoneDefs = new Map<string, ZoneDef>();
   private readonly pickupDefs = new Map<string, PickupDef>();
   private readonly friendKeys = new Map<number, string>();
+  private readonly radar: HudRadar = { x: 0, z: 0, yaw: 0, fov: 1.4, blips: [], count: 0 };
+  /** performance.now() seconds of each player's last shot (enemies show on the radar while firing). */
+  private readonly shotAt = new Map<number, number>();
 
   constructor(private readonly ctx: MatchContext) {
     const c = ctx.config;
@@ -90,6 +95,11 @@ export class HudBridge {
       fps: 60,
       showFps: false,
     };
+  }
+
+  /** A remote player fired (from the 'shot' event). */
+  onShot(id: number): void {
+    this.shotAt.set(id, performance.now() / 1000);
   }
 
   onScoreboard(rows: ScoreboardRow[]): void {
@@ -170,6 +180,7 @@ export class HudBridge {
 
     this.buildCompass();
     this.buildObjectives(vw, vh);
+    s.radar = ctx.config.mode === 'range' ? null : this.buildRadar(vw, vh);
     return s;
   }
 
@@ -216,6 +227,67 @@ export class HudBridge {
       if (pd) this.putCompass(yawTo(from, pd.pos.x, pd.pos.z), this.sunspearLabel, PICKUP_COLOR, 'pickup');
     }
     this.compass.length = this.cn;
+  }
+
+  private rn = 0;
+
+  private putBlip(kind: HudRadarBlip['kind'], x: number, z: number, color: string, alpha: number, label: string, yaw: number, pulse: boolean): void {
+    let b = this.radar.blips[this.rn];
+    if (!b) {
+      b = { x: 0, z: 0, kind: 'zone', color: '', alpha: 1, label: '', yaw: 0, pulse: false };
+      this.radar.blips[this.rn] = b;
+    }
+    b.kind = kind;
+    b.x = x;
+    b.z = z;
+    b.color = color;
+    b.alpha = alpha;
+    b.label = label;
+    b.yaw = yaw;
+    b.pulse = pulse;
+    this.rn++;
+  }
+
+  /** Radar contents: you, zones, pickup, teammates, and enemies that fired recently. */
+  private buildRadar(vw: number, vh: number): HudRadar {
+    const ctx = this.ctx;
+    const r = this.radar;
+    r.x = ctx.camPos.x;
+    r.z = ctx.camPos.z;
+    r.yaw = ctx.camYaw;
+    const halfV = THREE.MathUtils.degToRad(ctx.camera.fov) / 2;
+    r.fov = 2 * Math.atan(Math.tan(halfV) * (vw / Math.max(1, vh)));
+    this.rn = 0;
+    for (const z of ctx.zones) {
+      const zd = this.zoneDefs.get(z.id);
+      if (zd) this.putBlip('zone', zd.center.x, zd.center.z, this.zoneColor(z.owner), 1, z.id, 0, z.contested || (z.capturing !== 2 && z.capturing !== z.owner));
+    }
+    for (const pk of ctx.pickups) {
+      const pd = pk.available ? this.pickupDefs.get(pk.id) : undefined;
+      if (pd) this.putBlip('pickup', pd.pos.x, pd.pos.z, PICKUP_COLOR, 1, '', 0, false);
+    }
+    const remotes = ctx.view?.remotes;
+    if (remotes) {
+      const now = performance.now() / 1000;
+      for (const e of remotes.entries.values()) {
+        if (e.isLocal || !e.alive || !e.placed) continue;
+        const id = e.ident.id;
+        if (!ctx.isEnemy(id)) {
+          this.putBlip('friend', e.pos.x, e.pos.z, teamColors(e.ident.team).light, 1, '', e.s.yaw, false);
+          continue;
+        }
+        const t = this.shotAt.get(id);
+        if (t === undefined) continue;
+        const age = now - t;
+        if (age > RADAR_SHOT_SHOW) continue;
+        const alpha = age < 1 ? 1 : 1 - (age - 1) / (RADAR_SHOT_SHOW - 1);
+        // FFA: everyone is hostile — use the hostile set (team 2); team modes: the enemy team's color.
+        const team: Team = ctx.config.mode === 'ffa' ? 2 : e.ident.team;
+        this.putBlip('enemy', e.pos.x, e.pos.z, teamColors(team).primary, alpha, '', 0, false);
+      }
+    }
+    r.count = this.rn;
+    return r;
   }
 
   private zoneColor(owner: Team): string {

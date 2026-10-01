@@ -79,6 +79,8 @@ export default {
   'settings.quality.desc': 'Auto adapts to keep the game smooth. Every preset keeps the same art direction.',
   'settings.quality.current': 'Running at: {preset}',
   'settings.renderScale': 'Render scale',
+  'settings.radar': 'Radar minimap',
+  'settings.radar.desc': 'Shows the map around you, teammates, objectives and enemies that open fire.',
   'settings.showFps': 'Show FPS and ping',
 
   'settings.vol.master': 'Master',

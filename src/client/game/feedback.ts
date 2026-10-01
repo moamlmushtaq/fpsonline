@@ -492,6 +492,8 @@ export class Feedback {
   // ── World handlers ──
 
   private remoteShot(ev: Extract<GameEvent, { t: 'shot' }>): void {
+    // Gunfire reveals the shooter on the radar (enemies only show while firing).
+    this.hudBridge.onShot(ev.p);
     const v = this.m.view;
     if (!v) return;
     const audio = this.m.app.audio;

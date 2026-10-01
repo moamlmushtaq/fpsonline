@@ -335,7 +335,10 @@ small satisfying shake — never nauseating; honor `reducedShake`.
   HUD mirrors in RTL except the compass and gameplay-spatial elements. Numbers stay LTR
   (`dir="ltr"` / `unicode-bidi: isolate` on numeric spans).
 - HUD layout: health bottom-left, ammo bottom-right, compass bar top, kill feed top-right,
-  timer + score top-center, objectives as world-anchored team-colored markers.
+  timer + score top-center, objectives as world-anchored team-colored markers, and a
+  circular player-up radar minimap top-left (map relief, teammates, objectives, enemies
+  only while firing; toggle in Settings → Accessibility). On touch the HUD does not
+  mirror in RTL: radar + health + pause/scoreboard stay top-left, clear of the fire cluster.
 - Touch: minimum 48 px targets, safe-area insets (`env(safe-area-inset-*)`).
 
 ## 7. Audio bible

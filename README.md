@@ -8,6 +8,7 @@ Earth, 2090. The clean ceramic soldiers of **HALCYON** and the bioluminescent sc
 - **Modes**: Team Deathmatch (5v5), Launch Control (3 zones, with a rocket launch finale), Free-for-All (up to 8), Training Range with a 60-second interactive tutorial, bot matches (Recruit / Veteran / Elite), and private rooms joined by link or code.
 - **Maps**: Gantry (coastal launch site at sunset), Pastel (overgrown 1970s suburb and flooded mall), Observatory (mountaintop dome above the clouds at dusk).
 - **Cross-platform**: mouse and keyboard with rebindable keys, gamepad, and touch. Touch has a floating joystick, drag-to-aim, an editable button layout, optional aim assist and haptics.
+- **HUD**: health, ammo, compass, kill feed, objective markers and a radar minimap (map, teammates, objectives, enemies that open fire).
 - **Accessibility**: colorblind modes, subtitles, HUD scale and reduced screen shake. English and Arabic, with full right-to-left layout.
 - **Progression**: XP and levels that unlock weapon skins, armor tints, visors, name cards and elimination effects. Everything is cosmetic; nothing is pay-to-win.
 - **Assets**: all art and audio are procedural. There are no asset files.

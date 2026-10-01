@@ -457,9 +457,36 @@ html[lang='ar'] .hs-phase {
 
 /* ── Perf readout ────────────────────────────────────────────────────────── */
 
+/* Radar: circular player-up minimap in the top inline-start corner. Its
+   contents are spatial (never mirrored); only its corner follows the reading
+   direction, opposite the kill feed. */
+.hud-radar {
+  position: absolute;
+  top: calc(var(--safe-t) + 0.9em);
+  inset-inline-start: var(--hud-pad-x);
+  width: 10.5em;
+  height: 10.5em;
+  border-radius: 50%;
+  opacity: 0;
+  transform: scale(0.94);
+  transition: opacity 260ms var(--ease, ease), transform 260ms var(--ease, ease);
+  filter: drop-shadow(0 2px 10px rgba(0, 0, 0, 0.35));
+}
+
+.hud-radar.is-on {
+  opacity: 1;
+  transform: none;
+}
+
+.hud-radar__cv {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
 .hud-perf {
   position: absolute;
-  top: calc(var(--safe-t) + 0.7em);
+  top: calc(var(--safe-t) + 12em);
   inset-inline-start: max(calc(var(--safe-l) + 1em), 1em);
   font-family: var(--f-mono);
   font-size: 0.66em;
@@ -1333,6 +1360,13 @@ html[lang='ar'] .sb-team-h {
   .hud {
     font-size: calc(0.92rem * var(--hud-scale, 1));
   }
+  .hud-radar {
+    width: 8.6em;
+    height: 8.6em;
+  }
+  .hud-perf {
+    top: calc(var(--safe-t) + 10em);
+  }
   .hud-compass {
     width: 20em;
   }
@@ -1344,22 +1378,40 @@ html[lang='ar'] .sb-team-h {
   }
 }
 
-/* Touch devices: thumbs own the bottom corners, so vitals move to the top. */
+/* Touch devices: thumbs own the bottom corners, so vitals move to the top.
+   Thumb ergonomics are physical, not reading-direction: the fire cluster is
+   always on the right, so the touch HUD does NOT mirror in RTL — radar, health
+   and the pause/scoreboard buttons stack in the top-LEFT column (see
+   input/touch-layout.ts), ammo + kill feed sit top-right above the fire cluster. */
+body.touch-ui .hud-radar {
+  top: calc(var(--safe-t) + 0.6em);
+  right: auto;
+  left: var(--hud-pad-x);
+  width: 6.6em;
+  height: 6.6em;
+}
+
 body.touch-ui .hud-health {
   bottom: auto;
-  top: calc(var(--safe-t) + 2.4em);
+  top: calc(var(--safe-t) + 7.6em);
+  right: auto;
+  left: var(--hud-pad-x);
   width: 12em;
 }
 
 body.touch-ui .hud-ammo {
   bottom: auto;
   top: calc(var(--safe-t) + 0.8em);
+  left: auto;
+  right: max(calc(var(--safe-r) + 1.4em), 1.4em);
   min-width: 11em;
 }
 
 body.touch-ui .hud-feed {
   /* Below the relocated ammo panel (weapon, mag, low-ammo and throwable lines ≈ 7.8em). */
   top: calc(var(--safe-t) + 8.8em);
+  left: auto;
+  right: max(calc(var(--safe-r) + 1.2em), 1.2em);
 }
 
 body.touch-ui .hud-subs {

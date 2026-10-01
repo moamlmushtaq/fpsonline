@@ -94,6 +94,7 @@ export function defaultSettings(): Settings {
     hudScale: 1,
     reducedShake: false,
     showFps: false,
+    radar: true,
     crosshair: 'cross',
     crosshairColor: '#f3ece0',
   };
@@ -178,6 +179,7 @@ export function sanitizeSettings(raw: unknown): Settings {
     hudScale: num(s.hudScale, d.hudScale, 0.75, 1.3),
     reducedShake: bool(s.reducedShake, d.reducedShake),
     showFps: bool(s.showFps, d.showFps),
+    radar: bool(s.radar, d.radar),
     crosshair: oneOf(s.crosshair, CROSSHAIRS, d.crosshair),
     crosshairColor: color,
   };

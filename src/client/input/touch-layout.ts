@@ -82,10 +82,11 @@ const ANCHORS: Record<string, Anchor> = {
   // Directly above THROW: in the thumb's reach, and clear of the HUD's centred
   // pickup prompt (at 62 % height) that it answers — it used to sit on top of it.
   interact: { h: 'r', v: 'b', x: 232, y: 224 },
-  // Below the vitals (the touch HUD puts health at the top inline-start corner, so
-  // these follow it to the right in RTL, clear of the mirrored ammo + kill feed).
-  pause: { h: 's', v: 't', x: 36, y: 116 },
-  scoreboard: { h: 's', v: 't', x: 94, y: 116 },
+  // Below the radar + health column in the top-left corner. The touch HUD keeps
+  // that column on the physical left in RTL too (the right side belongs to the
+  // fire cluster; mirroring it there collided with ADS on short phones).
+  pause: { h: 'l', v: 't', x: 36, y: 200 },
+  scoreboard: { h: 'l', v: 't', x: 94, y: 200 },
   stick: { h: 'l', v: 'b', x: 150, y: 120 },
 };
 

@@ -281,6 +281,7 @@ export class SettingsScreen extends BaseScreen {
           null,
           cbRow,
           sl('hudScale', 'settings.hudScale', 0.75, 1.3, 0.05, pct),
+          tg('radar', 'settings.radar', 'settings.radar.desc'),
           tg('reducedShake', 'settings.reducedShake', 'settings.reducedShake.desc'),
           tg('subtitles', 'settings.subtitles', 'settings.subtitles.desc'),
         );

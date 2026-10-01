@@ -37,7 +37,11 @@ export type Kind =
   | 'glass'
   | 'sign'
   | 'signGlow'
-  | 'pool';
+  | 'pool'
+  /** Lit, opaque, textured with the prop atlas (crates, cases, drums — observatory/propatlas.ts). */
+  | 'prop'
+  /** Icicles / glaze: pale, glossy, faintly self-lit so they read against dusk walls. */
+  | 'ice';
 
 const KIND_TEX: Partial<Record<Kind, { tag: 'concrete' | 'metal' | 'wood' | 'rock' | 'snow' | 'plaster' | 'fabric'; style?: string; tex: TexName }>> = {
   concrete: { tag: 'concrete', tex: 'concrete' },
@@ -69,6 +73,10 @@ export interface AddOpts {
   snow?: number;
   /** Multiply by the geometry's own `color` attribute (baked gradients). */
   vc?: boolean;
+  /** Never drape over the snow drifts (see ObsKit.groundAt). */
+  noDrape?: boolean;
+  /** Slope (normal y) where the snow blanket starts (default 0.55; rocks get a dusting lower). */
+  snowFrom?: number;
 }
 
 class Batch {
@@ -103,6 +111,16 @@ export class ObsKit {
   /** Default snow amount for opaque kinds (props get snowy tops). */
   snowDefault = 1;
   signTexture: THREE.Texture | null = null;
+  /** Prop atlas (kind 'prop'). */
+  propTexture: THREE.Texture | null = null;
+  /** Per-kind material overrides (e.g. the snowfield's glinting snow for 'snow'). Not owned. */
+  readonly override = new Map<Kind, THREE.Material>();
+  /**
+   * Snow surface height (observatory/snowfield.ts). When set, near-ground horizontal
+   * decals (light pools, painted marks, tracks) drape over the drifts instead of
+   * being buried by them.
+   */
+  groundAt: ((x: number, z: number) => number) | null = null;
   section = '';
   readonly sectionTris = new Map<string, number>();
 
@@ -126,14 +144,26 @@ export class ObsKit {
     if (!g.attributes.normal) g.computeVertexNormals();
     const pos = g.attributes.position as THREE.BufferAttribute;
     const nor = g.attributes.normal as THREE.BufferAttribute;
+    if (this.groundAt && (kind === 'pool' || kind === 'paint' || kind === 'sign') && !opts.noDrape) {
+      // Ground decals ride on the snow (vertices just above y = 0 on horizontal faces).
+      for (let i = 0; i < pos.count; i++) {
+        const y = pos.getY(i);
+        if (y > -0.01 && y < 0.07 && Math.abs(nor.getY(i)) > 0.9) {
+          const h = this.groundAt(pos.getX(i), pos.getZ(i));
+          // (+ a margin: the snow mesh's chords sit a little above the drift's true curve)
+          if (h > 0) pos.setY(i, y + h + Math.min(0.05, h * 0.25));
+        }
+      }
+    }
     const uvA = g.attributes.uv as THREE.BufferAttribute | undefined;
     const vcA = opts.vc ? (g.attributes.color as THREE.BufferAttribute | undefined) : undefined;
     if (typeof color === 'string') _c.set(color);
     else _c.copy(color);
     const kk = opts.k ?? 1;
     const base = opts.base ?? 0;
-    const glowy = kind === 'glow' || kind === 'signGlow' || kind === 'pool' || kind === 'glass' || kind === 'sign';
+    const glowy = kind === 'glow' || kind === 'signGlow' || kind === 'pool' || kind === 'glass' || kind === 'sign' || kind === 'ice';
     const snow = glowy ? 0 : opts.snow ?? (kind === 'snow' ? 0 : this.snowDefault);
+    const sFrom = opts.snowFrom ?? 0.55;
     const tex = KIND_TEX[kind];
     const tile = tex ? TEX_TILE[tex.tex] : 1;
     const n = pos.count;
@@ -163,9 +193,9 @@ export class ObsKit {
         gg *= vcA.getY(i);
         bb *= vcA.getZ(i);
       }
-      if (snow > 0 && ny > 0.55) {
+      if (snow > 0 && ny > sFrom) {
         // Snow blanket: soft-edged by slope with a little painterly patchiness.
-        const f = snow * smooth(0.55, 0.85, ny) * (0.8 + 0.2 * hash2(x, z));
+        const f = snow * smooth(sFrom, sFrom + 0.3, ny) * (sFrom < 0.5 ? 0.35 + 0.65 * hash2(x * 1.3, z * 1.3 + y) : 0.8 + 0.2 * hash2(x, z));
         const sk = 0.97 + 0.05 * hash2(z + 3.1, x);
         r += (_snow.r * sk - r) * f;
         gg += (_snow.g * sk - gg) * f;
@@ -206,6 +236,8 @@ export class ObsKit {
   }
 
   private material(kind: Kind): THREE.Material {
+    const ov = this.override.get(kind);
+    if (ov) return ov;
     const lib = this.ctx.materials as DecorContext['materials'] & { surfaceVC?: (tag: string, o?: { style?: string; color?: string }) => THREE.Material };
     const t = KIND_TEX[kind];
     const own = <T extends THREE.Material>(mm: T): T => {
@@ -251,6 +283,14 @@ export class ObsKit {
         m.alphaTest = 0.35;
         return m;
       }
+      case 'prop':
+        return std(0.82, 0.04, { map: this.propTexture });
+      case 'ice': {
+        const m = std(0.18, 0.05, {});
+        // Faint self-light: icicles stay pale in the blue shadow (they catch the sky).
+        (m as THREE.MeshLambertMaterial).emissive = new THREE.Color('#5a6487');
+        return m;
+      }
       case 'signGlow':
         return own(new THREE.MeshBasicMaterial({ vertexColors: true, map: this.signTexture, alphaTest: 0.35, side: THREE.DoubleSide }));
       case 'pool': {
@@ -262,7 +302,9 @@ export class ObsKit {
           c.fillStyle = g;
           c.fillRect(0, 0, w, h);
         });
-        return own(new THREE.MeshBasicMaterial({ vertexColors: true, map: tex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+        return own(
+          new THREE.MeshBasicMaterial({ vertexColors: true, map: tex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }),
+        );
       }
       case 'paint':
       default:
@@ -283,7 +325,7 @@ export class ObsKit {
       const mesh = new THREE.Mesh(g, this.material(kind));
       mesh.name = `${this.name}.${kind}`;
       const glowy = kind === 'glow' || kind === 'glass' || kind === 'signGlow' || kind === 'pool';
-      mesh.castShadow = this.shadows && !glowy && kind !== 'sign';
+      mesh.castShadow = this.shadows && !glowy && kind !== 'sign' && kind !== 'ice';
       mesh.receiveShadow = !glowy;
       if (kind === 'glass') mesh.renderOrder = 3;
       if (kind === 'pool') mesh.renderOrder = 4;
@@ -430,7 +472,8 @@ export function quad(cx: number, cy: number, cz: number, w: number, h: number, n
 
 /** Horizontal quad (decal on the ground / floor). */
 export function floorQuad(cx: number, y: number, cz: number, w: number, d: number, uv?: [number, number, number, number], rotY = 0): THREE.BufferGeometry {
-  const g = new THREE.PlaneGeometry(w, d);
+  // Subdivided so it can drape over snow drifts (ObsKit.groundAt).
+  const g = new THREE.PlaneGeometry(w, d, Math.min(4, Math.max(1, Math.ceil(w / 1.8))), Math.min(4, Math.max(1, Math.ceil(d / 1.8))));
   if (uv) {
     const a = g.attributes.uv as THREE.BufferAttribute;
     for (let i = 0; i < a.count; i++) a.setXY(i, uv[0] + a.getX(i) * (uv[2] - uv[0]), uv[1] + a.getY(i) * (uv[3] - uv[1]));

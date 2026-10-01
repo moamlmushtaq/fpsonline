@@ -15,10 +15,13 @@ import type { MapLighting } from '../../../../shared/maps/types';
 const VERT = /* glsl */ `
 #include <common>
 #include <fog_pars_vertex>
+attribute float aEdge;
 varying vec3 vWorld;
+varying float vEdge;
 void main() {
   vec4 wp = modelMatrix * vec4(position, 1.0);
   vWorld = wp.xyz;
+  vEdge = aEdge;
   vec4 mvPosition = viewMatrix * wp;
   gl_Position = projectionMatrix * mvPosition;
   #include <fog_vertex>
@@ -36,6 +39,7 @@ uniform vec3 uSunDir;
 uniform float uOpacity;
 uniform vec3 uInterior;
 varying vec3 vWorld;
+varying float vEdge;
 
 vec2 wave(vec2 p, vec2 d, float f, float s, float t) {
   float ph = dot(p, d) * f + t * s;
@@ -79,13 +83,30 @@ void main() {
   float sp = smoothstep(0.985, 1.0, sin(p.x * 3.1 + t * 1.7) * sin(p.y * 2.7 - t * 1.3));
   col += uSun * sp * 0.25;
   float a = clamp(uOpacity * (0.55 + fres * 0.6) + spec * 0.4, 0.0, 0.96);
+  // Street puddles feather into the asphalt (aEdge 1 inside → 0 at the rim)
+  // and read darker (wet asphalt under a thin film): mostly sky reflection.
+  a *= smoothstep(0.0, 0.85, vEdge);
+  // Low reflected rays meet the houses / trees around the puddle, not the sky.
+  vec3 near = vec3(0.16, 0.15, 0.15);
+  vec3 prefl = mix(near, mix(uHorizon, uSky, smoothstep(0.25, 0.7, r.y)) * 0.85, smoothstep(0.06, 0.32, r.y));
+  vec3 wet = vec3(0.09, 0.085, 0.085);
+  float pspec = pow(max(dot(r, uSunDir), 0.0), 220.0) * 1.6;
+  vec3 pcol = mix(wet, prefl * 0.55, 0.16 + fres * 0.45) + uSun * pspec;
+  float isPuddle = step(-0.1, vWorld.y) * (1.0 - inMall);
+  col = mix(col, pcol, isPuddle);
+  a = mix(a, clamp(uOpacity * (0.55 + fres * 0.6) + pspec * 0.3, 0.0, 0.9) * smoothstep(0.0, 0.85, vEdge), isPuddle);
   gl_FragColor = vec4(col, a);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
   #include <fog_fragment>
 }`;
 
+/**
+ * Flood-water surface. `geo` may carry a per-vertex `aEdge` (1 = full water,
+ * 0 = feathered rim for street puddles); it is filled with 1 when missing.
+ */
 export function createWaterSurface(l: MapLighting, geo: THREE.BufferGeometry, y: number, opacity = 0.62): THREE.Mesh {
+  if (!geo.getAttribute('aEdge')) geo.setAttribute('aEdge', new THREE.Float32BufferAttribute(new Float32Array(geo.getAttribute('position').count).fill(1), 1));
   const sun = new THREE.Vector3(l.sunDir.x, l.sunDir.y, l.sunDir.z).normalize();
   const mat = new THREE.ShaderMaterial({
     uniforms: THREE.UniformsUtils.merge([

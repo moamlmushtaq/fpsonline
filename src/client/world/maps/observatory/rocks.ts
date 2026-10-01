@@ -29,7 +29,7 @@ export function noise3(x: number, y: number, z: number): number {
   );
 }
 
-export const ROCK = '#8a8290';
+export const ROCK = '#958d9c';
 export const ROCK_DARK = '#5e5a6a';
 
 export interface RockOpts {
@@ -133,10 +133,35 @@ export function rockBox(kit: ObsKit, x0: number, y0: number, z0: number, x1: num
     geo.setAttribute('normal', new THREE.Float32BufferAttribute(keepN, 3));
     geo.setAttribute('color', new THREE.Float32BufferAttribute(keepC, 3));
   }
+  // Snow caps: every up-facing facet (crests, ledges) gets a pillow of snow laid on it.
+  if (!o.flatTop) {
+    const pos = geo.attributes.position as THREE.BufferAttribute;
+    const nor = geo.attributes.normal as THREE.BufferAttribute;
+    const cap: number[] = [];
+    const e1 = new THREE.Vector3(), e2 = new THREE.Vector3(), fn = new THREE.Vector3();
+    for (let i = 0; i < pos.count; i += 3) {
+      e1.set(pos.getX(i + 1) - pos.getX(i), pos.getY(i + 1) - pos.getY(i), pos.getZ(i + 1) - pos.getZ(i));
+      e2.set(pos.getX(i + 2) - pos.getX(i), pos.getY(i + 2) - pos.getY(i), pos.getZ(i + 2) - pos.getZ(i));
+      fn.crossVectors(e1, e2).normalize();
+      const ymin = Math.min(pos.getY(i), pos.getY(i + 1), pos.getY(i + 2));
+      if (fn.y < 0.52 || ymin < y0 + 0.6) continue;
+      const k = 0.05 + 0.06 * (fn.y - 0.52) * 2;
+      for (let v = 0; v < 3; v++) cap.push(pos.getX(i + v) + nor.getX(i + v) * 0.02, pos.getY(i + v) + k, pos.getZ(i + v) + nor.getZ(i + v) * 0.02);
+    }
+    if (cap.length) {
+      const cg = new THREE.BufferGeometry();
+      cg.setAttribute('position', new THREE.Float32BufferAttribute(cap, 3));
+      cg.computeVertexNormals();
+      kit.add('snow', cg, ENV.snow, { flat: true });
+    }
+  }
   const col = o.color ?? ROCK;
   const top = y1;
   kit.add('rock', geo, col, {
     vc: true,
+    // Frosted rock: rime clings to every face in patches, ledges are white.
+    snowFrom: -0.3,
+    snow: 0.62,
     shade: (x, y, z, nx, ny) => {
       let s = 0.55 + 0.45 * smooth01((y - y0) / Math.max(1, h * 0.6));
       if (ny < -0.3) s *= 0.6;
@@ -178,6 +203,9 @@ export function boulder(kit: ObsKit, x: number, y: number, z: number, r: number,
 
 /** Wind-carved snow drift (visual, low): an elongated half-ellipsoid. */
 export function drift(kit: ObsKit, x: number, y: number, z: number, lx: number, lz: number, h: number, rotY = 0): void {
+  // On open snow the snowfield already sculpts the drifts; keep these only where it
+  // has no surface (arcades, interiors) or on raised floors.
+  if (kit.groundAt && y < 0.05 && kit.groundAt(x, z) >= 0) return;
   const g = sphere(0, 0, 0, 1, kit.low ? 8 : 12, kit.low ? 4 : 6, 1);
   const p = g.attributes.position as THREE.BufferAttribute;
   for (let i = 0; i < p.count; i++) {
@@ -192,7 +220,10 @@ export function drift(kit: ObsKit, x: number, y: number, z: number, lx: number, 
 
 /** Faint bioluminescent lichen (additive glow decal + a few glowing cushion plants). */
 export function lichen(kit: ObsKit, x: number, y: number, z: number, size: number, color: string, rnd: () => number): void {
-  kit.add('pool', floorQuad(x, y + 0.03, z, size, size, undefined, rnd() * 3), color, { k: 0.5, flat: true });
+  // Ride on the snow drift where there is one (the decal itself drapes in the kit).
+  const gy = kit.groundAt && y < 0.05 ? Math.max(0, kit.groundAt(x, z)) : 0;
+  y += gy * 0.85;
+  kit.add('pool', floorQuad(x, y - gy * 0.85 + 0.03, z, size, size, undefined, rnd() * 3), color, { k: 0.5, flat: true });
   const n = kit.low ? 2 : 4;
   for (let i = 0; i < n; i++) {
     const a = rnd() * Math.PI * 2;

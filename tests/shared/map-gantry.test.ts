@@ -20,7 +20,7 @@ function eye(p: { x: number; y: number; z: number }): [number, number, number] {
 describe('gantry layout', () => {
   it('stays within the collision budget and uses hidden solids only where decor draws them', () => {
     expect(map.solids.length).toBeGreaterThanOrEqual(60);
-    expect(map.solids.length).toBeLessThanOrEqual(120);
+    expect(map.solids.length).toBeLessThanOrEqual(128); // +6 for the art-pass-2 service vehicles / drum pallets (GANTRY_PROPS)
     for (const s of map.solids) {
       expect(s.max.x).toBeGreaterThan(s.min.x);
       expect(s.max.y).toBeGreaterThan(s.min.y);

@@ -38,6 +38,10 @@ const DARK = '#3a3a40';
 /** Hall steelwork (lamp-lit interior kind): warm greys so the hall reads lit, not sky-blue. */
 const STEEL_IN = '#7a7068';
 const GRATE = '#958a7e';
+/** Exterior grating (catwalk). */
+const GRATE_OUT = '#8c8a92';
+/** Telescope enamel (warm cream; interior-lit). */
+const TEL = '#e6dccb';
 
 export interface DomeParts {
   /** Rotating group (dome shell + telescope + shaft). Its origin is the map origin. */
@@ -149,9 +153,53 @@ export function buildObservatoryStatic(kit: ObsKit, rnd: () => number, decor: nu
     kit.add('metal', cylAB(c * (R - 0.02), TOP + 0.1, s * (R - 0.02), c * (R - 0.02), OBS.domeSpring - 0.4, s * (R - 0.02), 0.06, 0.06, 4), STEEL, { flat: true });
   }
   kit.add('metal', cyl(0, OBS.domeSpring - 0.4, 0, R + 0.05, 0.12, kit.seg(48), R + 0.05, true), DARK, { flat: true });
+  // Service catwalk ringing the drum just under the dome's bogies (cantilevered on
+  // brackets, railing + toe board) and the ladder up to it from the roof deck.
+  kit.section = 'dome.catwalk';
+  {
+    const cy = OBS.domeSpring - 1.05;
+    const r0 = R + 0.35, r1 = R + 1.15;
+    kit.add('metal', lathe([[r0, 0], [r1, 0], [r1, 0.07], [r0, 0.07], [r0, 0]], kit.seg(56), 0, cy, 0), GRATE_OUT, { flat: true, snow: 0.9 });
+    kit.add('metal', cyl(0, cy + 0.07, 0, r1, 0.12, kit.seg(56), r1, true), STEEL, { flat: true, snow: 0 });
+    const n = kit.low ? 18 : 36;
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2;
+      const c = Math.cos(a), sn = Math.sin(a);
+      kit.add('metal', cylAB(c * (r1 - 0.05), cy, sn * (r1 - 0.05), c * (r1 - 0.05), cy + 1.0, sn * (r1 - 0.05), 0.022, 0.022, 4), STEEL, { flat: true, snow: 0 });
+      if (i % 2 === 0) kit.add('metal', beam(c * (R - 0.1), cy - 0.75, sn * (R - 0.1), c * (r1 - 0.1), cy - 0.02, sn * (r1 - 0.1), 0.07), DARK, { flat: true, snow: 0 });
+    }
+    const ringPts = (rr: number, y: number): [number, number, number][] => {
+      const pts: [number, number, number][] = [];
+      const m = kit.low ? 36 : 72;
+      for (let k = 0; k <= m; k++) {
+        const a = (k / m) * Math.PI * 2;
+        pts.push([Math.cos(a) * rr, y, Math.sin(a) * rr]);
+      }
+      return pts;
+    };
+    kit.add('metal', tube(ringPts(r1 - 0.05, cy + 1.0), 0.03, 4), ENV.terracottaFaded, { flat: true, snow: 0.6 });
+    kit.add('metal', tube(ringPts(r1 - 0.05, cy + 0.55), 0.018, 3), STEEL, { flat: true, snow: 0 });
+    // Ladder (north-west, on the drum) from the roof deck up to the catwalk.
+    const la = Math.PI * 1.25;
+    const lc = Math.cos(la), ls = Math.sin(la);
+    const tx = -ls, tz = lc; // tangent
+    for (const side of [-0.25, 0.25]) {
+      kit.add('metal', cylAB(lc * (R + 0.1) + tx * side, TOP, ls * (R + 0.1) + tz * side, lc * (R + 0.1) + tx * side, cy + 1.1, ls * (R + 0.1) + tz * side, 0.025, 0.025, 4), STEEL, { flat: true, snow: 0 });
+    }
+    for (let y = TOP + 0.3; y < cy; y += 0.3) {
+      kit.add('metal', cylAB(lc * (R + 0.1) - tx * 0.25, y, ls * (R + 0.1) - tz * 0.25, lc * (R + 0.1) + tx * 0.25, y, ls * (R + 0.1) + tz * 0.25, 0.015, 0.015, 3), STEEL, { flat: true, snow: 0.5 });
+    }
+    // Work lamps on the catwalk wash the drum warm (the observers worked up here).
+    for (const a of [0.35, 2.4, 4.1, 5.5]) {
+      const c = Math.cos(a), sn = Math.sin(a);
+      kit.add('glow', sphere(c * (r1 - 0.12), cy + 1.08, sn * (r1 - 0.12), 0.07, 6, 4), ENV.glowGold, { k: 3, flat: true });
+      kit.add('pool', quad(c * (R - 0.02), cy + 0.9, sn * (R - 0.02), 2.6, 2.2, c, sn), ENV.glowGold, { k: 0.3, flat: true, noDrape: true });
+    }
+  }
   // Snow drifts piled against the base (visual, low).
   kit.section = 'dome.snow';
-  const drifts = decor > 0.5 ? 10 : 5;
+  // (The snowfield sculpts real drifts against the base when it is present.)
+  const drifts = kit.groundAt ? 0 : decor > 0.5 ? 10 : 5;
   for (let i = 0; i < drifts; i++) {
     const side = sides[i % 4];
     const a = (rnd() - 0.5) * 16;
@@ -556,6 +604,70 @@ export function buildDome(kit: ObsKit, root: THREE.Object3D, quality: { lightSha
     sg.setAttribute('normal', new THREE.Float32BufferAttribute(nn, 3));
     if (keep.length) kit.add('satin', sg, '#d9d3c7', { snow: 0.3 });
   }
+  // Slit drive: toothed racks along both slit rails (the shutters ride them).
+  {
+    const step = low ? 0.06 : 0.028;
+    for (const s of [-1, 1]) {
+      const b = s * Math.asin((slitHalf + 0.3) / R);
+      const P = (a: number, rr: number): [number, number, number] => [rr * Math.cos(b) * Math.cos(a), CY + rr * Math.cos(b) * Math.sin(a), rr * Math.sin(b)];
+      const pts: [number, number, number][] = [];
+      for (let k = 0; k <= 20; k++) pts.push(P((k / 20) * Math.PI * 0.93, R + 0.2));
+      kit.add('metal', tube(pts, 0.07, 4), '#7c7d80', { flat: true, snow: 0.3 });
+      for (let a = 0.02; a < Math.PI * 0.92; a += step) {
+        const [ax, ay, az] = P(a, R + 0.22);
+        const [bx, by, bz] = P(a, R + 0.36);
+        kit.add('metal', cylAB(ax, ay, az, bx, by, bz, 0.03, 0.02, 3), DARK, { flat: true, snow: 0 });
+      }
+    }
+    // Shutter stiffeners: arched ribs across the slid-back leaves.
+    for (let i = 0; i < 6; i++) {
+      const a = slitEnd + 0.05 + (i / 5) * (Math.PI * 0.93 - slitEnd - 0.1);
+      const pts: [number, number, number][] = [];
+      for (let k = 0; k <= 6; k++) {
+        const b = (k / 6 - 0.5) * 2 * Math.asin((slitHalf + 0.3) / (R + 0.4));
+        pts.push([(R + 0.4) * Math.cos(b) * Math.cos(a), CY + (R + 0.4) * Math.cos(b) * Math.sin(a), (R + 0.4) * Math.sin(b)]);
+      }
+      kit.add('metal', tube(pts, 0.06, 4), '#a8a49c', { flat: true, snow: 0.4 });
+    }
+    // Windscreen raised at the foot of the slit (lower slit cover), with its own ribs.
+    {
+      const r = R - 0.04;
+      const bS = Math.asin(slitHalf / r);
+      const pos: number[] = [];
+      const na2 = 3, nb2 = 4;
+      const Q = (a: number, b: number): number[] => [r * Math.cos(b) * Math.cos(a), CY + r * Math.cos(b) * Math.sin(a), r * Math.sin(b)];
+      for (let i = 0; i < na2; i++) {
+        for (let j = 0; j < nb2; j++) {
+          const a0 = (i / na2) * 0.2, a1 = ((i + 1) / na2) * 0.2;
+          const b0 = -bS + (j / nb2) * 2 * bS, b1 = -bS + ((j + 1) / nb2) * 2 * bS;
+          pos.push(...Q(a0, b0), ...Q(a1, b0), ...Q(a1, b1), ...Q(a0, b0), ...Q(a1, b1), ...Q(a0, b1));
+        }
+      }
+      const wg = new THREE.BufferGeometry();
+      wg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      wg.computeVertexNormals();
+      kit.add('satin', wg, '#cfcabf', { snow: 0.5 });
+      const top: [number, number, number][] = [];
+      for (let k = 0; k <= 6; k++) {
+        const b = -bS + (k / 6) * 2 * bS;
+        top.push(Q(0.2, b) as [number, number, number]);
+      }
+      kit.add('metal', tube(top, 0.07, 4), DARK, { flat: true, snow: 0.6 });
+    }
+    // Warm lamp-light spilling out through the open slit (soft additive glows inside the shell).
+    for (const [a, w, k] of [
+      [0.22, 4.6, 1.15],
+      [0.5, 4.0, 0.85],
+      [0.85, 3.4, 0.55],
+    ] as const) {
+      const rr = R - 0.9;
+      const n = new THREE.Vector3(Math.cos(a), Math.sin(a), 0);
+      const g = new THREE.PlaneGeometry(w, w * 1.4);
+      g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), n));
+      g.translate(rr * Math.cos(a), CY + rr * Math.sin(a), 0);
+      kit.add('pool', g, '#ffb67c', { k, flat: true, noDrape: true });
+    }
+  }
   // Bogie skirt at the springline.
   kit.add('metal', cyl(0, CY - 0.35, 0, R + 0.12, 0.5, kit.seg(48), R + 0.12, true), '#55585c', { flat: true });
   for (let i = 0; i < 12; i++) {
@@ -567,8 +679,12 @@ export function buildDome(kit: ObsKit, root: THREE.Object3D, quality: { lightSha
 
   // ── Telescope: fork + Serrurier truss tube (in the rotor, slit toward +X) ──
   const PIV = 7.4;
-  kit.add('metal', cyl(0, G, 0, 1.9, 0.45, kit.seg(28)), '#55585c', { snow: 0 });
-  kit.add('gloss', cyl(0, G + 0.45, 0, 1.6, 0.35, kit.seg(28), 1.5), BONE, { snow: 0 });
+  // The telescope lives in the lamp-lit hall: interior (warm self-lit) kinds, so it
+  // reads cream and brass instead of picking up the violet sky through the slit.
+  kit.add('interiorMetal', cyl(0, G, 0, 1.9, 0.45, kit.seg(28)), '#5d5a58', { snow: 0 });
+  kit.add('interiorMetal', cyl(0, G + 0.45, 0, 1.6, 0.35, kit.seg(28), 1.5), TEL, { snow: 0 });
+  // Azimuth ring bolts + a brass setting circle.
+  kit.add('gloss', cyl(0, G + 0.44, 0, 1.92, 0.04, kit.seg(28), 1.92, true), '#c7a364', { flat: true, snow: 0 });
   for (const s of [-1, 1]) {
     const shape = new THREE.Shape();
     shape.moveTo(-1.3, 0);
@@ -578,8 +694,11 @@ export function buildDome(kit: ObsKit, root: THREE.Object3D, quality: { lightSha
     shape.quadraticCurveTo(-0.9, 1.8, -1.3, 0);
     const arm = new THREE.ExtrudeGeometry(shape, { depth: 0.32, bevelEnabled: true, bevelThickness: 0.04, bevelSize: 0.04, bevelSegments: 1, curveSegments: 6 });
     arm.translate(0, G + 0.8, s > 0 ? 1.05 : -1.37);
-    kit.add('gloss', arm, BONE, { snow: 0 });
-    kit.add('metal', cylAB(0, PIV, s * 1.0, 0, PIV, s * 1.5, 0.28, 0.28, 12), '#55585c', { flat: true, snow: 0 });
+    kit.add('interiorMetal', arm, TEL, { snow: 0 });
+    kit.add('interiorMetal', cylAB(0, PIV, s * 1.0, 0, PIV, s * 1.5, 0.28, 0.28, 12), '#5d5a58', { flat: true, snow: 0 });
+    // Declination bearing cap (brass) + a cable loom down the fork arm.
+    kit.add('gloss', cylAB(0, PIV, s * 1.5, 0, PIV, s * 1.56, 0.2, 0.2, 12), '#c7a364', { flat: true, snow: 0 });
+    kit.add('interiorMetal', cylAB(0.6, G + 1.0, s * 1.2, 0.35, PIV - 0.6, s * 1.25, 0.04, 0.04, 4), '#34302c', { flat: true, snow: 0 });
   }
   // Tube, built along +Y then tilted to 55° elevation toward +X.
   const tubeGroup: THREE.BufferGeometry[] = [];
@@ -600,9 +719,13 @@ export function buildDome(kit: ObsKit, root: THREE.Object3D, quality: { lightSha
   const secondary = cyl(0, TU - 0.9, 0, 0.18, 0.7, 12);
   const tilt = new THREE.Matrix4().makeRotationZ(-(Math.PI / 2 - (55 * Math.PI) / 180));
   const place = new THREE.Matrix4().makeTranslation(0, PIV, 0).multiply(tilt);
-  for (const g of tubeGroup) kit.add('gloss', g, BONE, { snow: 0, flat: true }, place);
-  for (const g of upper) kit.add('metal', g, '#2e2d31', { snow: 0, flat: true }, place);
-  kit.add('gloss', ring, BONE, { snow: 0, flat: true }, place);
+  for (const g of tubeGroup) kit.add('interiorMetal', g, TEL, { snow: 0, flat: true }, place);
+  for (const g of upper) kit.add('interiorMetal', g, '#3a3634', { snow: 0, flat: true }, place);
+  kit.add('interiorMetal', ring, TEL, { snow: 0, flat: true }, place);
+  // Finder scope + focuser on the top ring, brass trim bands on the centre section.
+  kit.add('interiorMetal', cylAB(0.72, TU - 2.6, 0.3, 0.72, TU - 1.0, 0.3, 0.1, 0.1, 10), TEL, { snow: 0, flat: true }, place);
+  kit.add('interiorMetal', box(-0.15, TU - 0.75, 0.68, 0.15, TU - 0.45, 0.85), '#3a3634', { snow: 0, flat: true }, place);
+  for (const yy of [-0.7, 0.68]) kit.add('gloss', cyl(0, yy, 0, 0.735, 0.06, 20, 0.735, true), '#c7a364', { snow: 0, flat: true }, place);
   kit.add('paint', ringIn, '#1f1e22', { snow: 0, flat: true }, place);
   for (const g of spider) kit.add('metal', g, '#2e2d31', { snow: 0, flat: true }, place);
   kit.add('metal', secondary, '#2e2d31', { snow: 0, flat: true }, place);
@@ -611,7 +734,7 @@ export function buildDome(kit: ObsKit, root: THREE.Object3D, quality: { lightSha
   kit.add('paint', cyl(0, -TL + 1.1, 0, 0.635, 0.12, 20), '#34302c', { flat: true, snow: 0 }, place);
   kit.add('glow', cyl(0, TU - 1.2, 0, 0.3, 0.02, 16), '#dfe6ff', { flat: true, k: 0.8 }, place);
   // Counterweights on the fork.
-  kit.add('metal', box(-1.5, G + 0.9, -0.5, -1.0, G + 1.9, 0.5), '#55585c', { snow: 0 });
+  kit.add('interiorMetal', box(-1.5, G + 0.9, -0.5, -1.0, G + 1.9, 0.5), '#5d5a58', { snow: 0 });
 
   kit.build(rotor);
   root.add(rotor);

@@ -52,7 +52,7 @@
 //
 // Heights: ground 0 · pier −1.2 · crawler 2.4 · deck 3.6 · catwalk / bunker
 // roof 4.8 · L1 8.4 · tower 64. Walls meant to block players are ≥ 2.6 m.
-// Collision is kept lean (120 solids; map-gantry.test caps it at 120 — all
+// Collision is kept lean (126 solids; map-gantry.test caps it at 128 — all
 // detail lives in src/client/world/maps/gantry.ts); 'hidden' solids are drawn
 // by that decor module, and every drawn railing/wall a player can reach has a
 // matching solid (stair railings, the launch mount + fin skirt).
@@ -79,6 +79,17 @@ export const GANTRY_CATWALK = 4.8;
 export const GANTRY_BAFFLE = { mainZ: 37.5, mainHalfW: 11, cornerZ: 40.5, cornerX0: 9.5, cornerX1: 24, h: 4.5 } as const;
 /** The broken grate in the deck over the trench junction (x0..x1, |z| ≤ hz): wide enough to drop through cleanly. */
 export const GANTRY_GRATE = { x0: -4.6, x1: -1.8, hz: 1.4 } as const;
+/**
+ * Service-vehicle / drum props (south half; mirrored north), shared by the
+ * collision below and the decor that draws them: a yard forklift parked
+ * against a dock container, the crew pickup in the dock yard, and a pallet of
+ * drums + a crate against the west compressor house (mantle-able cover).
+ */
+export const GANTRY_PROPS = {
+  forklift: { x0: 38.4, x1: 39.9, z0: -38.6, z1: -35.4, h: 2.2 },
+  pickup: { x0: 50, x1: 52, z0: -51.9, z1: -46.5, h: 1.95 },
+  drums: { x0: -33.3, x1: -30.55, z0: -34.4, z1: -33, h: 1.05 },
+} as const;
 
 const D = GANTRY_DECK;
 const k = new MapKit();
@@ -193,6 +204,8 @@ k.box(40, 0, -56, 46, 5.2, -53.6, 'metal', 'container');
 // sits far enough south to cut the pier's diagonal into the spawn forecourt.
 k.box(22.5, 0, -30, 25.1, 5.2, -18, 'metal', 'container');
 k.box(28.5, 0, -34.2, 30.9, 2.6, -22, 'metal', 'container');
+// Service vehicles and a drum pallet (art pass 2 storytelling props; see GANTRY_PROPS).
+for (const p of [GANTRY_PROPS.forklift, GANTRY_PROPS.pickup, GANTRY_PROPS.drums]) k.box(p.x0, 0, p.z0, p.x1, p.h, p.z1, 'metal', 'hidden');
 k.mirrorZ(m);
 
 // Unmirrored lane pieces (straddle z = 0).

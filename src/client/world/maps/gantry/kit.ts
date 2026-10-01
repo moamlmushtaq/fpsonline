@@ -11,6 +11,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import type { DecorContext } from '../../../contracts';
+import { contactShadowGeometry, contactShadowMaterial } from '../../../engine/materials';
 import { ENV } from '../../../engine/palette';
 import { TEX_TILE, type TexName } from '../../../engine/textures';
 
@@ -36,7 +37,17 @@ export type Kind =
   | 'sign'
   | 'signGlow'
   | 'pool'
-  | 'leaf';
+  | 'leaf'
+  /** Soft alpha-blended ground/wall decals from the decal atlas (lit, no depth write). */
+  | 'decal'
+  /** Cut-out plates (safety signs, gauges, notice boards) from the decal atlas. */
+  | 'sign2'
+  /** Unlit foam lace on the water (decal atlas, drawn after the sea). */
+  | 'foam'
+  /** Glossy soft-edged wet film (puddles; medium/high: specular sun glints). */
+  | 'wet'
+  /** Engine contact-shadow blobs (shared material, one draw). */
+  | 'contact';
 
 const KIND_TEX: Partial<Record<Kind, { tag: 'concrete' | 'metal' | 'wood' | 'sand' | 'rock' | 'fabric'; style?: string; tex: TexName }>> = {
   concrete: { tag: 'concrete', tex: 'concrete' },
@@ -89,6 +100,7 @@ export class DecorKit {
   section = '';
   readonly sectionTris = new Map<string, number>();
   leafTexture: THREE.Texture | null = null;
+  decalTexture: THREE.Texture | null = null;
 
   constructor(readonly ctx: DecorContext) {
     this.low = ctx.quality.preset === 'low';
@@ -231,6 +243,32 @@ export class DecorKit {
         });
         return own(new THREE.MeshBasicMaterial({ vertexColors: true, map: tex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
       }
+      case 'decal': {
+        const m = std(0.92, 0, { map: this.decalTexture, transparent: true });
+        m.depthWrite = false;
+        m.polygonOffset = true;
+        m.polygonOffsetFactor = -1;
+        m.polygonOffsetUnits = -4;
+        return m;
+      }
+      case 'wet': {
+        const m = std(0.1, 0.3, { map: this.decalTexture, transparent: true });
+        m.depthWrite = false;
+        m.polygonOffset = true;
+        m.polygonOffsetFactor = -2;
+        m.polygonOffsetUnits = -6;
+        m.userData.noPaint = true;
+        return m;
+      }
+      case 'sign2': {
+        const m = std(0.7, 0.05, { map: this.decalTexture });
+        m.alphaTest = 0.4;
+        return m;
+      }
+      case 'foam':
+        return own(new THREE.MeshBasicMaterial({ vertexColors: true, map: this.decalTexture, transparent: true, depthWrite: false }));
+      case 'contact':
+        return contactShadowMaterial(); // shared engine material (not owned)
       case 'paint':
       default:
         return std(0.82, 0.02);
@@ -249,11 +287,20 @@ export class DecorKit {
       g.computeBoundingSphere();
       const mesh = new THREE.Mesh(g, this.material(kind));
       mesh.name = `gantry.${kind}`;
-      const glowy = kind === 'glow' || kind === 'glass' || kind === 'signGlow' || kind === 'pool';
-      mesh.castShadow = this.shadows && !glowy && kind !== 'sign' && kind !== 'leaf';
+      const glowy = kind === 'glow' || kind === 'glass' || kind === 'signGlow' || kind === 'pool' || kind === 'foam' || kind === 'contact';
+      const flatCard = kind === 'sign' || kind === 'leaf' || kind === 'decal' || kind === 'sign2' || kind === 'wet';
+      mesh.castShadow = this.shadows && !glowy && !flatCard;
       mesh.receiveShadow = !glowy;
+      if (kind === 'decal' || kind === 'contact' || kind === 'wet') {
+        mesh.renderOrder = kind === 'wet' ? 2 : 1;
+        mesh.userData.noShadow = true; // never a caster in the baked Low shadow
+      }
       if (kind === 'glass') mesh.renderOrder = 3;
       if (kind === 'pool') mesh.renderOrder = 4;
+      if (kind === 'foam') {
+        mesh.renderOrder = 6;
+        mesh.userData.noShadow = true;
+      }
       root.add(mesh);
       this.meshes.push(mesh);
     }
@@ -563,6 +610,14 @@ export function lattice(cx: number, cz: number, half: number, y0: number, y1: nu
 /** Matrix helper: translate + rotate Y + uniform scale. */
 export function trs(x: number, y: number, z: number, rotY = 0, s = 1): THREE.Matrix4 {
   return new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromAxisAngle(_up, rotY), new THREE.Vector3(s, s, s));
+}
+
+/**
+ * Contact shadow (engine helper): a soft cool-violet blob under a prop, merged
+ * into the kit's single 'contact' draw. Radii in meters, yaw `ry`.
+ */
+export function contact(kit: DecorKit, x: number, y: number, z: number, rx: number, rz: number, ry = 0): void {
+  kit.add('contact', contactShadowGeometry(x, y, z, rx, rz, ry), '#ffffff', { flat: true });
 }
 
 export { smooth };

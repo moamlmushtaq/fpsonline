@@ -138,7 +138,8 @@ const D = OBS.deck;
 const G = OBS.gallery;
 
 // ── Ground (snowfield on the summit) ────────────────────────────────────────
-k.box(-58.5, -1, -61.5, 58.5, 0, 61.5, 'snow', 'ground'); // = the visual rim (decor cliffs start here)
+// Drawn by the decor as a sculpted snowfield (drifts, paths, glints): 'hidden' here.
+k.box(-58.5, -1, -61.5, 58.5, 0, 61.5, 'snow', 'hidden'); // = the visual rim (decor cliffs start here)
 
 // ── Center: the observatory base + telescope hall ──────────────────────────
 // Thick walls (2 m) of a 24 × 24 m base; doors on all four axes.

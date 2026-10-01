@@ -16,11 +16,17 @@
 //   observatory/backdrop.ts   cliffs, cloud sea, peaks, launch mesa + rocket,
 //                             Milky Way + moon fading in with the match
 //   observatory/atlas.ts      painted signage / charts / plaque (one texture)
+//   observatory/snowfield.ts  the sculpted snow surface (drifts against every
+//                             solid, wind scour, trodden paths, footprints and
+//                             vehicle tracks, glints at grazing angles)
+//   observatory/props.ts      crates / cases / drums / lamp posts / icicles /
+//                             guy-wires / the roof weather station (+ propatlas.ts)
+//   observatory/streamers.ts  wind-blown spindrift off ridges, roofs and the rim
 //
-// Static dressing is merged per material kind (~16 draw calls); animated
-// pieces (dome ~6, dishes 2×3, cabin 4, wheel 1, pennants 1, beacons 1, sky 3,
-// rocket ~10, shafts 2×2) keep the total well under budget. Detail and light
-// shafts scale with quality.
+// Static dressing is merged per material kind (~20 draw calls); animated
+// pieces (dome ~8, dishes 2×3, cabin 4, wheel 1, anemometer 1, pennants 1,
+// beacons 1, streamers 1, sky 3, rocket ~10, shafts 2×2) keep the total well
+// under budget (low ≈ 60–75 calls per view). Detail scales with quality.decor.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as THREE from 'three';
@@ -35,10 +41,26 @@ import { buildCompounds } from './observatory/compounds';
 import { buildDome, buildObservatoryStatic } from './observatory/dome';
 import { buildEast } from './observatory/east';
 import { ObsKit, sphere } from './observatory/kit';
+import { paintPropAtlas, prect } from './observatory/propatlas';
+import { buildProps } from './observatory/props';
+import { buildStreamers } from './observatory/streamers';
+import { buildSnowSurface, SnowField } from './observatory/snowfield';
 import { buildWest } from './observatory/west';
 
 /** The summit's own cliffs + cloud sea are drawn by the decor (no default skirt). */
 export const backdrop: BackdropOptions = { kind: 'none', water: false };
+
+/** Small local PRNG (keeps the map's shared decor RNG sequence untouched). */
+function mulberry(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
 const buildObservatory: DecorBuilder = (ctx: DecorContext): MapDecor => {
   const { root, quality, def } = ctx;
@@ -47,8 +69,20 @@ const buildObservatory: DecorBuilder = (ctx: DecorContext): MapDecor => {
   const low = quality.preset === 'low';
 
   const atlas = ctx.materials.canvasTexture(low ? 'obs.atlas.lo' : 'obs.atlas', low ? ATLAS_W / 2 : ATLAS_W, low ? ATLAS_H / 2 : ATLAS_H, paintAtlas);
+  const props = ctx.materials.canvasTexture(low ? 'obs.props.lo' : 'obs.props', low ? 256 : 512, low ? 256 : 512, paintPropAtlas);
+  // The sculpted snowfield comes first: every ground decal drapes over its drifts.
+  const field = new SnowField(def.solids);
+  const snow = buildSnowSurface(ctx, field, mulberry(0x5eed), props, prect('print'), prect('tread'));
+  root.add(snow.mesh);
+  if (snow.prints) root.add(snow.prints);
+  const libSnow = (ctx.materials as { surfaceVC?: (tag: 'snow', o?: { color?: string }) => THREE.Material }).surfaceVC?.('snow', { color: '#ffffff' });
+  const snowMat = libSnow ? snow.sparkle(libSnow) : null;
+  const groundAt = (x: number, z: number): number => field.heightAt(x, z);
   const kit = new ObsKit(ctx, 'obs');
   kit.signTexture = atlas;
+  kit.propTexture = props;
+  kit.groundAt = groundAt;
+  if (snowMat) kit.override.set('snow', snowMat);
 
   // Ropeway heading: from the pylon toward the launch mesa (the ropeway once carried supplies there).
   const cableDir = new THREE.Vector3(def.rocket.pos.x - 57, 0, def.rocket.pos.z).normalize();
@@ -56,13 +90,19 @@ const buildObservatory: DecorBuilder = (ctx: DecorContext): MapDecor => {
   buildObservatoryStatic(kit, rnd, decor);
   const domeKit = new ObsKit(ctx, 'obs.dome');
   domeKit.signTexture = atlas;
+  domeKit.propTexture = props;
+  if (snowMat) domeKit.override.set('snow', snowMat);
   const dome = buildDome(domeKit, root, quality);
   const west = buildWest(kit, root, rnd, decor);
   if (west.pennants) root.add(west.pennants.mesh);
   const east = buildEast(kit, root, rnd, decor, cableDir);
   buildCompounds(kit, rnd, decor);
+  const propParts = buildProps(kit, root, mulberry(0x0b5e), decor);
   const back = buildBackdrop(kit, root, def, ctx.materials, quality, rnd);
   kit.build(root);
+  // Wind-blown snow: streamers off ridges, roofs, copings and the rim (one draw).
+  const streamers = buildStreamers(props, prect('streak'), Math.round((low ? 90 : quality.preset === 'medium' ? 200 : 300) * decor), mulberry(0x51ee7));
+  root.add(streamers.mesh);
 
   if (import.meta.env.DEV && typeof location !== 'undefined' && new URLSearchParams(location.search).has('decorStats')) {
     console.info('[observatory] decor tris', kit.meshes.map((m) => `${m.name}:${(m.geometry.attributes.position.count / 3) | 0}`).join(' '));
@@ -127,6 +167,9 @@ const buildObservatory: DecorBuilder = (ctx: DecorContext): MapDecor => {
     // The dome turns slowly (≈ 8 min per revolution) with a gentle tracking wobble.
     const domeT = devDome ?? t;
     dome.rotor.rotation.y = 0.55 + domeT * 0.0125 + Math.sin(domeT * 0.021) * 0.08;
+    streamers.time.value = t;
+    // The anemometer spins with the gusts.
+    propParts.cups.rotation.y -= dt * (7 + 3 * Math.sin(t * 0.7) * Math.sin(t * 1.9));
     // Dishes slowly track their sources.
     for (const d of west.dishes) d.group.rotation.y = d.base + Math.sin(t * d.speed + d.phase) * 0.6 + t * d.speed * 0.2;
     if (pennantTime) pennantTime.value = t;
@@ -199,6 +242,10 @@ const buildObservatory: DecorBuilder = (ctx: DecorContext): MapDecor => {
     beaconKit.dispose();
     beaconMat.dispose();
     kit.dispose();
+    snow.dispose();
+    streamers.dispose();
+    propParts.cupKit.dispose();
+    propParts.cups.removeFromParent();
   };
 
   return { update, showcase, dispose };

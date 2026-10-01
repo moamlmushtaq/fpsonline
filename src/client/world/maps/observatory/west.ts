@@ -216,7 +216,7 @@ export function buildWest(kit: ObsKit, root: THREE.Object3D, rnd: () => number, 
   }
 
   // ── Signal pennants: pastel flags strung between the masts and posts (one animated draw) ──
-  const pennants = decor > 0.3 ? buildPennants(kit, masts) : null;
+  const pennants = decor > 0.3 ? buildPennants(kit, masts, extraPennants()) : null;
   return { dishes, masts, pennants, kits };
 }
 
@@ -259,7 +259,26 @@ function buildDish(k: ObsKit, s: number): void {
 
 const PENNANT_COLORS = [ENV.pastelPink, ENV.pastelYellow, ENV.pastelBlue, ENV.bone, ENV.pastelMint, ENV.terracottaFaded];
 
-function buildPennants(kit: ObsKit, masts: THREE.Vector3[]): WestParts['pennants'] {
+/**
+ * Signal pennants beyond the array: strung from the dorm's long-wire masts to the
+ * generator stacks / boiler tank, from the dome cornice over the courtyards, and
+ * from the wheelhouse up the pylon — the whole summit flutters in the same wind.
+ */
+function extraPennants(): [THREE.Vector3, THREE.Vector3][] {
+  const V = (x: number, y: number, z: number): THREE.Vector3 => new THREE.Vector3(x, y, z);
+  const RT = OBS.dorm.roofTop;
+  const GT = OBS.genTop + 0.15;
+  const lines: [THREE.Vector3, THREE.Vector3][] = [];
+  for (const s of [-1, 1]) {
+    lines.push([V(33.6, RT + 5.4, s * 13), s > 0 ? V(24, GT + 3.0, 19.5) : V(22, GT + 3.4, -17.2)]);
+    lines.push([V(12.2, OBS.baseTop, s * 12.2), V(17.85, GT, s * 15)]);
+    lines.push([V(-12.2, OBS.baseTop, s * 12.2), V(-23.2, OBS.ribTop - 0.2, s * 14)]);
+    lines.push([V(54.6, OBS.wheelTop + 0.2, s * 3.6), V(57.2, 18, s * 1.0)]);
+  }
+  return lines;
+}
+
+function buildPennants(kit: ObsKit, masts: THREE.Vector3[], extra: [THREE.Vector3, THREE.Vector3][] = []): WestParts['pennants'] {
   const pos: number[] = [];
   const nor: number[] = [];
   const col: number[] = [];
@@ -273,6 +292,7 @@ function buildPennants(kit: ObsKit, masts: THREE.Vector3[]): WestParts['pennants
   }
   lines.push([new THREE.Vector3(-57.9, R + 12, -24), new THREE.Vector3(-57.35, 1.2, -36)]);
   lines.push([new THREE.Vector3(-57.9, R + 12, 24), new THREE.Vector3(-57.35, 1.2, 36)]);
+  lines.push(...extra);
   let ci = 0;
   for (const [a, b] of lines) {
     const len = a.distanceTo(b);

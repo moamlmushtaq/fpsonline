@@ -14,6 +14,8 @@ import * as THREE from 'three';
 import { ENV } from '../../../engine/palette';
 import { type DecorKit, type RGB, mix, rgb } from './kit';
 import { REGION, type SignBatch } from './signs';
+import type { CardBatch } from './cards';
+import { LEAF, canopyTree, hedgeRow } from './flora';
 import { climbingVine, drapedVine, glowColor, hangingVine } from './vines';
 
 const K = {
@@ -50,6 +52,10 @@ interface CarOpts {
   /** Cabin covers the rear (wagon/van) or the middle (sedan). */
   kind: 'wagon' | 'sedan' | 'van';
   flat?: number;
+  /** Suitcases strapped to the roof rack, one burst open on the ground. */
+  luggage?: boolean;
+  /** Driver's door left ajar. */
+  doorOpen?: boolean;
 }
 
 /**
@@ -90,6 +96,20 @@ function car(kit: DecorKit, cx: number, cz: number, len: number, wid: number, h:
   // Roof rack on wagons.
   if (o.kind === 'wagon') {
     for (const s of [-1, 1]) box('chrome', s * wid * 0.36, h + 0.04, cab.z, 0.05, 0.05, cab.l * 0.8, K.chrome);
+  }
+  if (o.luggage) {
+    const cols = [K.terraF, K.mustard, K.blue];
+    for (let i = 0; i < 3; i++) box('fabric', (i - 1) * 0.12, h + 0.2 + i * 0.05, cab.z - cab.l * 0.25 + i * 0.55, 0.7 - i * 0.1, 0.28, 0.5, cols[i], 0.04);
+    // The one that fell: lid open, clothes spilled (flat, ≤ 0.3 m).
+    const p = place(wid / 2 + 0.75, 0.13, len * 0.1);
+    kit.boxE('fabric', p, new THREE.Euler(0, ry + 0.4, 0), new THREE.Vector3(0.75, 0.22, 0.5), K.terraF, 0.04);
+    kit.boxE('fabric', p.clone().add(new THREE.Vector3(0, 0.26, 0)).addScaledVector(new THREE.Vector3(Math.sin(ry + 0.4), 0, Math.cos(ry + 0.4)), -0.3), new THREE.Euler(-1.2, ry + 0.4, 0, 'YXZ'), new THREE.Vector3(0.75, 0.05, 0.5), K.terraF, 0.02);
+    for (let i = 0; i < 4; i++) kit.boxE('fabric', place(wid / 2 + 0.6 + rng() * 1.2, 0.04, len * 0.1 + (rng() - 0.5) * 1.4), new THREE.Euler(0, rng() * 3, 0), new THREE.Vector3(0.45, 0.03, 0.35), mix(K.bone, [K.pink, K.blue, K.mint, K.yellow][i], 0.6), 0.01);
+  }
+  if (o.doorOpen) {
+    // Driver's door swung open (hinged at the front of the cabin).
+    const hinge = place(-wid / 2, 0.75, cab.z + cab.l * 0.42);
+    kit.boxE('paint', hinge.clone().add(new THREE.Vector3(-Math.cos(ry - 0.4) * 0.55, 0, Math.sin(ry - 0.4) * 0.55)), new THREE.Euler(0, ry - 0.4 + Math.PI / 2, 0), new THREE.Vector3(1.1, 0.75, 0.06), o.body, 0.03);
   }
   // Overgrowth: a vine across the roof + a few glowing buds, leaves on the hood.
   const a = place(-wid * 0.5, h - 0.05, cab.z - cab.l * 0.3);
@@ -378,39 +398,6 @@ function hydrant(kit: DecorKit, x: number, z: number): void {
   kit.box('paint', x - 0.22, 0.35, z - 0.06, x + 0.22, 0.45, z + 0.06, K.terra, 0.02, { ao: 0 });
 }
 
-function tree(kit: DecorKit, x: number, z: number, h: number, r: number, rng: () => number, vines = true): void {
-  kit.cyl('wood', x, 0, z, 0.14, 0.24, h * 0.55, K.trunk, 7);
-  for (let i = 0; i < 3; i++) {
-    const a = rng() * Math.PI * 2;
-    kit.tube('wood', new THREE.Vector3(x, h * 0.45, z), new THREE.Vector3(x + Math.cos(a) * r * 0.5, h * 0.72, z + Math.sin(a) * r * 0.5), 0.07, K.trunk, 5);
-  }
-  const blobs = 3 + Math.floor(rng() * 3);
-  for (let i = 0; i < blobs; i++) {
-    const a = rng() * Math.PI * 2;
-    const d = rng() * r * 0.45;
-    const s = r * (0.55 + rng() * 0.35);
-    kit.ball('foliage', x + Math.cos(a) * d, h * 0.72 + rng() * h * 0.2, z + Math.sin(a) * d, s, s * 0.72, s, mix(mix(K.sage, K.sand, 0.35), K.olive, rng() * 0.3), 1, { drift: 0.2, shade: (_x, _y, _z, _nx, ny) => (ny < -0.3 ? 0.9 : ny > 0.4 ? 1.14 : 1.04) });
-  }
-  if (vines) {
-    const n = 3 + Math.floor(rng() * 3);
-    for (let i = 0; i < n; i++) {
-      const a = rng() * Math.PI * 2;
-      hangingVine(kit, new THREE.Vector3(x + Math.cos(a) * r * 0.7, h * 0.66, z + Math.sin(a) * r * 0.7), 0.8 + rng() * 1.6, rng, 1.3);
-    }
-  }
-}
-
-function hedge(kit: DecorKit, x0: number, z0: number, x1: number, z1: number, h: number, rng: () => number): void {
-  const len = Math.hypot(x1 - x0, z1 - z0);
-  const n = Math.max(1, Math.round(len / 2.4));
-  for (let i = 0; i < n; i++) {
-    const t = (i + 0.5) / n;
-    const x = x0 + (x1 - x0) * t;
-    const z = z0 + (z1 - z0) * t;
-    kit.ball('foliage', x, h * 0.5, z, 1.5 + rng() * 0.3, h * 0.55, 1.5 + rng() * 0.3, mix(K.olive, K.sage, rng() * 0.6), 1, { drift: 0.25, base: 0, ao: 0.35 });
-  }
-}
-
 function busShelter(kit: DecorKit, signs: Signs, sz: number): void {
   // Collision back panel x 22..29.5, z 6..6.4 (3.9 m: shelter 2.6 m + rooftop
   // billboard). Faces the cross street.
@@ -482,7 +469,31 @@ function pylon(kit: DecorKit, signs: Signs, sz: number, rng: () => number): void
 
 // ── Assembly ────────────────────────────────────────────────────────────────
 
-export function buildProps(kit: DecorKit, signs: Signs, rng: () => number): void {
+/**
+ * Trees (no collision): x, z, height, crown radius, blossom (soft-pink crown).
+ * Along the bounds, in the yards, on the sidewalk strips and the lot corners
+ * (trunks hug walls / corners; crowns stay above head height).
+ */
+export const TREES: readonly (readonly [number, number, number, number, boolean?])[] = [
+  [-52.5, 38, 7, 3.2],
+  [-52.5, -38, 7.5, 3.4],
+  [52.5, 38.5, 7, 3.0],
+  [52.5, -38.5, 6.6, 3.2],
+  [45.2, 13.5, 6.4, 2.8],
+  [45.2, -13.5, 6.8, 2.8],
+  [-46.5, 11.2, 6.2, 2.6],
+  [-46.5, -11.2, 6.6, 2.8],
+  [-31.2, 38.5, 6, 2.6, true],
+  [-31.2, -38.5, 5.6, 2.5],
+  [-53, 8.5, 6.5, 2.6],
+  [-53, -8.5, 7, 2.8],
+  [-16.3, 38.6, 6.2, 2.5],
+  [16.3, -38.6, 6.4, 2.6],
+  [20.2, 38.7, 5.8, 2.4, true],
+  [-20.2, -38.7, 6.0, 2.5],
+];
+
+export function buildProps(kit: DecorKit, signs: Signs, cards: CardBatch, rng: () => number): void {
   // Cars (collision boxes in src/shared/maps/pastel.ts).
   for (const sz of [1, -1]) {
     const Z = (z: number): number => z * sz;
@@ -490,8 +501,10 @@ export function buildProps(kit: DecorKit, signs: Signs, rng: () => number): void
     car(kit, -52, Z(30.75), 5.5, 2, 1.3, 0, { body: sz > 0 ? K.sand : K.mint, wood: true, kind: 'wagon', flat: 0.05 }, rng);
     car(kit, 52, Z(30.75), 5.5, 2, 1.3, 0, { body: sz > 0 ? K.terraF : K.bone, wood: sz > 0, kind: 'wagon' }, rng);
     // Parking lot: wagon (x −10..−8, z 21..25.5) + sedan (x 6..10.5, z 27..29).
-    car(kit, -9, Z(23.25), 4.5, 2, 1.3, 0, { body: sz > 0 ? K.yellow : K.blue, wood: true, kind: 'wagon', flat: 0.08 }, rng);
-    car(kit, 8.25, Z(28), 4.5, 2, 1.3, Math.PI / 2, { body: sz > 0 ? K.pink : K.sage, roof: K.bone, kind: 'sedan' }, rng);
+    // (Slightly askew, abandoned mid-manoeuvre: the yaw stays inside the
+    // collision box to within a few cm.)
+    car(kit, -9, Z(23.25), 4.35, 1.9, 1.3, sz > 0 ? 0.05 : -0.045, { body: sz > 0 ? K.yellow : K.blue, wood: true, kind: 'wagon', flat: 0.08, luggage: true }, rng);
+    car(kit, 8.25, Z(28), 4.35, 1.9, 1.3, Math.PI / 2 + (sz > 0 ? -0.05 : 0.055), { body: sz > 0 ? K.pink : K.sage, roof: K.bone, kind: 'sedan', doorOpen: true }, rng);
     // Street: car at the east curb (x 41.5..43.5, z 19..23.5), camper at the west curb.
     car(kit, 42.5, Z(21.25), 4.5, 2, 1.3, 0, { body: sz > 0 ? K.mint : K.terraF, roof: K.bone, kind: 'sedan', flat: 0.1 }, rng);
     car(kit, 32.3, Z(10), 5, 2.2, 2.2, 0, { body: sz > 0 ? K.blue : K.yellow, roof: K.bone, kind: 'van' }, rng);
@@ -532,34 +545,21 @@ export function buildProps(kit: DecorKit, signs: Signs, rng: () => number): void
   kit.box('chrome', 38, 5.2, -7.28, 44.3, 5.36, -7.12, K.boneShade, 0);
   kit.box('paint', 38.6, 4.15, -7.4, 39.1, 5.2, -7.0, K.mustard, 0.06, { ao: 0 });
   // Trees: along the bounds, in yards and on the sidewalk strips (no collision).
-  const trees: [number, number, number, number][] = [
-    [-52.5, 38, 7, 3.2],
-    [-52.5, -38, 7.5, 3.4],
-    [52.5, 38.5, 7, 3.0],
-    [52.5, -38.5, 6.6, 3.2],
-    [45.2, 13.5, 6.4, 2.8],
-    [45.2, -13.5, 6.8, 2.8],
-    [-46.5, 11.2, 6.2, 2.6],
-    [-46.5, -11.2, 6.6, 2.8],
-    [-31.2, 38.5, 6, 2.6],
-    [-31.2, -38.5, 5.6, 2.5],
-    [-53, 8.5, 6.5, 2.6],
-    [-53, -8.5, 7, 2.8],
-  ];
-  for (const [x, z, h, r] of trees) tree(kit, x, z, h, r, rng);
+  const hang = (p: THREE.Vector3, len: number): void => hangingVine(kit, p, len, rng, 1.3);
+  for (const [x, z, h, r, blossom] of TREES) canopyTree(kit, cards, x, z, h, r, rng, { vines: blossom ? 1 : 3, tint: blossom ? LEAF.blossom : undefined }, hang);
   // Perimeter hedges + fence line along the bounds (visual; the bounds clamp).
   for (const sz of [1, -1]) {
-    hedge(kit, -53.8, 53.6 * sz, -36, 53.6 * sz, 2.4, rng);
-    hedge(kit, 30.5, 53.6 * sz, 53.8, 53.6 * sz, 2.2, rng);
+    hedgeRow(kit, cards, -53.8, 53.6 * sz, -36, 53.6 * sz, 2.4, rng);
+    hedgeRow(kit, cards, 30.5, 53.6 * sz, 53.8, 53.6 * sz, 2.2, rng);
   }
   for (const sx of [1, -1]) {
-    hedge(kit, 53.7 * sx, -40, 53.7 * sx, -26, 2.3, rng);
-    hedge(kit, 53.7 * sx, 26, 53.7 * sx, 40, 2.3, rng);
+    hedgeRow(kit, cards, 53.7 * sx, -40, 53.7 * sx, -26, 2.3, rng);
+    hedgeRow(kit, cards, 53.7 * sx, 26, 53.7 * sx, 40, 2.3, rng);
   }
-  hedge(kit, -53.7, -12, -53.7, -4, 2.2, rng);
-  hedge(kit, -53.7, 4, -53.7, 12, 2.2, rng);
-  hedge(kit, 53.7, -14.5, 53.7, -6.5, 2.4, rng);
-  hedge(kit, 53.7, 6.5, 53.7, 14.5, 2.4, rng);
+  hedgeRow(kit, cards, -53.7, -12, -53.7, -4, 2.2, rng);
+  hedgeRow(kit, cards, -53.7, 4, -53.7, 12, 2.2, rng);
+  hedgeRow(kit, cards, 53.7, -14.5, 53.7, -6.5, 2.4, rng);
+  hedgeRow(kit, cards, 53.7, 6.5, 53.7, 14.5, 2.4, rng);
   // Low chain-link fence (rails + posts) across the street ends behind the bulbs.
   for (const sz of [1, -1]) {
     for (let x = 30; x <= 46; x += 2) kit.cyl('chrome', x, 0, 53.9 * sz, 0.03, 0.03, 1.6, K.chrome, 5);

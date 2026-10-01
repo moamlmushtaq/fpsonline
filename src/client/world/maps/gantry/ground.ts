@@ -9,6 +9,7 @@
 import * as THREE from 'three';
 import { ENV } from '../../../engine/palette';
 import { box, DecorKit } from './kit';
+import { floorDecal } from './props';
 
 const JOINT = '#8f877b';
 
@@ -79,10 +80,12 @@ export function buildGround(kit: DecorKit, rnd: () => number, decor: number): vo
     [40, -8],
     [40, 8],
   ] as [number, number][]) {
-    const g = new THREE.CircleGeometry(0.45, 14);
+    // Cast-iron cover (decal atlas) with a recessed rim.
+    const g = new THREE.RingGeometry(0.5, 0.58, 16, 1);
     g.rotateX(-Math.PI / 2);
-    g.translate(x, 0.011, z);
-    kit.add('metal', g, '#5c574f', { flat: true });
+    g.translate(x, 0.009, z);
+    kit.add('metal', g, '#6d6a64', { flat: true });
+    floorDecal(kit, 'manhole', x, 0.004, z, 1.08, 1.08, (x * 7 + z) % 3);
   }
   // Tyre ruts through the tank-farm sand (two darker strips curving north–south).
   for (const rx of [-40.6, -39.2]) {

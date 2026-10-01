@@ -78,6 +78,9 @@ varying vec2 vUv;
 varying vec3 vW;
 varying float vFogD;
 float h(float p) { return fract(sin(p * 91.7) * 43758.5453); }
+float h2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float n2(vec2 p) { vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(h2(i), h2(i + vec2(1, 0)), f.x), mix(h2(i + vec2(0, 1)), h2(i + vec2(1, 1)), f.x), f.y); }
 void main() {
   // Vertical sheet against the wall; bursts travel along z with random phases.
   float cell = floor(vW.z / 4.0);
@@ -88,8 +91,13 @@ void main() {
   float cx = fract(vW.z / 4.0) - 0.5;
   float height = (0.3 + 0.7 * smoothstep(0.0, 0.3, t)) * (0.6 + 0.4 * h(cell + 3.0));
   float shape = (1.0 - smoothstep(0.15, 0.45, abs(cx) + vUv.y * 0.25)) * (1.0 - smoothstep(height * 0.6, height, vUv.y));
-  float grain = step(0.45, fract(sin(dot(floor(vW.zy * 7.0 + t * 30.0), vec2(12.9898, 78.233))) * 43758.5453));
-  float a = shape * life * (0.55 + 0.45 * grain);
+  // Soft spray texture (smooth value noise rising with the burst) — the old
+  // per-cell step read as blocky pixels at the pier's grazing angle.
+  float grain = smoothstep(0.42, 0.8, n2(vec2(vW.z * 3.4 + cell * 3.1, vUv.y * 8.0 - t * 5.0)));
+  // A sheet seen edge-on (from the pier, along the wall) fades out instead of
+  // smearing into one big blob.
+  float face = smoothstep(0.12, 0.45, abs(normalize(vW - cameraPosition).x));
+  float a = shape * life * grain * face;
   if (a < 0.02) discard;
   vec3 col = mix(uColor, fogColor, 1.0 - exp(-fogDensity * fogDensity * vFogD * vFogD));
   gl_FragColor = vec4(col, a * 0.9);

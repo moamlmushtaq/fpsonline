@@ -30,9 +30,12 @@ import type { BackdropOptions } from '../map-builder';
 import { buildBackdrop } from './pastel/backdrop';
 import { buildGround } from './pastel/ground';
 import { bungalow, chapel, cornerHouse, dinerAndGas, garageRow, houseLightPools, poolHouse, screenWall, spawnWall, twoStorey } from './pastel/houses';
+import { CardBatch } from './pastel/cards';
+import { DecalBatch } from './pastel/decals';
 import { DecorKit, mix, rgb } from './pastel/kit';
-import { GAL, buildMall } from './pastel/mall';
-import { buildProps } from './pastel/props';
+import { GAL, atriumMotes, buildMall, mallDressing } from './pastel/mall';
+import { buildProps, TREES } from './pastel/props';
+import { type Dress, groundStory, lawnLife, lotProps, overgrowth, treeFloor, yardProps } from './pastel/dressing';
 import { SignBatch, signMaterials } from './pastel/signs';
 import { buildCurtains, climbingVine, hangingVine } from './pastel/vines';
 import { createWaterSurface } from './pastel/water';
@@ -46,10 +49,14 @@ const build: DecorBuilder = (ctx: DecorContext): MapDecor => {
   const kit = new DecorKit(ctx);
   const signSet = signMaterials(ctx.materials, kit.low);
   const signs = { board: new SignBatch(), lit: new SignBatch() };
+  const cards = new CardBatch();
+  const decals = new DecalBatch();
 
   // ── Static decor ──
   buildGround(kit, rng);
   const mall = buildMall(kit, signs, def.lighting, rng);
+  mallDressing(kit, cards, signs, rng);
+  atriumMotes(kit, def.lighting, rng);
 
   const styles = [
     { wall: rgb(ENV.pastelPink), accent: rgb(ENV.terracotta), shutters: rgb(ENV.sage) },
@@ -81,7 +88,16 @@ const build: DecorBuilder = (ctx: DecorContext): MapDecor => {
   }
   chapel(kit, signs, rng);
   dinerAndGas(kit, signs, rng);
-  buildProps(kit, signs, rng);
+  buildProps(kit, signs, cards, rng);
+
+  // Set dressing: ground storytelling, lot / yard props, the overgrowth.
+  const dress: Dress = { kit, cards, decals, signs, rng };
+  const puddles = groundStory(dress);
+  lotProps(dress);
+  yardProps(dress);
+  overgrowth(dress);
+  lawnLife(dress);
+  for (const [x, z, , r] of TREES) treeFloor(dress, x, z, r);
 
   // Glowing vines in the shade: under the vault, along the gallery fascias,
   // on the mall's east (shaded) facade and the garage backs.
@@ -117,9 +133,6 @@ const build: DecorBuilder = (ctx: DecorContext): MapDecor => {
       if (Math.abs(z) < 5.5 || rng() < 0.4) continue;
       hangingVine(kit, new THREE.Vector3(16.25, 7.95, z), 0.8 + rng() * 3, rng, 1.2);
     }
-    for (const x of [-12.5, -9.8, 9.7, 12.8]) {
-      kit.ball('foliage', x, 0.35, 12.9 * s, 1.1 + rng() * 0.4, 0.7, 0.7, mix(rgb(ENV.olive), rgb(ENV.sage), rng()), 1, { drift: 0.2 });
-    }
   }
 
   // Walk-through vine curtains (collision: pool pergolas + back-lot pergolas).
@@ -147,8 +160,10 @@ const build: DecorBuilder = (ctx: DecorContext): MapDecor => {
     kit.add(bounce);
   }
 
-  const back = buildBackdrop(kit, def, rng);
+  const back = buildBackdrop(kit, def, rng, cards);
   const staticCalls = kit.build();
+  cards.build(kit, ctx.materials);
+  decals.build(kit, ctx.materials);
 
   // Signs (two draws for every painted/lit sign in town).
   if (!signs.board.empty) kit.add(signs.board.build(kit.ownMaterial(signSet.board), 'pastel.signs')).receiveShadow = kit.q.shadows !== 'off';
@@ -163,7 +178,7 @@ const build: DecorBuilder = (ctx: DecorContext): MapDecor => {
   puddle.rotateX(-Math.PI / 2);
   puddle.scale(2.5, 1, 3.2);
   puddle.translate(-42, -1.175, -0.6);
-  const waterGeo = kit.ownGeometry(mergeTwo(atrium, puddle));
+  const waterGeo = kit.ownGeometry(mergeWater(atrium, puddle, puddles));
   const water = kit.add(createWaterSurface(def.lighting, waterGeo, 0, 0.82));
   const waterMat = water.material as THREE.ShaderMaterial;
   kit.ownMaterial(waterMat);
@@ -212,16 +227,22 @@ const build: DecorBuilder = (ctx: DecorContext): MapDecor => {
   };
 };
 
-function mergeTwo(a: THREE.BufferGeometry, b: THREE.BufferGeometry): THREE.BufferGeometry {
+/** Atrium + pool puddle (full water) + street puddles (feathered rims) in one geometry. */
+function mergeWater(a: THREE.BufferGeometry, b: THREE.BufferGeometry, street: { pos: number[]; edge: number[] }): THREE.BufferGeometry {
   const A = a.index ? a.toNonIndexed() : a;
   const B = b.index ? b.toNonIndexed() : b;
   const pa = A.attributes.position.array as ArrayLike<number>;
   const pb = B.attributes.position.array as ArrayLike<number>;
-  const pos = new Float32Array(pa.length + pb.length);
+  const n = pa.length + pb.length + street.pos.length;
+  const pos = new Float32Array(n);
   pos.set(pa, 0);
   pos.set(pb, pa.length);
+  pos.set(street.pos, pa.length + pb.length);
+  const edge = new Float32Array(n / 3).fill(1);
+  edge.set(street.edge, (pa.length + pb.length) / 3);
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('aEdge', new THREE.BufferAttribute(edge, 1));
   g.computeBoundingSphere();
   for (const x of [a, b, A, B]) x.dispose();
   return g;

@@ -11,6 +11,8 @@ import type { MapDef } from '../../../../shared/maps/types';
 import type { MapRuntimeState } from '../../../contracts';
 import { ENV } from '../../../engine/palette';
 import { createLaunchRocket, type LaunchRocket } from '../../rocket';
+import type { CardBatch } from './cards';
+import { crown } from './flora';
 import { type DecorKit, mix, rgb } from './kit';
 
 const HOUSE_COLS = [ENV.pastelPink, ENV.pastelMint, ENV.pastelYellow, ENV.pastelBlue, ENV.bone, ENV.sandLight].map((h) => rgb(h));
@@ -49,9 +51,14 @@ function farHouse(kit: DecorKit, x: number, z: number, ry: number, rng: () => nu
   kit.boxR('window', x + face.x, h * 0.45, z + face.z, w * 0.5, 1.0, 0.05, ry, rgb('#5d6670'), 0, { ao: 0 });
 }
 
+let CARDS: CardBatch | null = null;
+
 function lollipop(kit: DecorKit, x: number, z: number, s: number, rng: () => number): void {
-  kit.cyl('wood', x, 0, z, 0.2 * s, 0.3 * s, 3 * s, rgb('#7a6a58'), 6);
-  kit.ball('foliage', x, 4.2 * s, z, 2.4 * s, 2.0 * s, 2.4 * s, mix(mix(rgb(ENV.sage), rgb(ENV.sand), 0.2), rgb(ENV.olive), rng() * 0.5), 1, { drift: 0.2 });
+  kit.cyl('wood', x, 0, z, 0.2 * s, 0.3 * s, 3.2 * s, rgb('#6e6052'), 6);
+  const tint = mix(mix(rgb(ENV.sage), rgb(ENV.sand), 0.2), rgb(ENV.olive), rng() * 0.5);
+  // Far street trees: a small painted crown (dark core + a few leaf cards).
+  if (CARDS) crown(kit, CARDS, new THREE.Vector3(x, 4.3 * s, z), 2.4 * s, 2.0 * s, 2.4 * s, rng, { tint, density: 2.6, sway: 0.1 });
+  else kit.ball('foliage', x, 4.2 * s, z, 2.4 * s, 2.0 * s, 2.4 * s, tint, 1, { drift: 0.2 });
 }
 
 export interface BackdropParts {
@@ -62,7 +69,8 @@ export interface BackdropParts {
   dispose(): void;
 }
 
-export function buildBackdrop(kit: DecorKit, def: MapDef, rng: () => number): BackdropParts {
+export function buildBackdrop(kit: DecorKit, def: MapDef, rng: () => number, cards?: CardBatch): BackdropParts {
+  CARDS = cards ?? null;
   const detail = kit.detail;
   // ── The rest of Halcyon Heights: house rows along a street grid ──
   // Blocks of 16 m lots facing streets every 36 m, beyond a 58 m margin.
@@ -192,6 +200,7 @@ export function buildBackdrop(kit: DecorKit, def: MapDef, rng: () => number): Ba
   kit.box('concrete', pad.x - 26 * ps, pad.y - 3, pad.z - 26 * ps, pad.x + 26 * ps, pad.y, pad.z + 26 * ps, rgb(ENV.concrete), 0, { ao: 0 });
   kit.box('plaster', pad.x + 22 * ps, pad.y, pad.z - 10 * ps, pad.x + 34 * ps, pad.y + 7 * ps, pad.z + 6 * ps, rgb(ENV.bone), 0.2, { ao: 0.2, base: pad.y });
 
+  CARDS = null;
   let blinkT = 0;
   const beaconOn = new THREE.Color(ENV.glowGold).multiplyScalar(3.2);
   const beaconOff = new THREE.Color(ENV.glowGold).multiplyScalar(0.5);

@@ -434,6 +434,44 @@ function paintWindow(c: CanvasRenderingContext2D, [x, y, w, h]: R, warm: boolean
     c.arc(px, py, 2 + r() * 6, 0, Math.PI * 2);
     c.fill();
   }
+  // Frost ferns creeping in from the corners and the sill (branching crystal strokes).
+  const fern = (fx: number, fy: number, ang: number, len: number, depth: number): void => {
+    const ex = fx + Math.cos(ang) * len, ey = fy + Math.sin(ang) * len;
+    c.strokeStyle = `rgba(255,255,255,${0.22 + depth * 0.1})`;
+    c.lineWidth = 0.6 + depth * 0.5;
+    c.beginPath();
+    c.moveTo(fx, fy);
+    c.lineTo(ex, ey);
+    c.stroke();
+    if (depth <= 0) return;
+    for (let k = 1; k <= 3; k++) {
+      const t = k / 4;
+      const bx = fx + (ex - fx) * t, by = fy + (ey - fy) * t;
+      fern(bx, by, ang + 0.75, len * 0.38, depth - 1);
+      fern(bx, by, ang - 0.75, len * 0.38, depth - 1);
+    }
+  };
+  c.save();
+  c.beginPath();
+  c.rect(x, y, w, h);
+  c.clip();
+  for (let i = 0; i < 7; i++) {
+    const fx = x + r() * w;
+    fern(fx, y + h, -Math.PI / 2 + (r() - 0.5) * 1.1, h * (0.18 + r() * 0.2), 2);
+  }
+  fern(x, y + h, -Math.PI / 4, h * 0.36, 2);
+  fern(x + w, y + h, (-3 * Math.PI) / 4, h * 0.34, 2);
+  fern(x, y, Math.PI / 4, h * 0.22, 2);
+  fern(x + w, y, (3 * Math.PI) / 4, h * 0.2, 1);
+  // Rime haze in the corners.
+  for (const [cx, cy] of [[x, y + h], [x + w, y + h], [x, y], [x + w, y]]) {
+    const g2 = c.createRadialGradient(cx, cy, 0, cx, cy, w * 0.55);
+    g2.addColorStop(0, 'rgba(255,255,255,0.38)');
+    g2.addColorStop(1, 'rgba(255,255,255,0)');
+    c.fillStyle = g2;
+    c.fillRect(x, y, w, h);
+  }
+  c.restore();
   // Mullion shadow.
   c.fillStyle = 'rgba(60,50,40,0.35)';
   c.fillRect(x + w / 2 - 2, y, 4, h);

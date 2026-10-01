@@ -22,6 +22,9 @@ const STEEL_DARK = ENV.metalDark;
 export function lamp(kit: DecorKit, x: number, y: number, z: number, nx: number, nz: number, color: string = ENV.glowGold, poolSize = 3.2, floorY: number | null = 0): void {
   kit.add('metal', boxC(x - nx * 0.06, y, z - nz * 0.06, nz !== 0 ? 0.42 : 0.12, 0.22, nx !== 0 ? 0.42 : 0.12), STEEL_DARK, { flat: true });
   kit.add('glow', boxC(x + nx * 0.02, y, z + nz * 0.02, nz !== 0 ? 0.34 : 0.1, 0.14, nx !== 0 ? 0.34 : 0.1), color, { flat: true, k: 3.2 });
+  // Wire cage over the lens (two bars + a hoop): reads as a caged service lamp.
+  for (const dy of [-0.045, 0.045]) kit.add('metal', boxC(x + nx * 0.085, y + dy, z + nz * 0.085, nz !== 0 ? 0.38 : 0.014, 0.014, nx !== 0 ? 0.38 : 0.014), STEEL_DARK, { flat: true });
+  kit.add('metal', boxC(x + nx * 0.085, y, z + nz * 0.085, 0.014, 0.17, 0.014), STEEL_DARK, { flat: true });
   kit.add('pool', quad(x + nx * 0.05, y - 0.2, z + nz * 0.05, poolSize, poolSize * 0.8, nx, nz), color, { flat: true, k: 0.42 });
   if (floorY !== null) kit.add('pool', floorQuad(x + nx * 0.9, floorY + 0.03, z + nz * 0.9, poolSize * 1.1, poolSize * 1.1), color, { flat: true, k: 0.22 });
 }

@@ -19,7 +19,9 @@ import { createLightShaft } from '../../../engine/atmosphere';
 import { ENV } from '../../../engine/palette';
 import { type DecorKit, type RGB, mix, rgb } from './kit';
 import { REGION, SHOP_NAMES, type SignBatch, shopSub } from './signs';
-import { hangingVine } from './vines';
+import type { CardBatch } from './cards';
+import { LEAF, blossomBed, cushion, fern, fringe, glowPatch, lanternPlant } from './flora';
+import { drapedVine, hangingVine } from './vines';
 
 export const MALL_Y = -0.35;
 export const GAL = 3.2;
@@ -479,20 +481,14 @@ function interior(kit: DecorKit, signs: { board: SignBatch; lit: SignBatch }, rn
   // Fountain island + "Sunrise" sculpture.
   fountain(kit, rng);
 
-  // Floating debris & leaves on the water, a tipped shopping cart.
-  const n = Math.round(40 * kit.detail);
-  for (let i = 0; i < n; i++) {
-    const x = -13.5 + rng() * 27;
-    const z = -10.5 + rng() * 21;
-    if (Math.abs(x) < 3 && Math.abs(z) < 3) continue;
-    kit.boxR('foliage', x, -0.19, z, 0.18 + rng() * 0.2, 0.01, 0.1 + rng() * 0.1, rng() * Math.PI, mix(COL.sage, COL.mustard, rng() * 0.6), 0, { drift: 0.2 });
-  }
+  // Floating leaves / lily pads: mallDressing() (leaf cards). A tipped cart.
   cart(kit, -11.6, MALL_Y, -7.2, 0.6);
   cart(kit, 11.4, GAL, 8.6, -2.1);
 }
 
-function cart(kit: DecorKit, x: number, y: number, z: number, ry: number): void {
-  const m = new THREE.Matrix4().makeRotationY(ry).setPosition(x, y, z);
+/** Wire shopping cart; `roll` ≠ 0 lays it on its side (about its long axis). */
+export function cart(kit: DecorKit, x: number, y: number, z: number, ry: number, roll = 0): void {
+  const m = new THREE.Matrix4().makeRotationY(ry).multiply(new THREE.Matrix4().makeRotationZ(roll)).setPosition(x, y + (roll ? 0.33 : 0), z);
   const p = (a: number, b: number, c: number): THREE.Vector3 => new THREE.Vector3(a, b, c).applyMatrix4(m);
   const bars: [number, number, number, number, number, number][] = [
     [-0.3, 0.45, -0.45, -0.3, 0.95, 0.45],
@@ -636,4 +632,235 @@ function fountain(kit: DecorKit, rng: () => number): void {
   // Slim column carrying the bridge, behind the fan's crown.
   kit.box('paint', -0.22, 2.35, -0.22, 0.22, GAL - 0.3, 0.22, COL.bone, 0.06, { ao: 0 });
   kit.box('chrome', -2.4, GAL - 0.42, -0.3, 2.4, GAL - 0.3, 0.3, COL.bone, 0.03, { ao: 0 });
+}
+
+// ── Interior dressing (overgrowth, mannequins, blade signs, motes) ──────────
+
+/** Shop-window mannequin (bone fibreglass, a faded dress on some). */
+function mannequin(kit: DecorKit, x: number, y: number, z: number, ry: number, tilt: number, dress: RGB | null): void {
+  const M = new THREE.Matrix4().makeTranslation(x, y, z).multiply(new THREE.Matrix4().makeRotationY(ry)).multiply(new THREE.Matrix4().makeRotationX(tilt));
+  const P = (a: number, b: number, c: number): THREE.Vector3 => new THREE.Vector3(a, b, c).applyMatrix4(M);
+  const blob = (a: number, b: number, c: number, rx: number, ry2: number, rz: number, col: RGB): void => {
+    const m = M.clone().multiply(new THREE.Matrix4().makeTranslation(a, b, c)).multiply(new THREE.Matrix4().makeScale(rx, ry2, rz));
+    kit.geo('paint', kit.sphereGeo(kit.low ? 0 : 1), m, col, { drift: 0.04 });
+  };
+  const skin = mix(COL.bone, COL.pink, 0.15);
+  blob(0, 1.72, 0, 0.1, 0.13, 0.11, skin); // head
+  kit.tube('paint', P(0, 1.5, 0), P(0, 1.62, 0), 0.045, skin, 6);
+  blob(0, 1.3, 0, 0.19, 0.27, 0.12, skin); // torso
+  blob(0, 0.98, 0, 0.17, 0.12, 0.11, skin); // hips
+  for (const s of [-1, 1]) {
+    kit.tube('paint', P(s * 0.2, 1.48, 0), P(s * 0.27, 1.12, 0.04), 0.035, skin, 5);
+    kit.tube('paint', P(s * 0.27, 1.12, 0.04), P(s * 0.25, 0.86, 0.12), 0.03, skin, 5);
+    kit.tube('paint', P(s * 0.09, 0.95, 0), P(s * 0.1, 0.06, 0.02), 0.05, skin, 5);
+  }
+  if (dress) {
+    const g = kit.cylGeo(0.16, 0.34, kit.low ? 8 : 12);
+    kit.geo('fabric', g, M.clone().multiply(new THREE.Matrix4().makeTranslation(0, 0.98, 0)).multiply(new THREE.Matrix4().makeScale(1, 0.62, 0.8)), dress, { drift: 0.08 });
+    blob(0, 1.33, 0, 0.2, 0.22, 0.13, dress);
+  }
+  // Stand: chrome rod into a round base (standing ones only).
+  if (Math.abs(tilt) < 0.3) {
+    kit.tube('chrome', P(0, 0.05, -0.12), P(0, 0.98, -0.08), 0.015, COL.chrome, 4);
+    kit.cyl('chrome', x, y, z, 0.24, 0.26, 0.03, COL.chrome, 12);
+  }
+}
+
+/**
+ * Atrium life: lily pads + glowing blossoms on the flood, reeds and ferns at
+ * the shop fronts, lantern plants in the dry fountain basin, fringes off the
+ * gallery and bridge edges (above head height), vines on the escalators,
+ * mannequins (standing in the water, toppled, one on the gallery), blade signs
+ * under the gallery soffits and escalator newels.
+ */
+export function mallDressing(kit: DecorKit, cards: CardBatch, signs: { board: SignBatch; lit: SignBatch }, rng: () => number): void {
+  const det = kit.detail;
+  const WY = -0.188; // just above the flood plane
+  const blocked = (x: number, z: number): boolean => (Math.abs(x) < 3.0 && Math.abs(z) < 3.0) || (Math.abs(x) > 3.7 && Math.abs(x) < 8.3 && Math.abs(z) > 1.6 && Math.abs(z) < 10.3);
+  // Lily pads (clover cushions) + glowing blossom rafts.
+  const pads = Math.round(30 * det);
+  for (let i = 0, n = 0; i < pads * 4 && n < pads; i++) {
+    const x = -14 + rng() * 28;
+    const z = -11 + rng() * 22;
+    if (blocked(x, z)) continue;
+    n++;
+    cushion(cards, x, WY - 0.02, z, 0.7 + rng() * 1.1, rng, mix(LEAF.olive, LEAF.sage, rng() * 0.6));
+    if (rng() < 0.45) blossomBed(cards, x + (rng() - 0.5) * 0.4, WY - 0.01, z + (rng() - 0.5) * 0.4, 0.7 + rng() * 0.5, rng);
+  }
+  // Reeds / ferns at the shop fronts (in the water) + lantern plants.
+  for (const s of [1, -1]) {
+    for (const z of [6.2, 8.4, 10.6, -6.4, -9.1]) {
+      if (rng() > 0.4 + det * 0.6) continue;
+      fern(cards, 14.0 * s, WY, z + (rng() - 0.5) * 0.6, 0.45 + rng() * 0.3, rng);
+      if (rng() < 0.5) lanternPlant(kit, cards, 13.7 * s, WY, z + 0.5, 0.7 + rng() * 0.4, rng);
+    }
+    for (const x of [-13, -10, 9.5, 12.5]) {
+      if (rng() > 0.4 + det * 0.6) continue;
+      fern(cards, x + (rng() - 0.5), WY, 10.95 * s, 0.4 + rng() * 0.3, rng);
+    }
+    // Upper gallery: plants reclaiming the corners and storefront bases.
+    for (const z of [-11.0, -7.8, 7.6, 11.0]) {
+      if (rng() > 0.35 + det * 0.65) continue;
+      glowPatch(kit, cards, 14.0 * s, GAL + 0.005, z, 0.7, rng);
+    }
+    // Fringes off the gallery fascias (bottom ≥ 2.3 m: above heads).
+    for (const [za, zb] of [
+      [-11.2, -2.4],
+      [2.4, 11.2],
+    ] as const) {
+      const len = zb - za;
+      const k = Math.round(len / 2.2);
+      for (let i = 0; i < k; i++) {
+        if (rng() > 0.65) continue;
+        const a = new THREE.Vector3(10 * s - s * 0.09, GAL - 0.05, za + (len * i) / k);
+        const b = new THREE.Vector3(10 * s - s * 0.09, GAL - 0.05, za + (len * (i + 1)) / k);
+        fringe(cards, a, b, new THREE.Vector3(-s, 0, 0), 0.75, rng);
+      }
+    }
+    // Bridge edges.
+    for (const [xa, xb] of [
+      [-9.6, -4.2],
+      [4.2, 9.6],
+    ] as const) fringe(cards, new THREE.Vector3(xa, GAL - 0.05, 1.82 * s), new THREE.Vector3(xb, GAL - 0.05, 1.82 * s), new THREE.Vector3(0, 0, s), 0.7, rng);
+    // Blade signs hanging under the gallery soffit, perpendicular to the shops.
+    for (const [z, shop] of [
+      [5.7, 1 + (s > 0 ? 0 : 6)],
+      [-10.9, 4 + (s > 0 ? 0 : 3)],
+    ] as const) {
+      const c = new THREE.Vector3(13.75 * s, 2.45, z * s);
+      kit.tube('chrome', new THREE.Vector3(14.45 * s, 2.75, z * s), new THREE.Vector3(13.15 * s, 2.75, z * s), 0.02, COL.dark, 4);
+      for (const o of [-0.38, 0.38]) kit.tube('chrome', new THREE.Vector3(c.x + o * s, 2.75, c.z), new THREE.Vector3(c.x + o * s, 2.62, c.z), 0.006, COL.dark, 3);
+      kit.box('paint', c.x - 0.47, 2.27, c.z - 0.035, c.x + 0.47, 2.63, c.z + 0.035, mix(COL.bone, COL.terraF, 0.2), 0.02, { ao: 0 });
+      const sub = shopSub(shop % SHOP_NAMES.length);
+      signs.board.quad(REGION.shops, c.clone().setZ(c.z + 0.04), 0.86, 0.3, new THREE.Vector3(0, 0, 1), sub);
+      signs.board.quad(REGION.shops, c.clone().setZ(c.z - 0.04), 0.86, 0.3, new THREE.Vector3(0, 0, -1), sub);
+    }
+  }
+  // Lantern plants growing out of the dry fountain basin (around the screen).
+  for (const [x, z] of [
+    [-1.4, 1.3],
+    [1.5, -1.2],
+    [0.4, 1.6],
+    [-1.2, -1.5],
+  ] as const) {
+    if (rng() > 0.5 + det * 0.5) continue;
+    lanternPlant(kit, cards, x, 0.46, z, 0.8 + rng() * 0.4, rng);
+  }
+  // Mannequins: two standing in the water by the shop glass, one toppled
+  // face-down in the flood, one on the gallery by a broken railing.
+  mannequin(kit, 13.75, MALL_Y, 7.2, -Math.PI / 2 + 0.3, 0, mix(COL.mint, COL.bone, 0.3));
+  mannequin(kit, -13.8, MALL_Y, -9.9, Math.PI / 2 - 0.2, 0, null);
+  mannequin(kit, -11.6, MALL_Y + 0.12, 5.3, 2.2, -Math.PI / 2 + 0.05, mix(COL.pink, COL.bone, 0.2));
+  mannequin(kit, 12.9, GAL, -9.6, -Math.PI / 2 - 0.4, 0, mix(rgb(ENV.pastelYellow), COL.bone, 0.3));
+  if (!kit.low) mannequin(kit, 10.9, MALL_Y + 0.1, -2.9, -0.6, Math.PI / 2 - 0.15, null);
+  // Escalators: rounded handrail newels at both ends + a glowing vine
+  // twining up the outer balustrade.
+  const arc = new THREE.TorusGeometry(0.46, 0.045, 4, kit.low ? 6 : 10, Math.PI);
+  arc.rotateZ(-Math.PI / 2);
+  for (const sx of [1, -1]) {
+    for (const sz of [1, -1]) {
+      const x0 = Math.min(3.9 * sx, 8.1 * sx);
+      const x1 = Math.max(3.9 * sx, 8.1 * sx);
+      for (const xc of [x0 + 0.12, x1 - 0.12, (x0 + x1) / 2]) {
+        for (const [zEnd, yc, out] of [
+          [10.1 * sz, MALL_Y + 0.52, sz],
+          [(1.75 - 0.6) * sz, GAL + 0.52, -sz],
+        ] as const) {
+          const m = new THREE.Matrix4().makeRotationY(out > 0 ? -Math.PI / 2 : Math.PI / 2).setPosition(xc, yc, zEnd);
+          kit.geo('paint', arc, m, COL.dark, { drift: 0 });
+        }
+      }
+      const xo = sx > 0 ? x1 - 0.12 : x0 + 0.12;
+      drapedVine(kit, new THREE.Vector3(xo, MALL_Y + 1.02, 9.6 * sz), new THREE.Vector3(xo, GAL + 1.02, 1.9 * sz), 0.25, rng, 2);
+    }
+  }
+  arc.dispose();
+}
+
+// Mote shader: slow drifting, twinkling warm dust (additive points).
+const MOTE_VERT = /* glsl */ `
+attribute float aSeed;
+uniform float uTime;
+uniform float uScale;
+varying float vA;
+#include <fog_pars_vertex>
+void main() {
+  vec3 p = position;
+  float t = uTime * (0.05 + aSeed * 0.05) + aSeed * 40.0;
+  p += vec3(sin(t * 1.3) * 0.5, sin(t * 0.9 + aSeed * 7.0) * 0.6, cos(t * 1.1) * 0.5);
+  vec4 mvPosition = modelViewMatrix * vec4(p, 1.0);
+  gl_Position = projectionMatrix * mvPosition;
+  gl_PointSize = clamp(uScale * (0.025 + aSeed * 0.02) / -mvPosition.z, 1.0, 6.0);
+  vA = 0.35 + 0.65 * pow(0.5 + 0.5 * sin(uTime * (0.6 + aSeed) + aSeed * 30.0), 2.0);
+  #include <fog_vertex>
+}`;
+const MOTE_FRAG = /* glsl */ `
+uniform vec3 uColor;
+varying float vA;
+#include <fog_pars_fragment>
+void main() {
+  vec2 c = gl_PointCoord - 0.5;
+  float d = 1.0 - smoothstep(0.1, 0.5, length(c));
+  gl_FragColor = vec4(uColor * d * vA, 1.0);
+  #include <fog_fragment>
+}`;
+
+/**
+ * Dust motes drifting through the atrium's sun (every preset; one draw): on
+ * Low / Medium, which have no light-shaft cones, they carry the "light pouring
+ * through the broken vault" read on their own; denser along the sun paths.
+ */
+export function atriumMotes(kit: DecorKit, lighting: MapLighting, rng: () => number): THREE.Points {
+  const n = kit.low ? 90 : kit.q.lightShafts ? 110 : 160;
+  const d = new THREE.Vector3(-lighting.sunDir.x, -lighting.sunDir.y, -lighting.sunDir.z).normalize();
+  const origins = [
+    [-6.5, 11.6, 8.5],
+    [-2.5, 12.2, 5.0],
+    [-7.5, 11.2, 0.5],
+    [-4.5, 11.9, -4.5],
+  ];
+  const pos = new Float32Array(n * 3);
+  const seed = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    let x: number;
+    let y: number;
+    let z: number;
+    if (i % 4 !== 3) {
+      const o = origins[i % origins.length];
+      const t = 2 + rng() * 11;
+      x = o[0] + d.x * t + (rng() - 0.5) * 2.2;
+      y = o[1] + d.y * t + (rng() - 0.5) * 2.2;
+      z = o[2] + d.z * t + (rng() - 0.5) * 2.2;
+    } else {
+      x = -13 + rng() * 26;
+      y = 0.4 + rng() * 9;
+      z = -10.5 + rng() * 21;
+    }
+    pos[i * 3] = THREE.MathUtils.clamp(x, -14, 14);
+    pos[i * 3 + 1] = THREE.MathUtils.clamp(y, 0.2, 11);
+    pos[i * 3 + 2] = THREE.MathUtils.clamp(z, -11, 11);
+    seed[i] = rng();
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('aSeed', new THREE.BufferAttribute(seed, 1));
+  g.computeBoundingSphere();
+  kit.ownGeometry(g);
+  const mat = kit.ownMaterial(
+    new THREE.ShaderMaterial({
+      uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uColor: { value: new THREE.Color('#ffe0a8').multiplyScalar(kit.low ? 1.1 : 1.5) }, uScale: { value: 900 }, uTime: { value: 0 } }]),
+      vertexShader: MOTE_VERT,
+      fragmentShader: MOTE_FRAG,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      fog: true,
+    }),
+  );
+  mat.uniforms.uTime = kit.time;
+  const pts = new THREE.Points(g, mat);
+  pts.name = 'pastel.motes';
+  pts.renderOrder = 22;
+  pts.userData.noShadow = true;
+  return kit.add(pts);
 }

@@ -17,6 +17,7 @@ import { ENV } from '../../../engine/palette';
 import { rect } from './atlas';
 import { beam, box, cable, cyl, cylAB, lattice, ObsKit, quad, rbox, smooth, sphere, floorQuad } from './kit';
 import { drift, lichen } from './rocks';
+import { crate as plankCrate } from './props';
 
 const WALL = '#d3cbbc';
 
@@ -89,8 +90,7 @@ export function buildCompounds(kit: ObsKit, rnd: () => number, decor: number): v
     // Station sign over the centre gate (facing the map; a solid board behind it for the yard side).
     kit.add('sign', quad(0, 5.0, s * 41.72, 6.4, 0.8, 0, -s, rect(s > 0 ? 'signTerminal' : 'signQuarters', 2)), '#ffffff', { flat: true });
     kit.add('metal', box(-3.3, 4.55, Math.min(s * 41.75, s * 41.95), 3.3, 5.45, Math.max(s * 41.75, s * 41.95)), '#34302c', { flat: true });
-    // Yard paving + snow drifts in the corners.
-    kit.add('concrete', box(-57, 0, Math.min(s * 45.6, s * 60), 57, 0.02, Math.max(s * 45.6, s * 60)), '#c8c0b2', { flat: true, snow: 0.35 });
+    // Yard: swept, trodden snow over the paving (drawn by the snowfield) + drifts in the corners.
     drift(kit, -55.5, 0, s * 47, 1.3, 2.4, 0.4, 0);
     drift(kit, 55.5, 0, s * 47.5, 1.3, 2.6, 0.45, 0);
     drift(kit, -20, 0, s * 43.6, 3.5, 0.6, 0.3, 0);
@@ -287,11 +287,10 @@ function lampPost(kit: ObsKit, x: number, z: number): void {
 
 // ── Courtyards ──────────────────────────────────────────────────────────────
 
+/** Courtyard crate: the stencilled plank crate from props.ts (palette tint lifted a touch so it reads in the blue shade). */
 function crate(kit: ObsKit, x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, color = '#b39a7f'): void {
-  kit.add('wood', rbox(x0, y0, z0, x1, y1, z1, 0.03), color, { base: 0 });
-  // Battens.
-  kit.add('wood', box(x0 - 0.02, y0 + 0.08, z0 - 0.02, x1 + 0.02, y0 + 0.2, z1 + 0.02), '#6b5240', { flat: true, snow: 0 });
-  kit.add('wood', box(x0 - 0.02, y1 - 0.2, z0 - 0.02, x1 + 0.02, y1 - 0.08, z1 + 0.02), '#6b5240', { flat: true, snow: 0 });
+  const c = new THREE.Color(color).lerp(new THREE.Color('#e9dccb'), 0.35);
+  plankCrate(kit, x0, y0, z0, x1, y1, z1, `#${c.getHexString()}`, Math.round(Math.abs(x0 * 3 + z0 * 7)) % 2);
 }
 
 function buildCourtyards(kit: ObsKit, rnd: () => number, decor: number): void {
@@ -332,7 +331,6 @@ function buildCourtyards(kit: ObsKit, rnd: () => number, decor: number): void {
       crate(kit, -23, 0, a, -19.4, 1.45, b);
       crate(kit, -19.4, 0, a, -16, 1.45, b, '#c1a585');
       crate(kit, -22.6, 1.45, a + 0.2, -18.6, 2.8, b - 0.2, '#a88c6c');
-      kit.add('sign', quad(-20.6, 2.1, s > 0 ? a - 0.02 : b + 0.02, 2.6, 0.33, 0, -s, rect('stencil', 2)), '#ffffff', { flat: true });
       kit.add('fabric', rbox(-19, 1.45, a + 0.1, -16.1, 2.1, b - 0.1, 0.2, 2), ENV.sage, { base: 1.45 });
     }
     {
@@ -349,7 +347,6 @@ function buildCourtyards(kit: ObsKit, rnd: () => number, decor: number): void {
       const cmid = (-2.7 + cx1) / 2;
       for (const zf of [a + 0.13, b - 0.13]) {
         const nz = zf < (a + b) / 2 ? -1 : 1;
-        kit.add('sign', quad(cmid, 2.05, zf + nz * 0.05, cx1 + 2.7 - 0.6, 0.38, 0, nz, rect('stencil', 2)), '#ffffff', { flat: true });
         for (const x of [-2.4, cmid, cx1 - 0.3]) kit.add('wood', box(x - 0.08, 0.35, Math.min(zf, zf + nz * 0.04), x + 0.08, 1.8, Math.max(zf, zf + nz * 0.04)), '#6b5240', { flat: true, snow: 0 });
       }
       if (s > 0) {
@@ -387,41 +384,7 @@ function buildCourtyards(kit: ObsKit, rnd: () => number, decor: number): void {
       kit.add('wood', box(4, 2.45, a, 9, 2.6, b), '#8a6a4c', { flat: true });
       kit.add('fabric', rbox(6.5, 0.6, a - 0.02, 9.02, 2.5, b + 0.02, 0.2, 2), ENV.pastelBlue, { base: 0.6 });
     }
-    // Tracks in the snow from the centre gate round the porch to the snowcat (S: cleated
-    // tread marks) / the fuel sled (N: two runner grooves) — who parked here, and how.
-    {
-      const curve = new THREE.CatmullRomCurve3(
-        [
-          [0, 41.6],
-          [-6.8, 39.4],
-          [-7.4, 33.5],
-          [-6.2, 29.2],
-          [-8.6, 23.6],
-          [-11.2, 20.4],
-          [-12.6, 18.5],
-        ].map(([x, z]) => new THREE.Vector3(x, 0, s * z)),
-        false,
-        'centripetal',
-      );
-      const len = curve.getLength();
-      const step = s > 0 ? 0.62 : 1.1;
-      const n = Math.floor(len / step);
-      const tan = new THREE.Vector3();
-      const pt = new THREE.Vector3();
-      for (let i = 0; i < n; i++) {
-        const u = (i + 0.5) / n;
-        curve.getPointAt(u, pt);
-        curve.getTangentAt(u, tan);
-        const yaw = Math.atan2(tan.x, tan.z);
-        const px = tan.z, pz = -tan.x; // perpendicular (unit)
-        for (const side of [-1, 1]) {
-          const off = s > 0 ? 1.07 : 2.1;
-          const w = s > 0 ? 0.8 : 0.16;
-          const d = s > 0 ? 0.42 : step + 0.02;
-          kit.add('paint', floorQuad(pt.x + px * off * side, 0.018, pt.z + pz * off * side, w, d, undefined, yaw), s > 0 ? '#c3c5d3' : '#cfd1dc', { flat: true, snow: 0 });
-        }
-      }
-    }
+    // (The snowcat's tread marks / the sled's runner grooves are drawn by the snowfield.)
     // Drifts; lichen in the shade of the dome base.
     drift(kit, -9, 0, Z(24), 2.5, 1.1, 0.3, 0.4);
     drift(kit, 9.5, 0, Z(33), 3, 1, 0.3, -0.2);

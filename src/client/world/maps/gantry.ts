@@ -31,6 +31,12 @@ import { DecorKit, sphere } from './gantry/kit';
 import { buildPad } from './gantry/pad';
 import { ATLAS_H, ATLAS_W, paintAtlas, paintLeaves } from './gantry/signage';
 import { buildTankFarm } from './gantry/tankfarm';
+import { buildCoast } from './gantry/coast';
+import { DECAL_H, DECAL_W, paintDecals } from './gantry/decals';
+import { buildGroundDetail } from './gantry/groundwork';
+import { buildIndustry } from './gantry/industry';
+import { buildTunnels } from './gantry/tunnels';
+import { hashString, mulberry32 } from '../../../shared/math';
 
 /** Sea to the east (toward the sun), sand skirt elsewhere, water plane on. */
 export const backdrop: BackdropOptions = { kind: 'coast', tag: 'sand', water: true };
@@ -44,6 +50,7 @@ const buildGantry: DecorBuilder = (ctx: DecorContext): MapDecor => {
   const kit = new DecorKit(ctx);
   kit.signTexture = ctx.materials.canvasTexture(low ? 'gantry.atlas.lo' : 'gantry.atlas', low ? ATLAS_W / 2 : ATLAS_W, low ? ATLAS_H / 2 : ATLAS_H, paintAtlas);
   kit.leafTexture = ctx.materials.canvasTexture(low ? 'gantry.leaves.lo' : 'gantry.leaves', low ? 256 : 512, low ? 256 : 512, paintLeaves);
+  kit.decalTexture = ctx.materials.canvasTexture(low ? 'gantry.decals.lo' : 'gantry.decals', low ? DECAL_W / 2 : DECAL_W, low ? DECAL_H / 2 : DECAL_H, paintDecals);
 
   kit.section = 'pad';
   const pad = buildPad(kit, rnd, root, decor);
@@ -57,11 +64,22 @@ const buildGantry: DecorBuilder = (ctx: DecorContext): MapDecor => {
   const gulls = buildBackdrop(kit, rnd, root, quality);
   kit.section = 'ground';
   buildGround(kit, rnd, decor);
+  // Art pass 2 dressing (own RNG stream so the original layout stays put).
+  const rnd2 = mulberry32(hashString('gantry|dress2'));
+  kit.section = 'groundwork';
+  buildGroundDetail(kit, rnd2, decor);
+  kit.section = 'industry';
+  buildIndustry(kit, rnd2, decor);
+  kit.section = 'tunnels';
+  const tunnelShafts = buildTunnels(kit, rnd2, decor);
+  kit.section = 'coast';
+  const sun = ctx.def.lighting.sunDir;
+  const coast = buildCoast(kit, rnd2, root, quality, decor, new THREE.Vector3(sun.x, sun.y, sun.z));
   kit.build(root);
 
   if (import.meta.env.DEV && typeof location !== 'undefined' && new URLSearchParams(location.search).has('decorStats')) {
     console.info('[gantry] decor tris', kit.meshes.map((m) => `${m.name}:${(m.geometry.attributes.position.count / 3) | 0}`).join(' '));
-    console.info('[gantry] by section', [...kit.sectionTris.entries()].sort((a, b) => b[1] - a[1]).slice(0, 16).map(([k, v]) => `${k}:${v | 0}`).join(' '));
+    console.info('[gantry] by section', [...kit.sectionTris.entries()].sort((a, b) => b[1] - a[1]).slice(0, 60).map(([k, v]) => `${k}:${v | 0}`).join(' '));
   }
 
   // ── The hero rocket ──
@@ -101,6 +119,7 @@ const buildGantry: DecorBuilder = (ctx: DecorContext): MapDecor => {
     const anchors = [
       ...pad.shaftAnchors,
       ...farm.shafts,
+      ...tunnelShafts,
       // Sunset streaming through the hangar's east clerestory, across the spawn hall.
       { pos: new THREE.Vector3(18.2, 15.6, -59.0), dir: new THREE.Vector3(-0.95, -0.19, 0.24).normalize(), length: 36, radius: 1.5, color: '#ffc995', intensity: 0.75 },
       { pos: new THREE.Vector3(18.2, 15.6, -55.4), dir: new THREE.Vector3(-0.95, -0.19, 0.24).normalize(), length: 36, radius: 1.5, color: '#ffc995', intensity: 0.6 },
@@ -168,6 +187,7 @@ const buildGantry: DecorBuilder = (ctx: DecorContext): MapDecor => {
     docks.boat.rotation.z = Math.sin(t * 0.7) * 0.05;
     docks.boat.rotation.x = Math.sin(t * 0.55 + 1) * 0.03;
     gulls.update(t);
+    coast.update(t);
     // Beacons: slow double-blink; the countdown board hums and flickers.
     const ph = t % 2.2;
     beaconMat.color.copy(beaconBase).multiplyScalar(ph < 0.14 || (ph > 0.3 && ph < 0.42) ? 3.4 : 0.25);
@@ -194,6 +214,7 @@ const buildGantry: DecorBuilder = (ctx: DecorContext): MapDecor => {
     rocket.dispose();
     trenchSteam.dispose();
     gulls.dispose();
+    coast.dispose();
     for (const m of docks.materials) m.dispose();
     for (const g of [pad.arms, compounds.dish, docks.sock, docks.boat]) (g.userData as { kit?: DecorKit }).kit?.dispose();
     beaconKit.dispose();

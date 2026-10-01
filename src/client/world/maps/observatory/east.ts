@@ -614,7 +614,7 @@ function buildCabin(k: ObsKit): void {
   k.add('glow', box(-0.3, y0 + 0.9, -0.2, 0.3, y0 + 1.0, 0.2), ENV.glowGold, { k: 1.6, flat: true });
   for (let i = 0; i < 9; i++) {
     const z = -1.4 + i * 0.35;
-    k.add('snow', new THREE.ConeGeometry(0.04, 0.2 + (i % 3) * 0.12, 5).rotateX(Math.PI).translate(1.25, y1 - 0.3 - 0.1, z), '#e8eef7', { flat: true });
+    k.add('ice', new THREE.ConeGeometry(0.04, 0.2 + (i % 3) * 0.12, 5, 1, true).rotateX(Math.PI).translate(1.25, y1 - 0.3 - 0.1, z), '#e9effa', { flat: true });
   }
 }
 

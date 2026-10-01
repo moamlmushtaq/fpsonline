@@ -76,15 +76,6 @@ export function tuft(kit: DecorKit, x: number, z: number, h: number, col: RGB, r
   g.dispose();
 }
 
-/** Dashed line along X or Z. */
-function dashes(kit: DecorKit, along: 'x' | 'z', fixed: number, from: number, to: number, y: number, w: number, dash: number, gap: number, col: RGB): void {
-  for (let t = from; t < to; t += dash + gap) {
-    const e = Math.min(to, t + dash);
-    if (along === 'z') kit.slab('paint', fixed - w / 2, t, fixed + w / 2, e, y, col, { drift: 0.2 });
-    else kit.slab('paint', t, fixed - w / 2, e, fixed + w / 2, y, col, { drift: 0.2 });
-  }
-}
-
 /** Curb strip (visual; 0.1 m). */
 function curb(kit: DecorKit, x0: number, z0: number, x1: number, z1: number): void {
   kit.box('concrete', x0, -0.02, z0, x1, 0.1, z1, C.curb, 0.03, { ao: 0.25 });
@@ -104,7 +95,7 @@ export function buildGround(kit: DecorKit, rng: () => number): void {
     {
       const [a, b] = Z(0, 54);
       ground(kit, 'asphalt', 31, a, 43, b, 0.03, C.asphalt, C.asphaltDark, 0.4);
-      dashes(kit, 'z', 37, a + 1, b - 12, 0.05, 0.16, 3, 3, C.paintYellow);
+      // (Centre dashes: worn decals, dressing.ts.)
       // Sidewalks + curbs.
       ground(kit, 'concrete', 43, a, 45, b, 0.035, C.walk);
       ground(kit, 'concrete', 30, a, 31, b, 0.035, C.walk);
@@ -130,24 +121,12 @@ export function buildGround(kit: DecorKit, rng: () => number): void {
       ground(kit, 'asphalt', -17, a, 17, b, 0.03, C.asphalt, C.asphaltDark, 0.35);
       const [c, d] = Z(40.4, 54);
       ground(kit, 'asphalt', -36, c, 30, d, 0.03, C.asphalt, C.asphaltDark, 0.3);
-      // Stall lines (angled rows on both sides of the pylon island).
-      const faded = mix(C.paint, C.asphalt, 0.25);
-      for (let x = -14; x <= 14; x += 2.8) {
-        if (Math.abs(x) < 3) continue;
-        const [p, q] = Z(29.5, 34.5);
-        kit.slab('paint', x - 0.06, p, x + 0.06, q, 0.05, faded, { drift: 0.3 });
-        const [p2, q2] = Z(17.5, 21);
-        if (Math.abs(x) > 4) kit.slab('paint', x - 0.06, p2, x + 0.06, q2, 0.05, faded, { drift: 0.3 });
-      }
-      for (let x = -32; x <= 26; x += 3) {
-        const [p, q] = Z(49.5, 53.5);
-        kit.slab('paint', x - 0.06, p, x + 0.06, q, 0.05, faded, { drift: 0.3 });
-      }
+      // Stall lines: worn paint decals (dressing.ts).
       // Fire lane chevrons in front of the mall doors.
       for (const cx of [-6, 6]) {
         for (let i = 0; i < 3; i++) {
           const [p, q] = Z(13 + i * 0.9, 13.35 + i * 0.9);
-          kit.slab('paint', cx - 2, p, cx + 2, q, 0.05, mix(C.paintYellow, C.asphalt, 0.3), { drift: 0.3 });
+          kit.slab('paint', cx - 2, p, cx + 2, q, 0.05, mix(C.paintYellow, C.asphalt, 0.45), { drift: 0.4 });
         }
       }
     }
@@ -234,28 +213,5 @@ export function buildGround(kit: DecorKit, rng: () => number): void {
     for (let j = 0; j < k; j++) tuft(kit, x + (rng() - 0.5) * 0.7, z + (rng() - 0.5) * 0.7, 0.25 + rng() * 0.35, mix(grassTuft, rgb(ENV.sand), rng() * 0.45), rng);
   }
 
-  // ── Details: cracks with weeds, oil stains, leaf litter ──
-  const count = Math.round(140 * kit.detail);
-  const weed = mix(mix(rgb(ENV.sage), rgb(ENV.sand), 0.2), rgb(ENV.glowChartreuse), 0.22);
-  for (let i = 0; i < count; i++) {
-    const x = -52 + rng() * 104;
-    const z = -52 + rng() * 104;
-    if (Math.abs(x) < 15.5 && Math.abs(z) < 12.5) continue; // mall
-    if (x > -45.5 && x < -32.5 && Math.abs(z) < 5.5) continue; // pool
-    const len = 0.8 + rng() * 2.4;
-    const ang = rng() * Math.PI;
-    const onStreet = x > 31 && x < 43;
-    if (rng() < 0.35) {
-      // Oil stain / tar patch.
-      kit.boxR('asphalt', x, 0.045, z, 0.6 + rng() * 1.2, 0.004, 0.5 + rng() * 0.9, ang, onStreet ? C.oil : mix(C.oil, C.asphalt, 0.5), 0, { drift: 0.3 });
-    } else {
-      // Crack line with a tuft of weeds.
-      kit.boxR('paint', x, 0.052, z, len, 0.004, 0.05, ang, mix(C.oil, C.asphaltDark, 0.4), 0, { drift: 0 });
-      const tufts = 2 + Math.floor(rng() * 3);
-      for (let t = 0; t < tufts; t++) {
-        const u = (rng() - 0.5) * len;
-        tuft(kit, x + Math.cos(ang) * u, z - Math.sin(ang) * u, 0.18 + rng() * 0.22, mix(weed, rgb(ENV.olive), rng() * 0.35), rng);
-      }
-    }
-  }
+  // Cracks, stains, litter and weeds in the cracks: dressing.ts (decals).
 }

@@ -11,6 +11,7 @@
 
 import * as THREE from 'three';
 import type { GradingSettings, QualityPreset, QualitySettings, RenderEngine } from '../contracts';
+import { applySceneFogSun } from './atmosphere';
 import { ENV } from './palette';
 import { PostPipeline } from './post';
 import { AdaptiveQuality, detectInitialPreset, resolveQuality, type ResolvedPreset } from './quality';
@@ -99,7 +100,10 @@ export class Renderer implements RenderEngine {
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = this.grading.exposure;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // PCF (17 hardware-filtered taps) with a per-preset kernel radius
+    // (atmosphere sets sun.shadow.radius): soft, stable painterly penumbrae.
+    // PCFSoft ignores the radius and reads harder at golden-hour lengths.
+    renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.info.autoReset = false;
     renderer.setClearColor(0x000000, 1);
 
@@ -304,6 +308,8 @@ export class Renderer implements RenderEngine {
       this.camera.updateProjectionMatrix();
     }
 
+    // Aerial perspective: this scene's sun-tinted fog (0 when it has none).
+    applySceneFogSun(this.scene);
     if (this.post) {
       this.post.render(dt);
     } else {

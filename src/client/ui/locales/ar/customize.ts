@@ -16,4 +16,8 @@ export default {
   'customize.skins.note': 'ثلاثة تشطيبات لكل سلاح، تُكتسب باللعب.',
   'customize.lockedAt': 'المستوى {level}',
   'customize.weapon': 'السلاح',
+  'customize.preview': 'معاينة',
+  'customize.previewSelect': 'اختره لتجهيزه',
+  'customize.previewHint': 'مرّر المؤشر فوق أي عنصر أو حدّده لتجربته على طيارك، حتى العناصر المقفلة.',
+  'customize.previewHint.touch': 'انقر أي عنصر لتجربته على طيارك، حتى العناصر المقفلة.',
 } satisfies Record<string, string>;

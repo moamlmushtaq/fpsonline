@@ -114,9 +114,11 @@ export class PlayScreen extends BaseScreen {
       time.append(h('span', { t: 'play.duration', params: { n: Math.round(def.timeLimit / 60) } }));
       facts.append(players, time);
     } else {
+      const solo = h('span', { html: icon('profile') });
+      solo.append(h('span', { t: 'play.fact.solo' }));
       const t = h('span', { html: icon('target') });
-      t.append(h('span', { text: '16' }));
-      facts.append(t);
+      t.append(h('span', { t: 'play.fact.targets' }));
+      facts.append(solo, t);
     }
 
     d.append(h('p', { class: 'mode-detail__desc', t: this.mode === 'bots' ? 'mode.bots.desc' : this.mode === 'room' ? 'mode.room.desc' : `mode.${this.mode}.desc` }));

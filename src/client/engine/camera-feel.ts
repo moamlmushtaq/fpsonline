@@ -95,13 +95,14 @@ export class CameraFeelController implements CameraFeel {
     const bobX = Math.sin(this.bobPhase) * 0.01 * bk;
     const bobRoll = Math.sin(this.bobPhase) * 0.0035 * bk;
 
-    // Sprint FOV kick (+6°) and a smaller one while sliding.
-    const fovTarget = s.sprinting && s.speed > 5.8 ? 6 : s.sliding ? 3.5 : 0;
-    this.fov = damp(this.fov, fovTarget * (1 - s.ads), s.sprinting ? 5 : 7, dt);
+    // Sprint FOV kick (+6°) and a smaller one while sliding. Eased in slower
+    // than out (no "zoom punch"); reduced-shake players get a gentler kick.
+    const fovTarget = (s.sprinting && s.speed > 5.8 ? 6 : s.sliding ? 3.5 : 0) * (0.5 + 0.5 * k);
+    this.fov = damp(this.fov, fovTarget * (1 - s.ads), fovTarget > this.fov ? 4 : 7, dt);
 
     // Slide: small roll + lowered view; strafe roll ±0.8°.
     this.slide = damp(this.slide, s.sliding ? 1 : 0, 9, dt);
-    this.strafeRoll = damp(this.strafeRoll, -THREE.MathUtils.clamp(s.strafe, -1, 1) * THREE.MathUtils.degToRad(0.8) * (s.onGround ? 1 : 0.5), 6, dt);
+    this.strafeRoll = damp(this.strafeRoll, -THREE.MathUtils.clamp(s.strafe, -1, 1) * THREE.MathUtils.degToRad(0.8) * (s.onGround ? 1 : 0.5) * (0.3 + 0.7 * k), 6, dt);
 
     const landY = this.landY.step(dt);
     const landP = this.landPitch.step(dt);
@@ -111,13 +112,14 @@ export class CameraFeelController implements CameraFeel {
     const fp = this.flinchPitch.step(dt);
     const fr = this.flinchRoll.step(dt);
 
-    // Shake: trauma² × smooth noise (≈ 9 Hz), never white noise.
+    // Shake: trauma² × smooth noise (a few Hz), never white noise. Roll is the
+    // most nauseating axis, so it stays the smallest (≤ ~0.7° at full trauma).
     this.trauma = Math.max(0, this.trauma - dt * this.traumaDecay);
     const sh = this.trauma * this.trauma * k;
     const st = this.time * 9;
-    const shYaw = smoothNoise(st, 1.3) * 0.02 * sh;
-    const shPitch = smoothNoise(st, 7.1) * 0.02 * sh;
-    const shRoll = smoothNoise(st, 3.7) * 0.03 * sh;
+    const shYaw = smoothNoise(st, 1.3) * 0.016 * sh;
+    const shPitch = smoothNoise(st, 7.1) * 0.018 * sh;
+    const shRoll = smoothNoise(st, 3.7) * 0.012 * sh;
 
     o.pos.set(bobX, bobY + Math.max(-0.06, landY) - this.slide * 0.06, kb);
     o.pitch = landP + kp + fp + shPitch;
@@ -144,7 +146,8 @@ export class CameraFeelController implements CameraFeel {
 
   shake(amount: number, duration = 0.4): void {
     this.trauma = Math.min(1, this.trauma + Math.max(0, amount));
-    this.traumaDecay = 1 / Math.max(0.1, duration);
+    // Never let a small new shake cut a big one short (keep the slower decay).
+    this.traumaDecay = Math.min(this.trauma > 0.3 ? this.traumaDecay : Infinity, 1 / Math.max(0.1, duration));
   }
 
   damage(fromAngle: number, amount: number): void {
@@ -152,7 +155,7 @@ export class CameraFeelController implements CameraFeel {
     const a = THREE.MathUtils.clamp(amount / 40, 0.15, 1) * (0.4 + 0.6 * this.shakeScale);
     this.flinchYaw.impulse(-Math.sin(fromAngle) * 0.35 * a);
     this.flinchPitch.impulse(Math.cos(fromAngle) * 0.3 * a);
-    this.flinchRoll.impulse(Math.sin(fromAngle) * 0.4 * a);
+    this.flinchRoll.impulse(Math.sin(fromAngle) * 0.28 * a);
     this.shake(0.25 * a, 0.3);
   }
 

@@ -65,4 +65,5 @@ export default {
   'common.hint.back': 'رجوع',
   'common.rotate.title': 'أدِر جهازك',
   'common.rotate.body': 'تُلعب HALCYON FRONT في الوضع الأفقي.',
+  'common.maxLevel': 'أعلى مستوى',
 } satisfies Record<string, string>;

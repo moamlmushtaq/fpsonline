@@ -7,12 +7,13 @@
 import type { App } from '../../app';
 import { teamColors } from '../../engine/palette';
 import type { MatchResults, PlayerResult, Team } from '../../../shared/types';
-import { levelFromXp, xpForLevel, type Unlock } from '../../../shared/progression';
+import { MAX_LEVEL, levelFromXp, xpForLevel, type Unlock } from '../../../shared/progression';
+import { ARMOR_TINTS, WEAPON_SKINS } from '../../../shared/cosmetics';
 import { WEAPONS } from '../../../shared/weapons';
 import type { MatchApplication } from '../../state/profile';
-import { button, h, namecard, sectionLabel, stagger } from '../components';
+import { button, h, namecard, namecardBackground, sectionLabel, stagger } from '../components';
 import { i18n, setText } from '../i18n';
-import { icon } from '../icons';
+import { icon, weaponIcon, type IconName } from '../icons';
 import { BaseScreen } from './base';
 
 export interface ResultsParams {
@@ -43,7 +44,14 @@ export class ResultsScreen extends BaseScreen {
     unlockEl: HTMLElement;
     unlockIdx: number;
     tickAt: number;
+    lvup: HTMLElement;
+    lvupNum: HTMLElement;
+    totalEl: HTMLElement;
+    amounts: number[];
+    sum: number;
   } | null = null;
+  /** Wall clock for the reveal: the sequence keeps its pace even when frames are slow. */
+  private lastNow = 0;
 
   constructor(app: App) {
     super(app, '');
@@ -138,27 +146,36 @@ export class ResultsScreen extends BaseScreen {
       );
     }
 
-    // ── XP panel
-    const xpPanel = h('div', { class: 'xp-panel panel ticks' }, sectionLabel('results.xp'));
+    // ── XP panel: lines tick in, then the bar fills; a level-up swaps in a reveal with the unlocks.
+    const totalEl = h('b', { class: 'xp-head__total', text: '+0 XP' });
+    const xpHead = h('div', { class: 'xp-head' }, sectionLabel('results.xp'), totalEl);
+    const xpPanel = h('div', { class: 'xp-panel panel ticks' }, xpHead);
     const lines: HTMLElement[] = [];
+    const linesWrap = h('div', { class: 'xp-lines' });
     for (const l of a.xp.lines) {
       const line = h('div', { class: `xp-line ${l.amount < 0 ? 'xp-line--neg' : ''}` }, h('span', { t: l.key }), h('b', { text: `${l.amount > 0 ? '+' : ''}${i18n.num(l.amount)}` }));
       lines.push(line);
-      xpPanel.append(line);
+      linesWrap.append(line);
     }
-    const total = h('div', { class: 'xp-line xp-line--total' }, h('span', { t: 'results.xpTotal' }), h('b', { text: `+${i18n.num(a.xp.total)}` }));
-    lines.push(total);
-    xpPanel.append(total);
+    xpPanel.append(linesWrap);
     const lvEl = h('div', { class: 'xp-progress__lv', text: String(a.before.level) });
     const fill = h('div', { class: 'xpbar__fill' });
     const meta = h('div', { class: 'xp-progress__meta' });
     const tag = h('span', { class: 'levelup-tag', t: 'results.levelUp' });
-    xpPanel.append(
-      h('div', { class: 'xp-progress' }, lvEl, h('div', { class: 'xp-progress__bar' }, h('div', { class: 'xpbar' }, fill), meta)),
-      tag,
-    );
+    xpPanel.append(h('div', { class: 'xp-progress' }, lvEl, h('div', { class: 'xp-progress__bar' }, h('div', { class: 'xpbar' }, fill), meta)));
+    const lvupNum = h('span', { class: 'lvup__num', text: String(a.after.level) });
     const unlockEl = h('div', { class: 'unlock-reveal' });
-    xpPanel.append(unlockEl);
+    const lvup = h(
+      'div',
+      { class: 'lvup' },
+      h(
+        'div',
+        { class: 'lvup__inner' },
+        h('div', { class: 'lvup__head' }, h('span', { class: 'lvup__burst', html: icon('star') }), h('div', {}, tag, h('div', { class: 'lvup__title' }, h('span', { t: 'profile.level' }), lvupNum))),
+        unlockEl,
+      ),
+    );
+    xpPanel.append(lvup);
 
     const left = h('div', { class: 'res-col scroll' }, h('div', {}, sectionLabel('results.yourStats'), stats), xpPanel);
 
@@ -166,19 +183,23 @@ export class ResultsScreen extends BaseScreen {
     const right = h('div', { class: 'res-col' });
     const mvp = r.players.find((x) => x.id === r.mvp);
     if (mvp && !range) {
-      const mv = h('div', { class: 'mvp-card panel ticks' });
+      const isYou = mvp.id === you;
+      const mv = h('div', { class: `mvp-card panel ticks ${isYou ? 'is-you' : ''}` });
+      if (teams) mv.style.setProperty('--mc', `var(--team${mvp.team})`);
       const tagEl = h('div', { class: 'mvp-card__tag', html: icon('crown') });
       tagEl.append(h('span', { t: 'results.mvp' }));
-      mv.append(tagEl, namecard({ id: mvp.namecard, name: mvp.name, level: mvp.level, sub: teams ? `common.team.${mvp.team}` : undefined }));
-      mv.append(
-        h(
-          'div',
-          { class: 'mvp-card__stats' },
-          h('span', {}, h('b', { text: String(mvp.stats.kills) }), h('span', { t: 'results.stat.elims' })),
-          h('span', {}, h('b', { text: String(mvp.stats.score) }), h('span', { t: 'results.stat.score' })),
-          h('span', {}, h('b', { text: mvp.stats.shots ? `${Math.round((mvp.stats.hits / mvp.stats.shots) * 100)}%` : '—' }), h('span', { t: 'results.stat.accuracy' })),
-        ),
+      if (isYou) tagEl.append(h('span', { class: 'mvp-card__you', t: 'common.you' }));
+      mv.append(tagEl, namecard({ id: mvp.namecard, name: mvp.name, level: mvp.level, sub: teams ? `common.team.${mvp.team}` : undefined, cls: 'namecard--hero' }));
+      const mstat = (v: string, k: string) => h('span', { class: 'mvp-card__stat' }, h('b', { text: v }), h('span', { t: k }));
+      const stats = h(
+        'div',
+        { class: 'mvp-card__stats' },
+        mstat(String(mvp.stats.kills), 'results.stat.elims'),
+        mstat(mvp.stats.shots ? `${Math.round((mvp.stats.hits / mvp.stats.shots) * 100)}%` : '—', 'results.stat.accuracy'),
+        r.mode === 'control' ? mstat(`${Math.round(mvp.stats.objectiveTime)}s`, 'results.stat.objective') : mstat(String(mvp.stats.headshots), 'results.stat.headshots'),
+        mstat(i18n.num(mvp.stats.score), 'results.stat.score'),
       );
+      mv.append(stats);
       right.append(mv);
     }
     if (!range) right.append(h('div', { class: 'sb-wrap panel scroll' }, this.scoreboard(r, you, teams)));
@@ -198,7 +219,7 @@ export class ResultsScreen extends BaseScreen {
     // XP bar starts at the "before" state.
     const frac = a.before.needed > 0 ? a.before.into / a.before.needed : 1;
     fill.style.transform = `scaleX(${frac})`;
-    meta.replaceChildren(h('span', { class: 'mono', text: `${i18n.num(a.before.into)} / ${i18n.num(a.before.needed)}` }), h('span', { t: 'common.levelN', params: { n: a.before.level + 1 } }));
+    meta.replaceChildren(...xpMeta(a.before));
 
     this.anim = {
       phase: 'lines',
@@ -217,7 +238,13 @@ export class ResultsScreen extends BaseScreen {
       unlockEl,
       unlockIdx: 0,
       tickAt: 0,
+      lvup,
+      lvupNum,
+      totalEl,
+      amounts: a.xp.lines.map((l) => l.amount),
+      sum: 0,
     };
+    this.lastNow = performance.now();
     this.app.audio?.setMusic(range ? 'menu' : a.won ? 'victory' : r.draw ? 'menu' : 'defeat');
   }
 
@@ -245,14 +272,22 @@ export class ResultsScreen extends BaseScreen {
     return table;
   }
 
-  update(dt: number): void {
+  update(): void {
     const A = this.anim;
     if (!A || A.phase === 'done') return;
+    const now = performance.now();
+    const dt = Math.min(0.5, Math.max(0, (now - this.lastNow) / 1000));
+    this.lastNow = now;
     A.t += dt;
     if (A.phase === 'lines') {
       if (A.t >= 0 && A.lineIdx < A.lines.length) {
-        if (A.t >= A.lineIdx * 0.26) {
+        while (A.lineIdx < A.lines.length && A.t >= A.lineIdx * 0.26) {
           A.lines[A.lineIdx].classList.add('is-in');
+          A.sum += A.amounts[A.lineIdx] ?? 0;
+          A.totalEl.textContent = `+${i18n.num(Math.max(0, A.sum))} XP`;
+          A.totalEl.classList.remove('is-bump');
+          void A.totalEl.offsetWidth; // restart the bump (a handful of times per results screen)
+          A.totalEl.classList.add('is-bump');
           this.app.audio?.ui('xpTick');
           A.lineIdx++;
         }
@@ -277,6 +312,15 @@ export class ResultsScreen extends BaseScreen {
         void A.lvEl.offsetWidth; // restart the burst animation (rare, once per level-up)
         A.lvEl.classList.add('is-burst');
         A.tag.classList.add('is-in');
+        A.lvupNum.textContent = String(info.level);
+        if (!A.lvup.classList.contains('is-in')) {
+          A.lvup.classList.add('is-in');
+          A.lvup.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+        } else {
+          A.lvupNum.classList.remove('is-pop');
+          void A.lvupNum.offsetWidth; // restart the pop (once per extra level)
+        }
+        A.lvupNum.classList.add('is-pop');
         this.app.audio?.ui('levelUp');
       }
       const needed = info.needed || xpForLevel(info.level);
@@ -288,7 +332,7 @@ export class ResultsScreen extends BaseScreen {
         this.app.audio?.ui('xpTick');
       }
       if (A.xpNow >= A.xpTo) {
-        A.meta.replaceChildren(h('span', { class: 'mono', text: info.needed > 0 ? `${i18n.num(info.into)} / ${i18n.num(info.needed)}` : 'MAX' }), h('span', { t: 'common.levelN', params: { n: Math.min(50, info.level + 1) } }));
+        A.meta.replaceChildren(...xpMeta(info));
         A.phase = A.unlocks.length ? 'unlocks' : 'done';
         A.t = 0;
       }
@@ -297,12 +341,7 @@ export class ResultsScreen extends BaseScreen {
     if (A.phase === 'unlocks') {
       if (A.t >= 0.4 * A.unlockIdx + 0.3 && A.unlockIdx < Math.min(A.unlocks.length, 8)) {
         const u = A.unlocks[A.unlockIdx++];
-        const pill = h('span', { class: 'unlock-pill', html: icon('sparkle') });
-        const label = h('span');
-        if (u.kind === 'skin' && u.weapon) label.textContent = `${i18n.t(WEAPONS[u.weapon].nameKey)} · ${i18n.t(u.nameKey)}`;
-        else setText(label, u.nameKey);
-        pill.append(h('span', { class: 'faint', t: 'results.unlocked' }), label);
-        A.unlockEl.append(pill);
+        A.unlockEl.append(unlockCard(u));
         this.app.audio?.ui('unlock');
       }
       if (A.unlockIdx >= Math.min(A.unlocks.length, 8)) A.phase = 'done';
@@ -313,4 +352,37 @@ export class ResultsScreen extends BaseScreen {
     void this.app.ui.show('menu');
     return true;
   }
+}
+
+/** "into / needed" + next level (or the max-level note). */
+function xpMeta(info: { level: number; into: number; needed: number }): HTMLElement[] {
+  if (info.needed <= 0 || info.level >= MAX_LEVEL) return [h('span', { class: 'mono', t: 'common.maxLevel' }), h('span', { t: 'common.levelN', params: { n: info.level } })];
+  return [h('span', { class: 'mono', text: `${i18n.num(info.into)} / ${i18n.num(info.needed)} XP` }), h('span', { t: 'common.levelN', params: { n: info.level + 1 } })];
+}
+
+const UNLOCK_KIND_ICON: Record<Unlock['kind'], IconName> = { armor: 'customize', visor: 'visor', namecard: 'card', elimFx: 'sparkle', skin: 'palette' };
+
+/** One revealed unlock: a small visual (swatch, name card, weapon, icon) + name + kind. */
+function unlockCard(u: Unlock): HTMLElement {
+  const vis = h('span', { class: 'unlock-card__vis' });
+  if (u.kind === 'armor') {
+    const a = ARMOR_TINTS.find((x) => x.id === u.id);
+    const sw = h('i', { class: 'unlock-card__swatch' });
+    if (a) sw.style.background = a.color;
+    vis.append(sw);
+  } else if (u.kind === 'namecard') {
+    vis.classList.add('unlock-card__vis--card');
+    vis.style.background = namecardBackground(u.id);
+  } else if (u.kind === 'skin' && u.weapon) {
+    vis.innerHTML = weaponIcon(u.weapon);
+    const sk = WEAPON_SKINS.find((x) => x.id === u.id);
+    if (sk) vis.style.color = sk.accent;
+  } else vis.innerHTML = icon(UNLOCK_KIND_ICON[u.kind]);
+  const name = h('span', { class: 'unlock-card__name' });
+  if (u.kind === 'skin' && u.weapon) name.textContent = `${i18n.t(WEAPONS[u.weapon].nameKey)} · ${i18n.t(u.nameKey)}`;
+  else setText(name, u.nameKey);
+  const kind = h('span', { class: 'unlock-card__kind' });
+  if (u.kind === 'skin' && u.weapon) setText(kind, 'profile.unlock.skin', { weapon: i18n.t(WEAPONS[u.weapon].nameKey) });
+  else setText(kind, `profile.unlock.${u.kind}`);
+  return h('div', { class: 'unlock-card' }, vis, h('span', { class: 'unlock-card__text' }, h('span', { class: 'unlock-card__eyebrow', t: 'results.unlocked' }), name, kind));
 }

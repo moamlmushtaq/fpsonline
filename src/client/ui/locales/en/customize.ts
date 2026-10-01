@@ -16,4 +16,8 @@ export default {
   'customize.skins.note': 'Three finishes per weapon, earned through play.',
   'customize.lockedAt': 'Level {level}',
   'customize.weapon': 'Weapon',
+  'customize.preview': 'Preview',
+  'customize.previewSelect': 'Select to equip',
+  'customize.previewHint': 'Hover or focus any item to try it on your pilot — locked ones too.',
+  'customize.previewHint.touch': 'Tap any item to try it on your pilot — locked ones too.',
 } satisfies Record<string, string>;

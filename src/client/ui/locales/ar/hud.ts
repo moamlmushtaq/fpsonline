@@ -6,7 +6,7 @@ export default {
   'hud.reloadPrompt': 'أعد التذخير',
   'hud.redeploying': 'إعادة الانتشار خلال',
   'hud.eliminatedBy': 'أقصاك {name}',
-  'hud.eliminated': 'تم الإقصاء',
+  'hud.eliminated': 'أُقصيت',
   'hud.protected': 'درع الانتشار',
   'hud.charge': 'الشحن',
   'hud.ping': '{n} ms',

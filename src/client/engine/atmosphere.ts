@@ -21,10 +21,13 @@ import type { MapLighting } from '../../shared/maps/types';
 import type { Vec3 } from '../../shared/types';
 import { ENV } from './palette';
 
-const SHADOW_HALF = 35;
+/** Half-size (m) of the sun's shadow box; texel = 2·half / mapSize. */
+const SHADOW_HALF: Record<QualitySettings['shadows'], number> = { off: 35, low: 34, high: 40 };
+/** PCF kernel radius in texels → soft, painterly penumbrae (sharper on medium's coarser map). */
+const SHADOW_RADIUS: Record<QualitySettings['shadows'], number> = { off: 1, low: 1.4, high: 2.2 };
 /** Renderer-side light calibration (map data stays in artist units). */
 const SUN_BOOST = 1.4;
-const HEMI_BOOST = 1.15;
+const HEMI_BOOST = 1.3;
 
 // ── Sky shader ──────────────────────────────────────────────────────────────
 
@@ -39,6 +42,8 @@ const SKY_FRAG = /* glsl */ `
 uniform vec3 uZenith;
 uniform vec3 uHorizon;
 uniform vec3 uFog;
+uniform vec3 uFogSun;
+uniform float uFogSunK;
 uniform vec3 uSunGlow;
 uniform vec3 uSunColor;
 uniform vec3 uSunDir;
@@ -102,10 +107,12 @@ void main() {
     col = mix(col, cloud, c * 0.85);
   }
 
-  // Horizon haze band = fog color, so fogged geometry meets the sky seamlessly.
+  // Horizon haze band = fog color (sun-tinted exactly like the geometry fog,
+  // see installSunFog), so fogged geometry meets the sky seamlessly.
+  vec3 fogC = mix(uFog, uFogSun, uFogSunK * sd * sd * sd);
   float band = 1.0 - smoothstep(0.0, 0.11, abs(h - 0.005));
-  col = mix(col, uFog, band * 0.9);
-  if (h < 0.0) col = mix(uFog, uFog * 0.92, smoothstep(0.0, -0.4, h));
+  col = mix(col, fogC, band * 0.9);
+  if (h < 0.0) col = mix(fogC, fogC * 0.92, smoothstep(0.0, -0.4, h));
 
   // Sun halo + HDR disc (blooms).
   col += uSunGlow * (pow(sd, 10.0) * 0.35 + pow(sd, 90.0) * 0.6);
@@ -229,6 +236,112 @@ const WEATHER: Record<Exclude<MapLighting['weather'], 'none'>, WeatherPreset> = 
   },
 };
 
+// ── Aerial perspective: sun-tinted fog + soft shadow edges (chunk patches) ─
+//
+// three's fog is a single color. A low golden sun scatters warm light into the
+// haze on its side of the sky, so the fog color here leans toward the sun glow
+// with the view direction's alignment to the sun (cubed → a soft lobe).
+// Implemented once, globally, by patching the fog shader chunks: every built-in
+// material (and ShaderMaterials that merge UniformsLib.fog after this runs)
+// shares two uniforms backed by the same Float32Arrays (UniformsUtils.clone
+// keeps typed arrays by reference), so updating them is free. Scenes opt in via
+// `scene.userData.fogSun`; the Renderer writes the arrays before each render
+// and zeroes the strength for scenes without it.
+//
+// The same pass fades directional shadows out toward the shadow frustum edge so
+// the camera-following shadow box never shows a hard line.
+
+export interface SceneFogSun {
+  /** Unit vector toward the sun (world). */
+  dir: THREE.Vector3;
+  color: THREE.Color;
+  /** 0..1 blend toward `color` when looking straight at the sun. */
+  strength: number;
+}
+
+const FOG_SUN_STRENGTH = 0.7;
+const FOG_SUN_DIR = new Float32Array(4);
+const FOG_SUN_COLOR = new Float32Array(3);
+let sunFogInstalled = false;
+
+function patchChunk(name: string, find: string, replace: string): boolean {
+  const chunks = THREE.ShaderChunk as unknown as Record<string, string>;
+  const src = chunks[name];
+  if (typeof src !== 'string' || !src.includes(find)) {
+    console.warn(`[atmosphere] shader chunk '${name}' not patched (three.js changed?)`);
+    return false;
+  }
+  chunks[name] = src.replace(find, replace);
+  return true;
+}
+
+/** Installs the sun-fog + shadow-edge chunk patches (idempotent). */
+export function installSunFog(): void {
+  if (sunFogInstalled) return;
+  sunFogInstalled = true;
+  const ok =
+    patchChunk('fog_pars_vertex', 'varying float vFogDepth;', 'varying float vFogDepth;\n\tvarying vec3 vFogView;') &&
+    patchChunk('fog_vertex', 'vFogDepth = - mvPosition.z;', 'vFogDepth = - mvPosition.z;\n\tvFogView = mvPosition.xyz;') &&
+    patchChunk('fog_pars_fragment', 'varying float vFogDepth;', 'varying float vFogDepth;\n\tvarying vec3 vFogView;\n\tuniform vec4 fogSunDir;\n\tuniform vec3 fogSunColor;') &&
+    patchChunk(
+      'fog_fragment',
+      'gl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor, fogFactor );',
+      `vec3 hfFogColor = fogColor;
+	if ( fogSunDir.w > 0.0 ) {
+		vec3 hfSunV = ( viewMatrix * vec4( fogSunDir.xyz, 0.0 ) ).xyz;
+		float hfSa = max( dot( normalize( vFogView ), hfSunV ), 0.0 );
+		hfFogColor = mix( fogColor, fogSunColor, fogSunDir.w * hfSa * hfSa * hfSa );
+	}
+	gl_FragColor.rgb = mix( gl_FragColor.rgb, hfFogColor, fogFactor );`,
+    );
+  if (ok) {
+    const u = { fogSunDir: { value: FOG_SUN_DIR }, fogSunColor: { value: FOG_SUN_COLOR } };
+    Object.assign(THREE.UniformsLib.fog, u);
+    const lib = THREE.ShaderLib as unknown as Record<string, { uniforms?: Record<string, THREE.IUniform> }>;
+    for (const k of Object.keys(lib)) {
+      const un = lib[k].uniforms;
+      if (un && 'fogColor' in un) Object.assign(un, u);
+    }
+  }
+  patchChunk(
+    'shadowmap_pars_fragment',
+    `		}
+
+		return mix( 1.0, shadow, shadowIntensity );
+
+	}`,
+    `		}
+
+		// Halcyon: fade toward the shadow frustum edge (no hard cut-off line).
+		vec2 hfEdge = abs( shadowCoord.xy * 2.0 - 1.0 );
+		shadow = mix( shadow, 1.0, smoothstep( 0.8, 0.97, max( hfEdge.x, hfEdge.y ) ) );
+		return mix( 1.0, shadow, shadowIntensity );
+
+	}`,
+  );
+}
+
+// Patch at module load — before ANY program compiles: three caches built-in
+// programs by parameters (not source), so a program compiled before the patch
+// would be reused unpatched by later materials.
+installSunFog();
+
+/** Called by the Renderer before drawing `scene` (cheap: 7 floats). */
+export function applySceneFogSun(scene: THREE.Scene | null): void {
+  const fs = scene?.userData.fogSun as SceneFogSun | undefined;
+  if (!fs || !scene?.fog) {
+    FOG_SUN_DIR[3] = 0;
+    return;
+  }
+  FOG_SUN_DIR[0] = fs.dir.x;
+  FOG_SUN_DIR[1] = fs.dir.y;
+  FOG_SUN_DIR[2] = fs.dir.z;
+  FOG_SUN_DIR[3] = fs.strength;
+  FOG_SUN_COLOR[0] = fs.color.r;
+  FOG_SUN_COLOR[1] = fs.color.g;
+  FOG_SUN_COLOR[2] = fs.color.b;
+}
+
 // ── Implementation ─────────────────────────────────────────────────────────
 
 class AtmosphereImpl implements Atmosphere {
@@ -248,11 +361,20 @@ class AtmosphereImpl implements Atmosphere {
   private readonly fwd = new THREE.Vector3();
   private time = 0;
   private quality: QualitySettings;
+  private shadowHalf = 35;
+  /** Fog color looking toward the sun (aerial perspective): the sun glow scattered in the haze. */
+  private readonly fogSunColor: THREE.Color;
 
   constructor(private readonly scene: THREE.Scene, private readonly lighting: MapLighting, quality: QualitySettings) {
     this.quality = quality;
     const l = lighting;
     this.sunDir.set(l.sunDir.x, l.sunDir.y, l.sunDir.z).normalize();
+    installSunFog();
+    this.fogSunColor = new THREE.Color(l.fogColor).lerp(new THREE.Color(l.sunGlow), 0.62).multiplyScalar(1.12);
+    // Read by the Renderer every frame (applySceneFogSun) — per scene, so the
+    // menu or another scene never inherits this map's sun.
+    const fogSun: SceneFogSun = { dir: this.sunDir, color: this.fogSunColor, strength: FOG_SUN_STRENGTH };
+    scene.userData.fogSun = fogSun;
     this.lx.crossVectors(new THREE.Vector3(0, 1, 0), this.sunDir).normalize();
     if (this.lx.lengthSq() < 1e-6) this.lx.set(1, 0, 0);
     this.ly.crossVectors(this.sunDir, this.lx).normalize();
@@ -268,10 +390,6 @@ class AtmosphereImpl implements Atmosphere {
     this.sun = new THREE.DirectionalLight(new THREE.Color(l.sunColor), l.sunIntensity * SUN_BOOST);
     this.sun.name = 'sun';
     const sc = this.sun.shadow.camera;
-    sc.left = -SHADOW_HALF;
-    sc.right = SHADOW_HALF;
-    sc.top = SHADOW_HALF;
-    sc.bottom = -SHADOW_HALF;
     sc.near = 1;
     sc.far = 320;
     this.sun.shadow.bias = -0.0004;
@@ -300,6 +418,8 @@ class AtmosphereImpl implements Atmosphere {
         uZenith: { value: new THREE.Color(l.skyZenith) },
         uHorizon: { value: new THREE.Color(l.skyHorizon) },
         uFog: { value: new THREE.Color(l.fogColor) },
+        uFogSun: { value: this.fogSunColor },
+        uFogSunK: { value: FOG_SUN_STRENGTH },
         uSunGlow: { value: new THREE.Color(l.sunGlow) },
         uSunColor: { value: new THREE.Color(l.sunColor).lerp(new THREE.Color('#fff6e0'), 0.5) },
         uSunDir: { value: this.sunDir.clone() },
@@ -328,6 +448,16 @@ class AtmosphereImpl implements Atmosphere {
     this.quality = q;
     const cast = q.shadows !== 'off';
     this.sun.castShadow = cast;
+    this.shadowHalf = SHADOW_HALF[q.shadows];
+    const sc = this.sun.shadow.camera;
+    if (sc.right !== this.shadowHalf) {
+      sc.left = -this.shadowHalf;
+      sc.right = this.shadowHalf;
+      sc.top = this.shadowHalf;
+      sc.bottom = -this.shadowHalf;
+      sc.updateProjectionMatrix();
+    }
+    this.sun.shadow.radius = SHADOW_RADIUS[q.shadows];
     if (cast && this.sun.shadow.mapSize.x !== q.shadowMapSize) {
       this.sun.shadow.mapSize.set(q.shadowMapSize, q.shadowMapSize);
       this.sun.shadow.map?.dispose();
@@ -407,8 +537,8 @@ class AtmosphereImpl implements Atmosphere {
     camera.getWorldDirection(this.fwd);
     this.fwd.y = 0;
     if (this.fwd.lengthSq() > 1e-6) this.fwd.normalize();
-    const c = this.tmp.copy(cam).addScaledVector(this.fwd, SHADOW_HALF * 0.45);
-    const texel = (SHADOW_HALF * 2) / Math.max(256, this.sun.shadow.mapSize.x);
+    const c = this.tmp.copy(cam).addScaledVector(this.fwd, this.shadowHalf * 0.45);
+    const texel = (this.shadowHalf * 2) / Math.max(256, this.sun.shadow.mapSize.x);
     const cx = Math.round(c.dot(this.lx) / texel) * texel;
     const cy = Math.round(c.dot(this.ly) / texel) * texel;
     const cz = c.dot(this.sunDir);
@@ -444,6 +574,7 @@ class AtmosphereImpl implements Atmosphere {
       (this.weather.material as THREE.Material).dispose();
     }
     if (this.scene.fog === this.fog) this.scene.fog = null;
+    if (this.scene.userData.fogSun) delete this.scene.userData.fogSun;
   }
 }
 

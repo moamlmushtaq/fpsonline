@@ -949,6 +949,42 @@ html[lang='ar'] .mm__status {
 
 /* ── Private room ────────────────────────────────────────────────────────── */
 
+.room-wait {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-4) var(--sp-5);
+  max-width: 34rem;
+}
+
+.room-wait__dial {
+  position: relative;
+  width: 4.5rem;
+  height: 4.5rem;
+  flex: none;
+  color: var(--c-accent);
+}
+
+.room-wait__dial .dial {
+  width: 100%;
+  height: 100%;
+}
+
+.room-wait__title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+html[lang='ar'] .room-wait__title {
+  letter-spacing: 0;
+}
+
+.room-wait .btn {
+  margin-inline-start: auto;
+}
+
 .room-grid {
   flex: 1;
   min-height: 0;
@@ -1163,12 +1199,35 @@ html[lang='ar'] .team-list__head {
 }
 
 .weapon-detail__facts {
-  display: flex;
-  gap: var(--sp-4);
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--sp-2) var(--sp-3);
   margin-top: var(--sp-3);
-  font-variant-numeric: tabular-nums;
-  font-size: 0.74rem;
-  color: var(--c-text-dim);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--c-line-soft);
+}
+
+.wfact {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.wfact b {
+  font-family: var(--f-mono);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--c-text);
+  direction: ltr;
+  unicode-bidi: isolate;
+  text-align: start;
+}
+
+.wfact span {
+  font-size: 0.62rem;
+  line-height: 1.25;
+  color: var(--c-text-faint);
 }
 
 .weapon-detail__stats {
@@ -1363,8 +1422,83 @@ html[lang='ar'] .team-list__head {
   border: 1px solid rgba(255, 255, 255, 0.25);
 }
 
-.cust-preview {
+.cust-hint {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: -0.1rem 0 0;
+  font-size: 0.74rem;
+  color: var(--c-text-faint);
+}
+
+.cust-hint .ic {
+  width: 1rem;
+  height: 1rem;
+  color: var(--c-accent);
   flex: none;
+}
+
+/* Floating tag over the 3D side naming the previewed item (and its unlock level). */
+.cust-tag {
+  position: absolute;
+  inset-inline-end: calc(var(--safe-r) + var(--gutter));
+  bottom: calc(var(--safe-b) + 1.6rem);
+  min-width: 13rem;
+  max-width: 19rem;
+  padding: 0.7rem 0.95rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(8px);
+  transition:
+    opacity var(--t-med) var(--ease),
+    transform var(--t-med) var(--ease);
+}
+
+.cust-tag.is-on {
+  opacity: 1;
+  transform: none;
+}
+
+.cust-tag__name {
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.cust-tag__state {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.74rem;
+  color: var(--c-good);
+}
+
+.cust-tag__state .ic {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+.cust-tag.is-locked {
+  border-color: var(--c-accent-line);
+}
+
+.cust-tag.is-locked .cust-tag__state {
+  color: var(--c-accent-hi);
+}
+
+/* Elimination cards animate their glyph on hover/focus while the 3D preview plays. */
+.cust-elim-card:hover .cust-elim,
+.cust-elim-card:focus-visible .cust-elim {
+  animation: hf-elim-glyph 1.2s var(--ease) infinite;
+}
+
+@keyframes hf-elim-glyph {
+  50% {
+    transform: translateY(-3px) scale(1.12);
+    filter: drop-shadow(0 0 6px currentColor);
+  }
 }
 
 /* ── Settings ────────────────────────────────────────────────────────────── */
@@ -1670,6 +1804,23 @@ html[lang='ar'] .team-list__head {
   background: #1b1618;
 }
 
+/* Each map's sky, shown until the painted key art arrives. */
+.screen--loading[data-map='gantry'] {
+  background: linear-gradient(180deg, #3d3a5c 0%, #9a5a63 42%, #e39a6b 62%, #4a3a3a 63%, #231c1e 100%);
+}
+
+.screen--loading[data-map='pastel'] {
+  background: linear-gradient(180deg, #6f8fa6 0%, #d9b690 48%, #efcf98 60%, #5b5145 61%, #221d1a 100%);
+}
+
+.screen--loading[data-map='observatory'] {
+  background: linear-gradient(180deg, #1d2140 0%, #4b4a7a 40%, #b58aa0 60%, #e8d6d6 64%, #232233 100%);
+}
+
+.screen--loading[data-map='range'] {
+  background: linear-gradient(180deg, #7596ad 0%, #e0c08e 55%, #7a6a52 57%, #25201b 100%);
+}
+
 .loading__art {
   position: absolute;
   inset: 0;
@@ -1893,6 +2044,7 @@ html[lang='ar'] .res-banner__title {
 }
 
 .xp-panel {
+  flex: none;
   padding: var(--sp-3) var(--sp-4);
   display: flex;
   flex-direction: column;
@@ -2009,12 +2161,17 @@ html[lang='ar'] .res-banner__title {
 }
 
 .levelup-tag {
-  font-size: 0.72rem;
+  font-size: 0.66rem;
   font-weight: 700;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--c-xp);
   opacity: 0;
+}
+
+html[lang='ar'] .levelup-tag {
+  letter-spacing: 0;
+  font-size: 0.74rem;
 }
 
 .levelup-tag.is-in {
@@ -2022,38 +2179,227 @@ html[lang='ar'] .res-banner__title {
   opacity: 1;
 }
 
-.unlock-reveal {
+.xp-head {
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.xp-head .section-label {
+  flex: 1;
+  margin: 0;
+}
+
+.xp-head__total {
+  font-family: var(--f-mono);
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--c-xp);
+  direction: ltr;
+  unicode-bidi: isolate;
+  text-shadow: 0 0 18px rgba(246, 213, 142, 0.35);
+}
+
+.xp-head__total.is-bump {
+  animation: hf-xp-bump 320ms var(--ease);
+}
+
+@keyframes hf-xp-bump {
+  40% {
+    transform: scale(1.12);
+    color: #fff3cf;
+  }
+}
+
+.xp-lines {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: var(--sp-5);
+  row-gap: 0.15rem;
+  margin-top: var(--sp-2);
+}
+
+/* Level-up reveal: slides open under the bar when the first level is gained. */
+.lvup {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows var(--t-slow) var(--ease),
+    opacity var(--t-slow) var(--ease),
+    margin var(--t-slow) var(--ease);
+}
+
+.lvup__inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.lvup.is-in {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  margin-top: var(--sp-3);
+}
+
+.lvup__head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-md);
+  background: linear-gradient(90deg, rgba(246, 213, 142, 0.18), rgba(246, 213, 142, 0.02));
+  border: 1px solid rgba(246, 213, 142, 0.35);
+}
+
+[dir='rtl'] .lvup__head {
+  background: linear-gradient(270deg, rgba(246, 213, 142, 0.18), rgba(246, 213, 142, 0.02));
+}
+
+.lvup__burst {
+  display: grid;
+  place-items: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  flex: none;
+  border-radius: 50%;
+  color: var(--c-ink);
+  background: radial-gradient(circle at 35% 30%, #fff3cf, var(--c-xp) 60%, #d79a45);
+  box-shadow: 0 0 24px rgba(246, 213, 142, 0.6);
+}
+
+.lvup.is-in .lvup__burst {
+  animation: hf-lvup-spin 900ms var(--ease) both;
+}
+
+@keyframes hf-lvup-spin {
+  from {
+    transform: scale(0.3) rotate(-120deg);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.15) rotate(10deg);
+  }
+}
+
+.lvup__burst .ic {
+  width: 1.3rem;
+  height: 1.3rem;
+  fill: currentColor;
+}
+
+.lvup .levelup-tag {
+  display: block;
+}
+
+.lvup__title {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.lvup__num {
+  font-family: var(--f-mono);
+  font-size: 1.7rem;
+  color: var(--c-xp);
+  line-height: 1;
+}
+
+.lvup__num.is-pop {
+  animation: hf-level-burst 700ms var(--ease) both;
+}
+
+.unlock-reveal {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11.5rem, 1fr));
   gap: var(--sp-2);
   margin-top: var(--sp-2);
 }
 
-.unlock-pill {
-  display: inline-flex;
+.unlock-card {
+  display: flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.35rem 0.7rem;
-  border-radius: var(--r-pill);
+  gap: 0.6rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: var(--r-md);
   border: 1px solid var(--c-accent-line);
-  background: var(--c-accent-soft);
-  font-size: 0.74rem;
-  animation: hf-unlock-in 520ms var(--ease) both;
+  background: linear-gradient(180deg, rgba(240, 179, 91, 0.14), rgba(26, 23, 21, 0.6));
+  animation: hf-unlock-in 560ms var(--ease) both;
+  min-width: 0;
 }
 
-.unlock-pill .ic {
-  width: 1rem;
-  height: 1rem;
+.unlock-card__vis {
+  display: grid;
+  place-items: center;
+  width: 2.8rem;
+  height: 1.8rem;
+  flex: none;
   color: var(--c-xp);
+}
+
+.unlock-card__vis .ic {
+  width: 1.4rem;
+  height: 1.4rem;
+}
+
+.unlock-card__vis .wic {
+  width: 2.8rem;
+  height: 1.2rem;
+}
+
+.unlock-card__vis--card {
+  border-radius: 5px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3);
+}
+
+.unlock-card__swatch {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  box-shadow: inset -4px -5px 8px rgba(0, 0, 0, 0.3), inset 3px 3px 6px rgba(255, 255, 255, 0.35);
+}
+
+.unlock-card__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.unlock-card__eyebrow {
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--c-xp);
+}
+
+html[lang='ar'] .unlock-card__eyebrow {
+  letter-spacing: 0;
+  font-size: 0.66rem;
+}
+
+.unlock-card__name {
+  font-size: 0.82rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.unlock-card__kind {
+  font-size: 0.64rem;
+  color: var(--c-text-dim);
 }
 
 @keyframes hf-unlock-in {
   from {
     opacity: 0;
-    transform: scale(0.6);
+    transform: translateY(8px) scale(0.9);
   }
   60% {
-    transform: scale(1.08);
+    transform: scale(1.04);
   }
 }
 
@@ -2062,12 +2408,22 @@ html[lang='ar'] .res-banner__title {
   flex-direction: column;
   gap: var(--sp-2);
   padding: var(--sp-3);
+  border-color: rgba(255, 209, 102, 0.4);
+  background:
+    radial-gradient(120% 90% at 0% 0%, rgba(255, 209, 102, 0.14), transparent 60%),
+    var(--c-panel);
+}
+
+[dir='rtl'] .mvp-card {
+  background:
+    radial-gradient(120% 90% at 100% 0%, rgba(255, 209, 102, 0.14), transparent 60%),
+    var(--c-panel);
 }
 
 .mvp-card__tag {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.4rem;
   font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.2em;
@@ -2075,23 +2431,73 @@ html[lang='ar'] .res-banner__title {
   text-transform: uppercase;
 }
 
+html[lang='ar'] .mvp-card__tag {
+  letter-spacing: 0;
+  font-size: 0.8rem;
+}
+
 .mvp-card__tag .ic {
-  width: 1.05rem;
-  height: 1.05rem;
+  width: 1.15rem;
+  height: 1.15rem;
+  filter: drop-shadow(0 0 6px rgba(255, 209, 102, 0.6));
+  animation: hf-crown 2.8s ease-in-out infinite;
+}
+
+@keyframes hf-crown {
+  50% {
+    transform: translateY(-2px) rotate(-6deg);
+  }
+}
+
+.mvp-card__you {
+  margin-inline-start: auto;
+  padding: 0.1rem 0.5rem;
+  border-radius: var(--r-pill);
+  background: var(--c-headshot);
+  color: var(--c-ink);
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+}
+
+.namecard--hero {
+  min-height: 4.4rem;
+  padding: 0.7rem 1rem;
+}
+
+.namecard--hero .namecard__lvl {
+  width: 2.9rem;
+  height: 2.9rem;
+  font-size: 1rem;
+  box-shadow: 0 0 0 2px var(--mc, rgba(255, 255, 255, 0.35));
+}
+
+.namecard--hero .namecard__name {
+  font-size: 1.2rem;
 }
 
 .mvp-card__stats {
-  display: flex;
-  gap: var(--sp-4);
-  font-size: 0.74rem;
-  color: var(--c-text-dim);
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--sp-2);
 }
 
-.mvp-card__stats b {
+.mvp-card__stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  font-size: 0.66rem;
+  color: var(--c-text-dim);
+  min-width: 0;
+}
+
+.mvp-card__stat b {
   font-family: var(--f-mono);
+  font-size: 1.05rem;
+  font-weight: 600;
   color: var(--c-text);
-  font-size: 0.95rem;
-  margin-inline-end: 0.25rem;
+  direction: ltr;
+  text-align: start;
+  unicode-bidi: isolate;
 }
 
 .sb-table {
@@ -2192,6 +2598,35 @@ html[lang='ar'] .pause-card__title {
   letter-spacing: 0;
 }
 
+.pause-ctx {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--c-accent-hi);
+}
+
+.pause-ctx__score {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  margin-inline-start: auto;
+  font-family: var(--f-mono);
+  direction: ltr;
+}
+
+.pause-ctx__score b {
+  font-size: 1.1rem;
+}
+
+.pause-ctx__time {
+  margin-inline-start: 0.5rem;
+  color: var(--c-text-dim);
+  font-size: 0.8rem;
+}
+
 .pause-card__sub {
   color: var(--c-text-dim);
   font-size: 0.82rem;
@@ -2271,8 +2706,29 @@ html[lang='ar'] .pause-card__title {
     padding: 0 0.7rem;
   }
 
+  /* FTUE: short viewports (every phone in landscape) keep the tutorial offer as one compact
+     button instead of hiding it — phones are where first-timers need it most. */
   .nudge {
+    padding: 0;
+    gap: 0.45rem;
+    background: none;
+    border: 0;
+    box-shadow: none;
+    backdrop-filter: none;
+  }
+
+  .nudge > span:nth-child(2) {
     display: none;
+  }
+
+  .nudge .ic {
+    width: 1.1rem;
+    height: 1.1rem;
+  }
+
+  .nudge .btn {
+    margin-inline-start: 0;
+    border-color: var(--c-accent);
   }
 
   .tile {

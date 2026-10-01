@@ -12,8 +12,12 @@
 //    (sensitivity, invert-Y and ADS-by-zoom scaling applied). A match does
 //    `yaw -= dx; pitch += dy` (yaw is positive to the left, see types.ts).
 //  • moveAxes()  → x = strafe (+right), y = forward (+forward), |v| ≤ 1.
-// Mouse: 1.0 sensitivity ≈ 0.0022 rad per raw pixel.
+// Mouse: 1.0 sensitivity ≈ 0.0022 rad per raw pixel (≈ 0.126°/count, the
+// classic 0.022°/count yaw × 5.7 — see cmPer360()).
+// Touch: TOUCH_RAD_PER_PX × the acceleration curve in curves.ts.
 // Device switching follows the last device actually used.
+// setSuspended() (rotate-device prompt) blocks and releases gameplay input
+// without changing the App's screen state.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { Action, InputSystem, Settings } from '../contracts';
@@ -21,13 +25,26 @@ import type { InputDevice } from '../../shared/types';
 import { KeyboardMouse, mouseButtonCode } from './keyboard-mouse';
 import { GamepadInput } from './gamepad';
 import { DEFAULT_TOUCH_LAYOUT, TOUCH_BUTTONS, TouchControls } from './touch';
+import { TouchLookFilter } from './curves';
+import { padGlyph, type PadStyle } from './glyphs';
+import { keyLabel } from '../state/settings';
 
 export { DEFAULT_TOUCH_LAYOUT, TOUCH_BUTTONS, mouseButtonCode };
+export type { PadStyle };
 
 /** Radians per raw mouse pixel at sensitivity 1.0. */
 export const MOUSE_RAD_PER_PX = 0.0022;
-/** Radians per CSS px of touch drag at touch sensitivity 1.0. */
+/** Radians per CSS px of touch drag at touch sensitivity 1.0 (at a typical tracking speed). */
 export const TOUCH_RAD_PER_PX = 0.0052;
+
+/**
+ * Physical mouse distance for a full 360° turn at a sensitivity and mouse
+ * DPI (hip fire). Handy for players matching their sensitivity across games.
+ */
+export function cmPer360(sensitivity: number, dpi = 800): number {
+  const counts = (Math.PI * 2) / (MOUSE_RAD_PER_PX * Math.max(0.01, sensitivity));
+  return (counts / Math.max(1, dpi)) * 2.54;
+}
 
 const ACTIONS: readonly Action[] = [
   'forward', 'back', 'left', 'right', 'jump', 'crouch', 'sprint', 'fire', 'ads', 'reload', 'throw',
@@ -59,10 +76,13 @@ export class Input implements InputSystem {
   private lookPxY = 0;
   private lookRadX = 0;
   private lookRadY = 0;
-  private touchSmoothX = 0;
-  private touchSmoothY = 0;
-  private touchRawX = 0;
-  private touchRawY = 0;
+  private readonly touchLook = new TouchLookFilter();
+  private readonly touchOut = { x: 0, y: 0 };
+  /** Gameplay capture requested by the App (menus → false). */
+  private wanted = false;
+  /** Temporarily suspended (e.g. the rotate-device prompt is up). */
+  private suspendedFlag = false;
+  private readonly lastHaptic: Record<'hit' | 'kill' | 'damage' | 'light', number> = { hit: 0, kill: 0, damage: 0, light: 0 };
   private adsAmount = 0;
   private zoom = 1;
   private aimAssist: ((dt: number) => { dx: number; dy: number; slow: number }) | null = null;
@@ -97,10 +117,7 @@ export class Input implements InputSystem {
     this.pad = new GamepadInput();
     this.touch = new TouchControls(target.parentElement ?? document.body, {
       touchAction: (a, d) => this.setSource(a, TOUCH, d),
-      touchLookPx: (dx, dy) => {
-        this.touchRawX += dx;
-        this.touchRawY += dy;
-      },
+      touchLookPx: (dx, dy) => this.touchLook.push(dx, dy),
       noteTouch: () => {
         this.lastTouch = performance.now();
         this.setDevice('touch');
@@ -121,7 +138,7 @@ export class Input implements InputSystem {
   private setDevice(d: InputDevice): void {
     if (d === this.device) return;
     this.device = d;
-    this.touch.setVisible(this.touchWanted && d === 'touch');
+    this.syncTouchVisible();
     for (const cb of this.deviceListeners) {
       try {
         cb(d);
@@ -207,10 +224,36 @@ export class Input implements InputSystem {
   // ── InputSystem ──────────────────────────────────────────────────────────
 
   setGameplayActive(active: boolean): void {
+    this.wanted = active;
+    this.applyActive();
+  }
+
+  /**
+   * Suspends gameplay input without touching the App's screen state (the
+   * rotate-device prompt uses this): everything held is released, and input
+   * resumes as soon as it is lifted.
+   */
+  setSuspended(v: boolean): void {
+    if (v === this.suspendedFlag) return;
+    this.suspendedFlag = v;
+    this.applyActive();
+    this.syncTouchVisible();
+  }
+
+  get suspended(): boolean {
+    return this.suspendedFlag;
+  }
+
+  private applyActive(): void {
+    const active = this.wanted && !this.suspendedFlag;
     if (active === this.active) return;
     this.active = active;
     this.touch.setEnabled(active);
     if (!active) this.releaseAll();
+  }
+
+  private syncTouchVisible(): void {
+    this.touch.setVisible(this.touchWanted && this.device === 'touch' && !this.suspendedFlag);
   }
 
   private releaseAll(): void {
@@ -224,7 +267,7 @@ export class Input implements InputSystem {
     this.pad.reset();
     this.touch.releaseAll();
     this.lookPxX = this.lookPxY = this.lookRadX = this.lookRadY = 0;
-    this.touchRawX = this.touchRawY = this.touchSmoothX = this.touchSmoothY = 0;
+    this.touchLook.reset();
   }
 
   moveAxes(): { x: number; y: number } {
@@ -253,16 +296,11 @@ export class Input implements InputSystem {
     this.lastLook = now;
     const s = this.getSettings();
     const adsMult = 1 + (s.adsSensitivity / Math.max(1, this.zoom) - 1) * this.adsAmount;
-    // Touch: light exponential smoothing of the finger path (no added latency on
-    // short flicks: most of the delta lands within ~2 frames).
-    const kS = 1 - Math.exp(-dt * 38);
-    this.touchSmoothX += this.touchRawX;
-    this.touchSmoothY += this.touchRawY;
-    this.touchRawX = this.touchRawY = 0;
-    const tx = this.touchSmoothX * kS;
-    const ty = this.touchSmoothY * kS;
-    this.touchSmoothX -= tx;
-    this.touchSmoothY -= ty;
+    // Touch: acceleration curve + adaptive smoothing (input/curves.ts): precise
+    // for small corrections, quick for flicks, flushed when the finger lifts.
+    const tl = this.touchLook.step(dt, this.touch.aiming, this.touchOut);
+    const tx = tl.x;
+    const ty = tl.y;
     let dx = this.lookPxX * MOUSE_RAD_PER_PX * s.mouseSensitivity + this.lookRadX + tx * TOUCH_RAD_PER_PX * s.touchSensitivity;
     let dy = -this.lookPxY * MOUSE_RAD_PER_PX * s.mouseSensitivity + this.lookRadY - ty * TOUCH_RAD_PER_PX * s.touchSensitivity;
     this.lookPxX = this.lookPxY = this.lookRadX = this.lookRadY = 0;
@@ -316,6 +354,9 @@ export class Input implements InputSystem {
   }
 
   endFrame(): void {
+    // Menus never read gameplay input: still poll once a frame so a pad picked up
+    // on the main menu switches the device (glyphs, prompts) and its family is known.
+    if (this.polledFrame !== this.frame) this.poll();
     this.frame++;
     for (const a of ACTIONS) {
       const st = this.states[a];
@@ -358,16 +399,27 @@ export class Input implements InputSystem {
     this.aimAssist = fn;
   }
 
+  /**
+   * Haptics, tuned per event and rate-limited so automatic fire never turns
+   * into a continuous buzz: hit = short tick, kill = double pulse, damage =
+   * a stronger thump. Phones use navigator.vibrate (Android; iOS Safari has
+   * no API, so it is silently skipped); pads use dual-rumble.
+   */
   haptic(kind: 'hit' | 'kill' | 'damage' | 'light'): void {
     const s = this.getSettings();
     if (!s.haptics) return;
+    const now = performance.now();
+    const gap = { hit: 85, kill: 60, damage: 220, light: 120 }[kind];
+    if (now - this.lastHaptic[kind] < gap) return;
+    // A kill pulse just fired: don't smear it with the hit tick of the same shot.
+    if (kind === 'hit' && now - this.lastHaptic.kill < 160) return;
+    this.lastHaptic[kind] = now;
     if (this.device === 'gamepad') {
-      const r = { hit: [0.15, 0.35, 60], kill: [0.55, 0.6, 140], damage: [0.7, 0.3, 160], light: [0, 0.2, 40] }[kind];
-      this.pad.rumble(r[0], r[1], r[2]);
+      this.pad.rumblePattern(kind);
       return;
     }
     if (this.device !== 'touch' || typeof navigator === 'undefined' || typeof navigator.vibrate !== 'function') return;
-    const pattern = { hit: 12, kill: [18, 45, 30], damage: 32, light: 8 }[kind];
+    const pattern = { hit: 9, kill: [16, 55, 30], damage: [34], light: 6 }[kind];
     try {
       navigator.vibrate(pattern);
     } catch {
@@ -375,9 +427,28 @@ export class Input implements InputSystem {
     }
   }
 
+  /** Controller family of the active pad (drives prompt glyphs). */
+  get padStyle(): PadStyle {
+    return this.pad.style;
+  }
+
+  /**
+   * Prompt glyph for an action on the current device: the bound key for
+   * keyboard/mouse ('LMB', 'Space', 'R'…), the pad button for the detected
+   * controller family ('RT' / 'R2' / 'ZR'…), '' on touch.
+   */
+  glyph(a: Action): string {
+    if (this.device === 'gamepad') return padGlyph(a, this.pad.style);
+    if (this.device === 'kbm') {
+      const k = this.getSettings().bindings[a]?.keys[0];
+      return k ? keyLabel(k) : '';
+    }
+    return '';
+  }
+
   setTouchControlsVisible(v: boolean): void {
     this.touchWanted = v;
-    this.touch.setVisible(v && this.device === 'touch');
+    this.syncTouchVisible();
   }
 
   dispose(): void {

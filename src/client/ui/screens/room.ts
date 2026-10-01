@@ -8,7 +8,7 @@ import type { App } from '../../app';
 import { MODES } from '../../../shared/modes';
 import type { RoomLobbyPlayer, RoomStateMsg } from '../../../shared/protocol';
 import type { BotDifficulty, MapId, ModeId, Team } from '../../../shared/types';
-import { button, cycler, h, iconButton, screenHeader, sectionLabel, segmented, stagger, toggle } from '../components';
+import { button, cycler, dialSvg, h, iconButton, screenHeader, sectionLabel, segmented, stagger, toggle } from '../components';
 import { i18n } from '../i18n';
 import { icon } from '../icons';
 import { BaseScreen } from './base';
@@ -47,7 +47,20 @@ export class RoomScreen extends BaseScreen {
     this.lastSig = sig;
     body.replaceChildren();
     if (!room) {
-      body.append(h('div', { class: 'panel', style: 'padding:1.5rem;max-width:30rem' }, h('div', { class: 'mm__status', style: 'font-size:1.1rem', t: pendingCode ? 'play.room.joining' : 'play.room.creating', params: pendingCode ? { code: pendingCode } : undefined })));
+      // Waiting for the server: a live dial + a way out, never a dead panel.
+      const dial = h('div', { class: 'room-wait__dial', html: dialSvg({ size: 72, ticks: 36, needle: false }) });
+      dial.prepend(h('div', { class: 'mm__sweep' }));
+      const cancel = button({ label: 'common.cancel', icon: 'close', size: 'sm', sfx: 'back', onClick: () => this.app.leaveRoom() });
+      cancel.dataset.autofocus = '';
+      body.append(
+        h(
+          'div',
+          { class: 'room-wait panel ticks' },
+          dial,
+          h('div', {}, h('div', { class: 'room-wait__title', t: pendingCode ? 'play.room.joining' : 'play.room.creating', params: pendingCode ? { code: pendingCode } : undefined }), h('div', { class: 'row__desc', t: 'play.room.waitDesc' })),
+          cancel,
+        ),
+      );
       return;
     }
     const me = room.players.find((pl) => pl.id === room.you);

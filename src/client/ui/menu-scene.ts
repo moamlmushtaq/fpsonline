@@ -6,7 +6,11 @@
 // warm dust drifts through the low sun. The camera slowly orbits; each menu
 // screen has a framing preset (the character slides to the free side of the
 // UI via a projection view offset, so perspective never distorts). In the
-// Loadout the selected weapon also floats on a turntable beside the character.
+// Loadout (and the Customize weapon-skin tab) the selected weapon floats in
+// the foreground in its high-detail first-person ('view') model — printed
+// decals, live ammo screen and dial — turning slowly around a 3/4 profile.
+// Customize can preview any cosmetic (locked ones included) on the live
+// character, and play an elimination effect on it (lazy EffectsSystem).
 //
 // Cheap by design: ~20 draw calls, merged static geometry, no allocations per
 // frame, one atmosphere (sky dome + fog + sun) from engine/atmosphere.ts.
@@ -18,11 +22,12 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import type { App } from '../app';
 import type { Atmosphere, CharacterAnim, CharacterView, ScreenId, WeaponModel } from '../contracts';
 import { createAtmosphere } from '../engine/atmosphere';
+import { EffectsSystem } from '../engine/effects';
 import { createLaunchRocket, type LaunchRocket } from '../world/rocket';
 import { ENV } from '../engine/palette';
 import type { MapLighting } from '../../shared/maps/types';
 import { GANTRY } from '../../shared/maps/gantry';
-import type { Team } from '../../shared/types';
+import type { CosmeticSelection, Faction, Team, WeaponId } from '../../shared/types';
 import { i18n } from './i18n';
 
 /** Sunset tuned for the showcase: the sun sits just behind the character's shoulder. */
@@ -31,15 +36,26 @@ const MENU_LIGHTING: MapLighting = {
   sunDir: { x: 0.42, y: 0.085, z: -0.9 },
   sunColor: '#ffa468',
   sunIntensity: 2.5,
-  skyZenith: '#4d5688',
-  skyHorizon: '#f39a72',
+  skyZenith: '#3f4a82',
+  skyHorizon: '#f59462',
   sunGlow: '#ffc88e',
-  fogColor: '#e59a80',
-  fogDensity: 0.0052,
+  fogColor: '#e0937a',
+  fogDensity: 0.0038,
   hemiIntensity: 0.6,
-  exposure: 1.0,
+  exposure: 0.96,
   weather: 'dust',
 };
+
+/** Temporary look shown while browsing Customize (locked items included). */
+export interface MenuPreview {
+  faction?: Faction;
+  cosmetics?: Partial<Omit<CosmeticSelection, 'skins'>>;
+  /** Weapon the character holds (and the showcase displays) with this skin. */
+  weapon?: { id: WeaponId; skin: string };
+}
+
+/** Full magazine shown on the showcase ammo screen. */
+const WEAPON_MAG: Record<WeaponId, number> = { meridian: 30, swift: 32, longline: 6, breaker: 6, pulse: 12, sunspear: 4 };
 
 interface Framing {
   /** Look-at target. */
@@ -57,9 +73,11 @@ interface Framing {
 }
 
 const FRAMING: Record<string, Framing> = {
-  menu: { tx: 0, ty: 1.15, tz: 0, radius: 5.8, height: 1.3, fov: 34, angle: -0.3, swing: 0.28, screenX: 0.66 },
+  // Hero shot: camera slightly below the chest, looking up past the character into the sunset.
+  menu: { tx: 0, ty: 1.2, tz: 0, radius: 5.9, height: 1.05, fov: 33, angle: -0.3, swing: 0.3, screenX: 0.66 },
   sub: { tx: 0, ty: 1.15, tz: 0, radius: 6.6, height: 1.35, fov: 34, angle: -0.2, swing: 0.18, screenX: 0.79 },
-  loadout: { tx: -0.35, ty: 1.15, tz: 0.3, radius: 5.4, height: 1.35, fov: 34, angle: -0.3, swing: 0.1, screenX: 0.79 },
+  loadout: { tx: 0, ty: 1.15, tz: 0, radius: 5.8, height: 1.3, fov: 33, angle: -0.3, swing: 0.1, screenX: 0.88 },
+  skins: { tx: 0, ty: 1.15, tz: 0, radius: 5.6, height: 1.25, fov: 33, angle: -0.2, swing: 0.3, screenX: 0.89 },
   customize: { tx: 0, ty: 1.2, tz: 0, radius: 4.6, height: 1.15, fov: 34, angle: -0.15, swing: 0.5, screenX: 0.77 },
   profile: { tx: 0, ty: 1.15, tz: 0, radius: 5.8, height: 1.3, fov: 34, angle: 0.25, swing: 0.18, screenX: 0.78 },
   results: { tx: 0, ty: 1.15, tz: 0, radius: 5.4, height: 1.25, fov: 34, angle: 0.3, swing: 0.12, screenX: 0.84 },
@@ -95,8 +113,14 @@ export class MenuScene {
   private readonly ownedMaterials: THREE.Material[] = [];
   private character: CharacterView | null = null;
   private fallback: THREE.Group | null = null;
-  private weaponModel: WeaponModel | null = null;
+  private weaponModel: (WeaponModel & { tick?: (dt: number) => void }) | null = null;
   private readonly weaponPivot = new THREE.Group();
+  private readonly weaponCenter = new THREE.Group();
+  private preview: MenuPreview | null = null;
+  private weaponShowcase = false;
+  private effects: EffectsSystem | null = null;
+  private elimTimer = 0;
+  private readonly camBack = new THREE.Vector3();
   private readonly platformTop = 0.36;
   private dust: THREE.Points | null = null;
   private rocket: LaunchRocket | null = null;
@@ -144,7 +168,9 @@ export class MenuScene {
     if (!eng) return;
     eng.setScene(this.scene, this.camera);
     eng.setOverlay(null, null);
-    eng.setGrading({ exposure: MENU_LIGHTING.exposure, bloomStrength: 0.9, vignette: 0.45, saturation: 1.12, tint: '#fff0dc', grain: 0.035, shadowTint: ENV.shadowCool });
+    // Low bloom: the sun sits in frame right behind the hero, and a strong bloom
+    // washes the whole sunset (and the character) out to cream on medium/high.
+    eng.setGrading({ exposure: MENU_LIGHTING.exposure, bloomStrength: 0.32, vignette: 0.5, saturation: 1.14, tint: '#fff0dc', grain: 0.03, shadowTint: ENV.shadowCool });
   }
 
   deactivate(): void {
@@ -162,7 +188,48 @@ export class MenuScene {
   }
 
   setFocus(screen: ScreenId | null): void {
+    if (screen !== this.focus && screen !== 'customize') {
+      // Leaving Customize drops any temporary preview.
+      if (this.preview || this.weaponShowcase) {
+        this.preview = null;
+        this.weaponShowcase = false;
+        this.scheduleRefresh();
+      }
+    }
     this.focus = screen;
+  }
+
+  /** Shows a temporary look (null restores the saved profile look). */
+  setPreview(p: MenuPreview | null): void {
+    const a = JSON.stringify(this.preview);
+    const b = JSON.stringify(p);
+    if (a === b) return;
+    this.preview = p;
+    this.scheduleRefresh();
+  }
+
+  /** Customize → weapon skins: float the weapon in the foreground like the Loadout does. */
+  setWeaponShowcase(on: boolean): void {
+    this.weaponShowcase = on;
+  }
+
+  /** Plays an elimination effect on the showcase character, then re-materializes it. */
+  playElimination(fxId: string): void {
+    const ch = this.character;
+    const eng = this.app.engine;
+    if (!ch || !eng) return;
+    try {
+      if (!this.effects) this.effects = new EffectsSystem(this.scene, eng.quality);
+      const p = this.app.profile.value;
+      const faction = (this.preview?.faction ?? p.faction) as Faction;
+      ch.root.updateMatrixWorld(true);
+      const pos = ch.root.position;
+      this.effects.elimination({ x: pos.x, y: pos.y, z: pos.z }, this.anim.yaw, faction, faction as Team, fxId, 0);
+      ch.die();
+      this.elimTimer = 1.5;
+    } catch (err) {
+      console.warn('[menu-scene] elimination preview unavailable', err);
+    }
   }
 
   dispose(): void {
@@ -173,6 +240,8 @@ export class MenuScene {
     this.character = null;
     this.weaponModel?.dispose();
     this.weaponModel = null;
+    this.effects?.dispose();
+    this.effects = null;
     this.atmosphere?.dispose();
     this.rocket?.dispose();
     for (const g of this.geometries) g.dispose();
@@ -205,9 +274,13 @@ export class MenuScene {
     const key = new THREE.DirectionalLight('#ffd2a6', 1.8);
     key.position.set(-2, 3.2, 5);
     this.scene.add(key);
-    const rim = new THREE.PointLight('#ffb070', 6, 9, 1.6);
+    const rim = new THREE.PointLight('#ffb070', 7, 9, 1.6);
     rim.position.set(1.6, 2.2, -2.2);
     this.scene.add(rim);
+    // Cool bounce from the sea side (shadowCool family) so the shaded flank keeps its volume.
+    const fill = new THREE.DirectionalLight('#8f9bd0', 0.55);
+    fill.position.set(4, 1.5, 2);
+    this.scene.add(fill);
 
     const mats = this.app.materials;
     const concrete = mats ? mats.surface('concrete', { color: ENV.concrete }) : this.own(new THREE.MeshStandardMaterial({ color: ENV.concrete, roughness: 0.9 }));
@@ -294,9 +367,10 @@ export class MenuScene {
       this.buildLaunchComplex(metal, bone, terracotta);
     }
 
-    // Weapon turntable (loadout).
-    this.weaponPivot.position.set(-0.75, 1.3, 1.1);
+    // Weapon showcase (loadout / skins): pivot follows the camera each frame.
+    this.weaponPivot.rotation.order = 'YXZ';
     this.weaponPivot.visible = false;
+    this.weaponPivot.add(this.weaponCenter);
     this.scene.add(this.weaponPivot);
 
     // Blob shadow under the character (works without shadow maps).
@@ -511,9 +585,13 @@ export class MenuScene {
   /** Rebuilds the character (cosmetics/faction change) and the weapon display. */
   refresh(force: boolean): void {
     const p = this.app.profile.value;
-    const primary = p.loadout.primary;
-    const skin = p.cosmetics.skins[primary] ?? 'factory';
-    const key = JSON.stringify([p.faction, p.cosmetics.armor, p.cosmetics.visor, p.cosmetics.elimFx, this.app.engine?.quality.preset]);
+    const pv = this.preview;
+    const faction = (pv?.faction ?? p.faction) as Faction;
+    const cosmetics: CosmeticSelection = { ...p.cosmetics, ...(pv?.cosmetics ?? {}), skins: { ...p.cosmetics.skins } };
+    const primary: WeaponId = pv?.weapon?.id ?? p.loadout.primary;
+    const skin = pv?.weapon?.skin ?? p.cosmetics.skins[primary] ?? 'factory';
+    if (pv?.weapon) cosmetics.skins[primary] = skin;
+    const key = JSON.stringify([faction, cosmetics.armor, cosmetics.visor, cosmetics.elimFx, this.app.engine?.quality.preset]);
     if (force || key !== this.charKey) {
       this.charKey = key;
       this.character?.dispose();
@@ -522,9 +600,9 @@ export class MenuScene {
       try {
         const q = this.app.engine.quality;
         const view: CharacterView = this.app.characters.create({
-          faction: p.faction,
-          team: p.faction as Team,
-          cosmetics: p.cosmetics,
+          faction,
+          team: faction as Team,
+          cosmetics,
           friendly: true,
           quality: q,
           showcase: true,
@@ -536,13 +614,14 @@ export class MenuScene {
         this.scene.add(view.root);
         this.character = view;
         this.weaponKey = '';
+        this.elimTimer = 0;
         if (this.fallback) {
           this.scene.remove(this.fallback);
           this.fallback = null;
         }
       } catch (err) {
         console.warn('[menu-scene] character factory unavailable', err);
-        if (!this.fallback) this.fallback = this.buildFallbackFigure(p.faction);
+        if (!this.fallback) this.fallback = this.buildFallbackFigure(faction);
       }
     }
     const wKey = `${primary}:${skin}`;
@@ -555,19 +634,31 @@ export class MenuScene {
         console.warn('[menu-scene] setWeapon failed', err);
       }
       this.weaponModel?.dispose();
-      if (this.weaponModel) this.weaponPivot.remove(this.weaponModel.root);
+      if (this.weaponModel) this.weaponCenter.remove(this.weaponModel.root);
       this.weaponModel = null;
       try {
-        this.weaponModel = this.app.weapons.create(primary, skin, 'world');
-        const root = this.weaponModel.root;
-        // Scale up and center the model on the turntable pivot.
-        root.scale.setScalar(1.55);
+        // The first-person model: printed decals, the live ammo screen and dial.
+        const model = this.app.weapons.create(primary, skin, 'view') as WeaponModel & { tick?: (dt: number) => void };
+        const root = model.root;
         root.position.set(0, 0, 0);
+        root.rotation.set(0, 0, 0);
+        root.scale.setScalar(1);
         root.updateMatrixWorld(true);
-        const center = new THREE.Box3().setFromObject(root).getCenter(new THREE.Vector3());
-        root.position.sub(center);
-        this.weaponPivot.add(root);
-        this.weaponModel.setAmmo(1, 1);
+        // Center on the pivot and normalise the size so a pistol and a rifle both fill the frame.
+        const box = new THREE.Box3().setFromObject(root);
+        const size = box.getSize(new THREE.Vector3());
+        const center = box.getCenter(new THREE.Vector3());
+        const k = THREE.MathUtils.clamp(0.95 / Math.max(0.2, size.z), 0.9, 2.4);
+        root.position.copy(center).multiplyScalar(-1);
+        this.weaponCenter.scale.setScalar(k);
+        root.traverse((o) => {
+          o.castShadow = false;
+          o.frustumCulled = false;
+        });
+        this.weaponCenter.add(root);
+        const mag = WEAPON_MAG[primary];
+        model.setAmmo(mag, mag);
+        this.weaponModel = model;
       } catch (err) {
         console.warn('[menu-scene] weapon model unavailable', err);
       }
@@ -599,7 +690,8 @@ export class MenuScene {
   update(dt: number): void {
     if (!this.active) return;
     this.time += dt;
-    const want = framingFor(this.focus);
+    const want = this.focus === 'customize' && this.weaponShowcase ? FRAMING.skins : framingFor(this.focus);
+    const size = this.app.engine?.size;
     const k = 1 - Math.exp(-dt * 3.2);
     const c = this.cur;
     c.tx += (want.tx - c.tx) * k;
@@ -622,7 +714,6 @@ export class MenuScene {
       cam.updateProjectionMatrix();
     }
     // Slide the subject to the free side of the UI (mirrored in RTL).
-    const size = this.app.engine?.size;
     if (size && size.width > 0) {
       const sx = i18n.dir === 'rtl' ? 1 - c.screenX : c.screenX;
       // Narrow (portrait-ish) screens keep the subject nearer the centre.
@@ -642,12 +733,34 @@ export class MenuScene {
     }
     if (this.fallback) this.fallback.rotation.y = c.angle * 0.6;
 
-    // Weapon turntable.
-    const showWeapon = this.focus === 'loadout' && !!this.weaponModel;
+    // Weapon showcase: floats in the free strip between the UI panel and the
+    // hero (placed in screen space, so it works for every aspect and RTL), held
+    // in a slowly breathing 3/4 profile with the muzzle toward the UI.
+    const showWeapon = (this.focus === 'loadout' || (this.focus === 'customize' && this.weaponShowcase)) && !!this.weaponModel;
     this.weaponPivot.visible = showWeapon;
     if (showWeapon) {
-      this.weaponPivot.rotation.y += dt * 0.5;
-      this.weaponPivot.position.y = 1.3 + Math.sin(this.time * 1.3) * 0.035;
+      const rtl = i18n.dir === 'rtl';
+      const narrow = (size?.aspect ?? 1.7) < 1.2;
+      const sxL = narrow ? 0.5 : this.focus === 'loadout' ? 0.72 : 0.74;
+      const sx = rtl ? 1 - sxL : sxL;
+      cam.updateMatrixWorld();
+      this.camBack.set(sx * 2 - 1, -(0.57 * 2 - 1), 0.5).unproject(cam).sub(cam.position).normalize();
+      const dist = Math.max(2, c.radius - 1.4);
+      this.weaponPivot.position.copy(cam.position).addScaledVector(this.camBack, dist);
+      this.weaponPivot.position.y += Math.sin(this.time * 1.1) * 0.025;
+      // Azimuth from the weapon back to the camera → muzzle points screen-side toward the UI.
+      const toCam = Math.atan2(-this.camBack.x, -this.camBack.z);
+      const face = toCam + (rtl ? -Math.PI / 2 : Math.PI / 2);
+      const sway = rtl ? -1 : 1;
+      this.weaponPivot.rotation.set(0.06 + Math.sin(this.time * 0.37) * 0.04, face + Math.sin(this.time * 0.42) * 0.5 * sway, Math.sin(this.time * 0.29) * 0.05);
+      this.weaponModel?.tick?.(dt);
+    }
+
+    // Elimination preview: effects run, then the hero re-materializes.
+    if (this.effects) this.effects.update(dt, cam);
+    if (this.elimTimer > 0) {
+      this.elimTimer -= dt;
+      if (this.elimTimer <= 0) this.character?.respawn();
     }
 
     // Dust drift.

@@ -220,6 +220,8 @@ export class ClientMatch implements MatchContext, MatchApi {
     const q = app.engine.quality;
     const effects = new EffectsSystem(map.scene, q);
     const vm = new FirstPersonViewModel(app.weapons, app.engine);
+    // Rendering: the local muzzle flash is drawn in the viewmodel overlay (over the gun).
+    effects.attachOverlay(vm.scene, vm.camera);
     const me = this.players.get(this.localId);
     vm.setTeamLight(teamColors(this.localTeam === 2 ? (me?.faction ?? 0) : this.localTeam).primary);
     const feel = new CameraFeelController();
@@ -274,6 +276,8 @@ export class ClientMatch implements MatchContext, MatchApi {
       effects.setQuality(nq);
     });
     app.audio.setEnvironment(this.def);
+    // Audio pass: occlusion / indoor-acoustics probe on the collision world.
+    app.audio.setOcclusionProbe((ax, ay, az, bx, by, bz) => !this.world.segmentClear(ax, ay, az, bx, by, bz, 'sight'));
     app.input.setAimAssist(this.rig.aimAssist);
     await this.warmShaders(map.scene, vm.scene, vm.camera);
     if (this.disposed) return;
@@ -716,7 +720,8 @@ export class ClientMatch implements MatchContext, MatchApi {
     const vw = window.innerWidth || size.width;
     const vh = window.innerHeight || size.height;
     app.hud.update(dt, b.build(left, vw, vh));
-    this.overlays?.setTouchScoreboardVisible(app.input.device === 'touch' && inGameplay && this.director.mode !== 'outro');
+    // The touch controls now carry their own (movable) scoreboard toggle → input.down('scoreboard').
+    this.overlays?.setTouchScoreboardVisible(false);
     const want = inGameplay && (app.input.down('scoreboard') || !!this.overlays?.scoreboardToggled) && this.director.mode !== 'outro';
     if (want) app.hud.scoreboard(true, b.scoreboardEntries(), this.config.mode);
     else if (this.scoreboardShown) app.hud.scoreboard(false, [], this.config.mode);
@@ -963,6 +968,7 @@ export class ClientMatch implements MatchContext, MatchApi {
     app.input.setAimAssist(null);
     app.input.setAimState(0, 1);
     app.audio.setHeartbeat(0);
+    app.audio.setOcclusionProbe(null); // audio pass: drop the probe with the world
     app.hud.scoreboard(false, [], this.config.mode);
     app.hud.setVisible(true);
     this.offQuality?.();

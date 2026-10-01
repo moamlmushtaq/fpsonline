@@ -72,6 +72,7 @@ export interface Particle {
 }
 
 const VERT = /* glsl */ `
+uniform float uHalfH;
 attribute vec3 iPos;
 attribute vec4 iColor;
 attribute vec4 iMisc;   // size, rot, sprite, flip
@@ -91,7 +92,10 @@ void main() {
     float l = length(vv.xy);
     vec2 dir = l > 1e-4 ? vv.xy / l : vec2(0.0, 1.0);
     float len = size + iVel.w * l;
-    off = dir * c.y * len + vec2(-dir.y, dir.x) * c.x * size;
+    // Minimum on-screen width (~1.2 px) so far tracers stay readable.
+    float pxW = size * projectionMatrix[1][1] * uHalfH / max(-mv.z, 0.05);
+    float w = size * max(1.0, 1.2 / max(pxW, 1e-4));
+    off = dir * c.y * len + vec2(-dir.y, dir.x) * c.x * w;
   } else {
     float cs = cos(rot), sn = sin(rot);
     vec2 q = vec2(c.x * iMisc.w, c.y);
@@ -131,6 +135,124 @@ void main() {
 
 let atlasTex: THREE.Texture | null = null;
 let glowTex: THREE.Texture | null = null;
+let flashTex: THREE.Texture | null = null;
+
+/** Muzzle-flash atlas cells (4×2): one crisp starburst silhouette per weapon + flame lobe. */
+export const FLASH_CELL = {
+  meridian: 0,
+  swift: 1,
+  longline: 2,
+  breaker: 3,
+  pulse: 4,
+  sunspear: 5,
+  flame: 6,
+  core: 7,
+} as const;
+
+/**
+ * 512×256 atlas of stylized muzzle-flash silhouettes (white; tinted per weapon).
+ * Each weapon reads differently at a glance: Meridian = balanced 8-point star,
+ * Swift = tight 6-point, Longline = long 4-point cross, Breaker = wide blossom,
+ * Pulse = electronic ring with ticks, Sunspear = 16-ray corona.
+ */
+export function flashAtlas(): THREE.Texture {
+  if (flashTex) return flashTex;
+  const C = 128;
+  const cv = makeCanvas(C * 4, C * 2);
+  const x = cv.getContext('2d') as CanvasRenderingContext2D;
+  x.clearRect(0, 0, cv.width, cv.height);
+  const cell = (i: number, draw: (cx: number, cy: number, r: number) => void): void => {
+    const cx = (i % 4) * C + C / 2;
+    const cy = Math.floor(i / 4) * C + C / 2;
+    x.save();
+    x.beginPath();
+    x.rect(cx - C / 2, cy - C / 2, C, C);
+    x.clip();
+    draw(cx, cy, C / 2 - 3);
+    x.restore();
+  };
+  const core = (cx: number, cy: number, r: number, a = 1): void => {
+    const g = x.createRadialGradient(cx, cy, 0, cx, cy, r);
+    g.addColorStop(0, `rgba(255,255,255,${a})`);
+    g.addColorStop(0.45, `rgba(255,255,255,${a * 0.75})`);
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    x.fillStyle = g;
+    x.fillRect(cx - r, cy - r, r * 2, r * 2);
+  };
+  /** Tapered spikes: n rays, lengths from `len(i)`, base half-width `w` (radians). */
+  const rays = (cx: number, cy: number, n: number, len: (i: number) => number, w: number, rot = 0, inner = 0.14): void => {
+    x.fillStyle = '#fff';
+    for (let i = 0; i < n; i++) {
+      const a = rot + (i / n) * Math.PI * 2;
+      const l = len(i);
+      x.beginPath();
+      x.moveTo(cx + Math.cos(a) * l, cy + Math.sin(a) * l);
+      x.lineTo(cx + Math.cos(a + w) * l * inner, cy + Math.sin(a + w) * l * inner);
+      x.lineTo(cx + Math.cos(a - w) * l * inner, cy + Math.sin(a - w) * l * inner);
+      x.closePath();
+      x.fill();
+    }
+  };
+  // Meridian: balanced 8-point star, alternating long/short.
+  cell(FLASH_CELL.meridian, (cx, cy, r) => {
+    rays(cx, cy, 8, (i) => r * (i % 2 ? 0.6 : 0.98), 0.17, 0.1);
+    core(cx, cy, r * 0.5);
+  });
+  // Swift: tight, small 6-point.
+  cell(FLASH_CELL.swift, (cx, cy, r) => {
+    rays(cx, cy, 6, (i) => r * (i % 2 ? 0.62 : 0.8), 0.2, 0.3, 0.2);
+    core(cx, cy, r * 0.42);
+  });
+  // Longline: long crisp 4-point cross + faint diagonals.
+  cell(FLASH_CELL.longline, (cx, cy, r) => {
+    rays(cx, cy, 4, () => r, 0.07, 0, 0.1);
+    rays(cx, cy, 4, () => r * 0.42, 0.14, Math.PI / 4, 0.18);
+    core(cx, cy, r * 0.46);
+  });
+  // Breaker: wide, fat 12-petal blossom.
+  cell(FLASH_CELL.breaker, (cx, cy, r) => {
+    rays(cx, cy, 12, (i) => r * (0.72 + ((i * 7) % 5) * 0.07), 0.24, 0.05, 0.3);
+    core(cx, cy, r * 0.62);
+  });
+  // Pulse: electronic — thin ring, 4 ticks, compact core.
+  cell(FLASH_CELL.pulse, (cx, cy, r) => {
+    x.strokeStyle = 'rgba(255,255,255,0.95)';
+    x.lineWidth = r * 0.07;
+    x.beginPath();
+    x.arc(cx, cy, r * 0.56, 0, Math.PI * 2);
+    x.stroke();
+    rays(cx, cy, 4, () => r * 0.9, 0.09, Math.PI / 4, 0.62);
+    core(cx, cy, r * 0.4);
+  });
+  // Sunspear: 16-ray corona with a halo ring.
+  cell(FLASH_CELL.sunspear, (cx, cy, r) => {
+    rays(cx, cy, 16, (i) => r * (i % 2 ? 0.66 : 0.98) * (i % 4 === 0 ? 1 : 0.9), 0.1, 0);
+    x.strokeStyle = 'rgba(255,255,255,0.6)';
+    x.lineWidth = r * 0.05;
+    x.beginPath();
+    x.arc(cx, cy, r * 0.72, 0, Math.PI * 2);
+    x.stroke();
+    core(cx, cy, r * 0.55);
+  });
+  // Side flame lobe: base at the bottom of the cell (UV v = 0 → muzzle), tip at the top.
+  cell(FLASH_CELL.flame, (cx, cy, r) => {
+    const g = x.createLinearGradient(0, cy + r, 0, cy - r);
+    g.addColorStop(0, 'rgba(255,255,255,1)');
+    g.addColorStop(0.55, 'rgba(255,255,255,0.8)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    x.fillStyle = g;
+    x.beginPath();
+    x.moveTo(cx, cy + r);
+    x.bezierCurveTo(cx + r * 0.5, cy + r * 0.55, cx + r * 0.22, cy - r * 0.35, cx, cy - r);
+    x.bezierCurveTo(cx - r * 0.22, cy - r * 0.35, cx - r * 0.5, cy + r * 0.55, cx, cy + r);
+    x.fill();
+  });
+  cell(FLASH_CELL.core, (cx, cy, r) => core(cx, cy, r));
+  flashTex = new THREE.CanvasTexture(cv);
+  flashTex.colorSpace = THREE.SRGBColorSpace;
+  flashTex.generateMipmaps = true;
+  return flashTex;
+}
 
 /** Small soft radial glow texture (sprites, blinking lights). */
 export function glowTexture(): THREE.Texture {
@@ -362,6 +484,12 @@ export function particleAtlas(): THREE.Texture {
   return atlasTex;
 }
 
+function markRange(attr: THREE.InstancedBufferAttribute, count: number): void {
+  attr.clearUpdateRanges();
+  attr.addUpdateRange(0, count);
+  attr.needsUpdate = true;
+}
+
 export class ParticlePool {
   readonly mesh: THREE.Mesh;
   private readonly geo: THREE.InstancedBufferGeometry;
@@ -379,6 +507,9 @@ export class ParticlePool {
   private sprite: Float32Array; private stretch: Float32Array;
   private alive: Uint8Array;
   private managed: Uint8Array;
+  /** Spawned since the last update: shown once before it starts aging, so short-lived
+   *  particles (tracers, sparks) still reach the screen when dt > life (low fps). */
+  private fresh: Uint8Array;
   private free: Int32Array;
   private freeTop = 0;
   // GPU buffers.
@@ -403,6 +534,7 @@ export class ParticlePool {
     this.sprite = F(); this.stretch = F();
     this.alive = new Uint8Array(n);
     this.managed = new Uint8Array(n);
+    this.fresh = new Uint8Array(n);
     this.free = new Int32Array(n);
     for (let i = 0; i < n; i++) this.free[i] = n - 1 - i;
     this.freeTop = n;
@@ -426,6 +558,7 @@ export class ParticlePool {
         uAdditive: { value: additive ? 1 : 0 },
         fogColor: { value: new THREE.Color() },
         fogDensity: { value: 0 },
+        uHalfH: { value: 360 },
       },
       vertexShader: VERT,
       fragmentShader: FRAG,
@@ -454,6 +587,7 @@ export class ParticlePool {
     const i = this.free[--this.freeTop];
     this.alive[i] = 1;
     this.managed[i] = managed ? 1 : 0;
+    this.fresh[i] = 1;
     this.px[i] = p.x; this.py[i] = p.y; this.pz[i] = p.z;
     this.vx[i] = p.vx ?? 0; this.vy[i] = p.vy ?? 0; this.vz[i] = p.vz ?? 0;
     this.age[i] = 0;
@@ -525,7 +659,10 @@ export class ParticlePool {
       if (!this.alive[i]) continue;
       const managed = this.managed[i] === 1;
       let t = 0;
+      const fdt = this.fresh[i] ? 0 : dt;
+      this.fresh[i] = 0;
       if (!managed) {
+        const dt = fdt;
         this.age[i] += dt;
         t = this.age[i] / this.life[i];
         if (t >= 1) {
@@ -575,12 +712,24 @@ export class ParticlePool {
     this.live = n;
     this.geo.instanceCount = n;
     if (n > 0) {
-      for (const [attr, w] of [[this.iPos, 3], [this.iColor, 4], [this.iMisc, 4], [this.iVel, 4]] as const) {
-        attr.clearUpdateRanges();
-        attr.addUpdateRange(0, n * w);
-        attr.needsUpdate = true;
-      }
+      // (No array literal here: this runs every frame.)
+      markRange(this.iPos, n * 3);
+      markRange(this.iColor, n * 4);
+      markRange(this.iMisc, n * 4);
+      markRange(this.iVel, n * 4);
     }
+    // Nothing alive → skip the draw entirely (an empty instanced draw still
+    // costs a draw call + state changes in three).
+    this.mesh.visible = n > 0;
+  }
+
+  /**
+   * Viewport height in device pixels: streaks (tracers, sparks) are kept at
+   * least ~1.2 px wide so distant tracers stay readable instead of vanishing
+   * into sub-pixel shimmer.
+   */
+  setViewportHeight(px: number): void {
+    this.mat.uniforms.uHalfH.value = Math.max(1, px) * 0.5;
   }
 
   dispose(): void {

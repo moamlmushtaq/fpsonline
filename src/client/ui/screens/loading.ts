@@ -12,6 +12,9 @@ import { BaseScreen } from './base';
 
 const TIP_COUNT = 18;
 
+/** The map + mode of the deployment in progress (the pause menu shows it). */
+export const lastDeploy: { map: MapId; mode: ModeId } = { map: 'gantry', mode: 'tdm' };
+
 export class LoadingScreen extends BaseScreen {
   readonly id = 'loading' as const;
   private target = 0;
@@ -28,6 +31,8 @@ export class LoadingScreen extends BaseScreen {
     const p = (params ?? {}) as { map?: MapId; mode?: ModeId };
     const map = p.map ?? 'gantry';
     const mode = p.mode ?? 'tdm';
+    lastDeploy.map = map;
+    lastDeploy.mode = mode;
     this.target = 0;
     this.shown = 0;
     this.reported = false;
@@ -39,13 +44,19 @@ export class LoadingScreen extends BaseScreen {
       art.style.backgroundImage = `url("${url}")`;
       requestAnimationFrame(() => art.classList.add('is-ready'));
     };
+    this.el.dataset.map = map;
     if (ready) setArt(ready);
     else {
       // The full painting is made off-thread and may take a moment: show the
-      // (already prewarmed) thumbnail right away, then swap in the full art.
+      // thumbnail first (painted ahead of everything else if it is not ready
+      // yet — it is ~10× cheaper), then swap in the full art. Until then the
+      // screen shows the map's own sky gradient, never a black frame.
       const thumb = keyArtReady(map, 'thumb');
-      void keyArt(map, 'full').then(setArt);
       if (thumb) queueMicrotask(() => setArt(thumb));
+      else void keyArt(map, 'thumb', 3).then((u) => {
+        if (!art.style.backgroundImage) setArt(u);
+      });
+      void keyArt(map, 'full').then(setArt);
     }
 
     const title = h(

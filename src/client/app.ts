@@ -34,6 +34,9 @@ import type { Transport } from './net/transport';
 import { LocalHostLink } from './net/local-host';
 import { prefetchDecorModules } from './world/map-builder';
 import { ClientMatch } from './game/match';
+// Controls UI (input engineer): touch layout editor + rotate-device prompt.
+import { openTouchLayoutEditor } from './ui/touch-layout-editor';
+import { installRotatePrompt } from './ui/rotate-prompt';
 import type { LoadingScreen } from './ui/screens/loading';
 import { PROTOCOL_VERSION, ROOM_CODE_LENGTH } from '../shared/constants';
 import { totalXpForLevel, unlocksBetween } from '../shared/progression';
@@ -136,6 +139,10 @@ export class App {
     }
 
     this.wireServices(canvas);
+    // Controls UI (input engineer): Settings shows "Customize layout" once this is set;
+    // the rotate prompt suspends gameplay input on touch devices held in portrait.
+    this.openTouchLayoutEditor = () => openTouchLayoutEditor(this);
+    installRotatePrompt(this);
   }
 
   // ── Setup ─────────────────────────────────────────────────────────────────
@@ -817,8 +824,8 @@ export class App {
         { yaw: -0.9, label: 'A', color: c0, kind: 'zone' },
         { yaw: -0.2, label: 'B', color: '#f3ece0', kind: 'zone' },
         { yaw: 0.35, label: 'C', color: c1, kind: 'zone' },
-        { yaw: -1.2, label: i18n.t('landmark.gantry.sea'), color: '#f3ece0', kind: 'landmark' },
-        { yaw: -0.45, label: i18n.t('landmark.gantry.tower'), color: '#f3ece0', kind: 'landmark' },
+        { yaw: -1.2, label: i18n.t('gantry.landmark.sea'), color: '#f3ece0', kind: 'landmark' },
+        { yaw: -0.45, label: i18n.t('gantry.landmark.tower'), color: '#f3ece0', kind: 'landmark' },
       ],
       objectives: [
         { id: 'A', label: 'A', screen: { x: w * 0.28, y: hgt * 0.42 }, offscreen: false, color: c0, progress: 1, distance: 42, kind: 'zone', pulse: false },

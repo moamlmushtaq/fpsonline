@@ -1,25 +1,28 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // HALCYON FRONT — AudioSystem implementation (Web Audio, fully procedural).
 //
-// Graph:
-//   sfx voices ─► sfx bus ─► sfxDuck ─┐
-//   ambience   ─► amb bus ─► sfx bus  │
-//   music      ─► music bus ─► musicDuck ─┼─► master ─► glue compressor ─► limiter ─► out
-//   announcer  ─► voice bus ──────────┤
-//   ui         ─► ui bus ─────────────┘
-//   reverb send ─► convolver (per-map IR) ─► sfx bus;  echo send ─► delay loop ─► sfx bus
+// The mixing graph lives in core.ts (buses → glue compressor → limiter →
+// safety clip); synthesis in synth.ts / weapons.ts / sfx.ts; space and
+// ambience in spatial.ts / reverb.ts / environment.ts / radio.ts; the score
+// in music.ts. This class only wires, routes and guards: every public method
+// is a silent no-op if Web Audio is unavailable or still locked.
 //
-// Designed to be deepened: synthesis lives in sfx.ts, music in music.ts and
-// space/ambience in spatial.ts; this class only wires, routes and guards.
-// Every public method is a silent no-op if Web Audio is unavailable.
+// Mix targets (measured with an OfflineAudioContext, see the polish report):
+// weapons are the loudest element (local shots peak ≈ −3 dBFS pre-limiter),
+// feedback and footsteps sit clearly above the music, ambience is a quiet
+// bed, UI is soft, music sits under gameplay in matches (state trim −3 dB)
+// and ducks for the announcer, the pause menu and the low-health heartbeat.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { AudioSystem, AudioVolumes, MusicState, UiSound } from '../contracts';
 import type { MapDef } from '../../shared/maps/types';
 import type { Faction, SurfaceTag, Vec3, WeaponId } from '../../shared/types';
+import type { ChimeTone } from './announcer';
+import { createCore, type AudioCore } from './core';
+import { Environment } from './environment';
 import { Music } from './music';
 import { Sfx } from './sfx';
-import { Environment, makeImpulse, makeNoise, Spatializer, type AudioCore } from './spatial';
+import { Spatializer, type OcclusionProbe } from './spatial';
 
 interface XYZ {
   x: number;
@@ -31,23 +34,24 @@ type Ctor = typeof AudioContext;
 
 export class Audio implements AudioSystem {
   private core: AudioCore | null = null;
+  private actx: AudioContext | null = null;
   private sfx: Sfx | null = null;
   private music: Music | null = null;
   private env: Environment | null = null;
   private spatial: Spatializer | null = null;
-  private musicDuck: GainNode | null = null;
-  private sfxDuck: GainNode | null = null;
   private voiceDuck = 0;
   private volumes: AudioVolumes = { master: 0.85, music: 0.55, sfx: 0.9, voice: 0.85, ui: 0.6 };
   private pendingMusic: MusicState = 'off';
   private hidden = false;
   private duckK = 0;
+  private lite = false;
 
   constructor() {
     try {
       const AC: Ctor | undefined = window.AudioContext ?? (window as unknown as { webkitAudioContext?: Ctor }).webkitAudioContext;
       if (!AC) return;
       const ctx = new AC({ latencyHint: 'interactive' });
+      this.actx = ctx;
       this.build(ctx);
     } catch (err) {
       console.warn('[audio] Web Audio unavailable', err);
@@ -55,73 +59,8 @@ export class Audio implements AudioSystem {
     }
   }
 
-  private build(ctx: AudioContext): void {
-    const g = () => ctx.createGain();
-    const master = g();
-    const glue = ctx.createDynamicsCompressor();
-    glue.threshold.value = -18;
-    glue.knee.value = 12;
-    glue.ratio.value = 3;
-    glue.attack.value = 0.006;
-    glue.release.value = 0.22;
-    const limiter = ctx.createDynamicsCompressor();
-    limiter.threshold.value = -2.5;
-    limiter.knee.value = 0;
-    limiter.ratio.value = 20;
-    limiter.attack.value = 0.001;
-    limiter.release.value = 0.1;
-    master.connect(glue).connect(limiter).connect(ctx.destination);
-
-    const music = g();
-    const sfx = g();
-    const voice = g();
-    const ui = g();
-    const ambience = g();
-    this.musicDuck = g();
-    this.sfxDuck = g();
-    music.connect(this.musicDuck).connect(master);
-    sfx.connect(this.sfxDuck).connect(master);
-    ambience.gain.value = 0.9;
-    ambience.connect(sfx);
-    voice.connect(master);
-    ui.connect(master);
-
-    // Map reverb (convolution) and tuned echo.
-    const reverbSend = g();
-    const convolver = ctx.createConvolver();
-    convolver.buffer = makeImpulse(ctx, 'open');
-    const reverbOut = g();
-    reverbOut.gain.value = 0.55;
-    reverbSend.connect(convolver).connect(reverbOut).connect(sfx);
-    const echoSend = g();
-    const echoDelay = ctx.createDelay(1.5);
-    echoDelay.delayTime.value = 0.3;
-    const echoFeedback = g();
-    echoFeedback.gain.value = 0;
-    const echoTone = ctx.createBiquadFilter();
-    echoTone.type = 'lowpass';
-    echoTone.frequency.value = 1600;
-    echoSend.connect(echoDelay);
-    echoDelay.connect(echoTone);
-    echoTone.connect(echoFeedback);
-    echoFeedback.connect(echoDelay);
-    const echoOut = g();
-    echoOut.gain.value = 0.5;
-    echoTone.connect(echoOut).connect(sfx);
-
-    this.core = {
-      ctx,
-      buses: { master, music, sfx, voice, ui, ambience },
-      reverbSend,
-      convolver,
-      echoSend,
-      echoDelay,
-      echoFeedback,
-      noise: { white: makeNoise(ctx, 'white', 2), pink: makeNoise(ctx, 'pink', 3), brown: makeNoise(ctx, 'brown', 3) },
-      hrtf: false,
-      voices: 0,
-      maxVoices: 40,
-    };
+  private build(ctx: BaseAudioContext): void {
+    this.core = createCore(ctx, { lite: this.lite });
     this.spatial = new Spatializer(this.core);
     this.sfx = new Sfx(this.core, this.spatial);
     this.music = new Music(this.core);
@@ -136,11 +75,11 @@ export class Audio implements AudioSystem {
 
   /** The raw AudioContext (for future specialists); null if unavailable. */
   get context(): AudioContext | null {
-    return this.core?.ctx ?? null;
+    return this.actx;
   }
 
   unlock(): void {
-    const ctx = this.core?.ctx;
+    const ctx = this.actx;
     if (!ctx || this.hidden) return;
     if (ctx.state !== 'running') {
       ctx.resume().then(
@@ -155,7 +94,7 @@ export class Audio implements AudioSystem {
   /** Suspends everything while the page is hidden (saves battery; music pauses). */
   setHidden(hidden: boolean): void {
     this.hidden = hidden;
-    const ctx = this.core?.ctx;
+    const ctx = this.actx;
     if (!ctx) return;
     try {
       if (hidden && ctx.state === 'running') void ctx.suspend();
@@ -165,10 +104,18 @@ export class Audio implements AudioSystem {
     }
   }
 
-  /** Low-end devices: lighter music voices and a smaller voice budget. */
+  /** Low-end devices: fewer voices, no convolution, lighter music, equal-power panning. */
   setLite(lite: boolean): void {
-    this.music?.setLite(lite);
-    if (this.core) this.core.maxVoices = lite ? 24 : 40;
+    this.lite = lite;
+    const c = this.core;
+    if (!c) return;
+    try {
+      c.maxVoices = lite ? 22 : 40;
+      this.env?.setLite(lite);
+      this.music?.setLite(lite);
+    } catch (err) {
+      console.warn('[audio] lite', err);
+    }
   }
 
   private guard(fn: () => void): void {
@@ -184,7 +131,17 @@ export class Audio implements AudioSystem {
     this.guard(() => this.spatial?.setListener(pos.x, pos.y, pos.z, forward.x, forward.y, forward.z, up.x, up.y, up.z));
   }
 
-  shot(weapon: WeaponId, pos?: Vec3): void {
+  /**
+   * Occlusion probe: returns true when level geometry blocks the segment
+   * a → b. Set by the match from its collision world; null clears it. Used
+   * for muffling occluded sources and the indoor/outdoor acoustics.
+   */
+  setOcclusionProbe(probe: OcclusionProbe | null): void {
+    this.spatial?.setProbe(probe);
+  }
+
+  shot(weapon: WeaponId, pos?: Vec3, opts?: { suppressedByDistance?: boolean }): void {
+    void opts;
     this.guard(() => this.sfx?.shot(weapon, pos));
   }
 
@@ -193,8 +150,7 @@ export class Audio implements AudioSystem {
   }
 
   dryFire(weapon: WeaponId): void {
-    void weapon;
-    this.guard(() => this.sfx?.dryFire());
+    this.guard(() => this.sfx?.dryFire(weapon));
   }
 
   pump(weapon: WeaponId, pos?: Vec3): void {
@@ -209,8 +165,9 @@ export class Audio implements AudioSystem {
     this.guard(() => this.sfx?.swap(weapon));
   }
 
-  footstep(surface: SurfaceTag, pos: Vec3 | undefined, kind: 'walk' | 'sprint' | 'crouch'): void {
-    this.guard(() => this.sfx?.footstep(surface, pos, kind));
+  /** `friendly`: a teammate's step (quieter, shorter range than an enemy's). */
+  footstep(surface: SurfaceTag, pos: Vec3 | undefined, kind: 'walk' | 'sprint' | 'crouch', friendly = false): void {
+    this.guard(() => this.sfx?.footstep(surface, pos, kind, friendly));
   }
 
   jump(pos?: Vec3): void {
@@ -278,12 +235,17 @@ export class Audio implements AudioSystem {
   }
 
   setHeartbeat(intensity: number): void {
-    this.sfx?.setHeartbeat(intensity);
+    try {
+      this.sfx?.setHeartbeat(intensity);
+    } catch (err) {
+      console.warn('[audio] heartbeat', err);
+    }
   }
 
   setEnvironment(map: MapDef | null): void {
     if (!this.core) return;
     try {
+      if (!map) this.spatial?.setProbe(null);
       this.env?.set(map);
     } catch (err) {
       console.warn('[audio] environment', err);
@@ -315,7 +277,7 @@ export class Audio implements AudioSystem {
     c.buses.music.gain.setTargetAtTime(sq(this.volumes.music) * 1.25, t, 0.03);
     c.buses.sfx.gain.setTargetAtTime(sq(this.volumes.sfx), t, 0.03);
     c.buses.voice.gain.setTargetAtTime(sq(this.volumes.voice), t, 0.03);
-    c.buses.ui.gain.setTargetAtTime(sq(this.volumes.ui) * 1.2, t, 0.03);
+    c.buses.ui.gain.setTargetAtTime(sq(this.volumes.ui) * 1.1, t, 0.03);
   }
 
   setHrtf(on: boolean): void {
@@ -329,7 +291,7 @@ export class Audio implements AudioSystem {
     this.applyDuck();
   }
 
-  /** Announcer ducking: music dips while a voice line plays. */
+  /** Announcer ducking: music dips (and the world a touch) while a voice line plays. */
   duckForVoice(on: boolean): void {
     this.voiceDuck = on ? 1 : 0;
     this.applyDuck();
@@ -337,21 +299,32 @@ export class Audio implements AudioSystem {
 
   private applyDuck(): void {
     const c = this.core;
-    if (!c || !this.musicDuck || !this.sfxDuck) return;
+    if (!c) return;
     const t = c.ctx.currentTime;
-    const music = (1 - this.duckK * 0.55) * (1 - this.voiceDuck * 0.45);
-    this.musicDuck.gain.setTargetAtTime(music, t, 0.12);
-    this.sfxDuck.gain.setTargetAtTime(1 - this.duckK * 0.75, t, 0.12);
+    const music = (1 - this.duckK * 0.55) * (1 - this.voiceDuck * 0.5);
+    const sfx = (1 - this.duckK * 0.75) * (1 - this.voiceDuck * 0.15);
+    c.musicDuck.gain.setTargetAtTime(music, t, this.voiceDuck ? 0.08 : 0.25);
+    c.sfxDuck.gain.setTargetAtTime(sfx, t, 0.12);
   }
 
-  /** Soft two-tone chime before announcer lines (voice bus). */
-  announcerChime(): void {
+  /** Soft chime before announcer lines (voice bus). */
+  announcerChime(tone: ChimeTone = 'normal'): void {
     this.guard(() => {
       const c = this.core as AudioCore;
+      const s = this.sfx?.synth;
+      if (!s) return;
       const t = c.ctx.currentTime;
       const d = c.buses.voice;
-      this.sfx?.bell(d, t, 659.25, 0.07, 0.8);
-      this.sfx?.bell(d, t + 0.16, 987.77, 0.06, 1.1);
+      if (tone === 'bright') {
+        s.bell(d, t, 783.99, 0.06, 0.9);
+        s.bell(d, t + 0.12, 1174.66, 0.055, 1.2);
+      } else if (tone === 'low') {
+        s.bell(d, t, 659.25, 0.06, 0.9);
+        s.bell(d, t + 0.14, 493.88, 0.06, 1.1);
+      } else {
+        s.bell(d, t, 659.25, 0.06, 0.8);
+        s.bell(d, t + 0.14, 987.77, 0.055, 1.1);
+      }
     });
   }
 

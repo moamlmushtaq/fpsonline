@@ -23,6 +23,7 @@ export function findCoverNode(
   threatEye: Vec3,
   radius: number,
   tries: number,
+  avoid: Vec3 | null = null,
 ): number {
   CANDS.length = 0;
   nav.forNodesNear(pos, radius, (k) => {
@@ -38,7 +39,8 @@ export function findCoverNode(
     const y = nav.py[k];
     const z = nav.pz[k];
     const d = Math.hypot(x - pos.x, z - pos.z);
-    if (d < 1.5) continue;
+    if (d < 2.5) continue;
+    if (avoid && Math.hypot(x - avoid.x, z - avoid.z) < 3) continue;
     if (Math.abs(y - pos.y) > 3.2) continue;
     const td = Math.hypot(x - threatEye.x, z - threatEye.z);
     if (td < 7 || td < myThreatD - 2) continue;

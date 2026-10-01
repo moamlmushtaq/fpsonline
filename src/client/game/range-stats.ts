@@ -12,9 +12,12 @@
 // targets, band TTK with ≥ 3 eliminations) with a toast when beaten.
 // It also runs the in-world range pieces: floating hit numbers + distance
 // (tutorial/floaters.ts) and the armory stations (tutorial/range-stations.ts).
-// Layout: a fixed card on the inline-end side (above the HUD and the pause
-// overlay, so it is clickable whenever the cursor is free); on touch a small
-// pill at the top inline-start corner that expands. Hidden during the intro,
+// Layout: a fixed card on the physical left (above the HUD and the pause
+// overlay, so it is clickable whenever the cursor is free) — the HUD's toasts
+// ("new personal best", "tutorial skipped") grow rightwards from the crosshair
+// in both reading directions and were hidden under a right-side card; on
+// touch a small pill in the top bar, beside the corner HUD box (below it sit the
+// pause / menu touch buttons, which the pill must never cover). Hidden during the intro,
 // the tutorial (body.hf-tutorial-active) and when the HUD is hidden.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -27,12 +30,11 @@ import { Floaters } from './tutorial/floaters';
 import { RangeStations } from './tutorial/range-stations';
 
 const CSS = `
-.hf-range { position: fixed; z-index: 26; inset-inline-end: max(calc(var(--safe-r, 0px) + 1.2rem), 1.2rem); top: 30%; width: 15.5rem; padding: .7rem .85rem .75rem; border-radius: 12px;
+.hf-range { position: fixed; z-index: 26; left: max(calc(var(--safe-l, 0px) + 1.2rem), 1.2rem); top: 30%; width: 15.5rem; padding: .7rem .85rem .75rem; border-radius: 12px;
   background: linear-gradient(180deg, rgba(22,20,18,.62), rgba(22,20,18,.42)); border: 1px solid rgba(243,236,224,.18); color: var(--c-text, #f3ece0); font: .78rem var(--f-ui);
   backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); transition: opacity 300ms var(--ease), transform 300ms var(--ease); pointer-events: auto; }
 body.q-low .hf-range { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(22,20,18,.78); }
-.hf-range.is-hidden { opacity: 0; transform: translateX(8px); pointer-events: none; }
-[dir='rtl'] .hf-range.is-hidden { transform: translateX(-8px); }
+.hf-range.is-hidden { opacity: 0; transform: translateX(-8px); pointer-events: none; }
 .hf-range__head { display: flex; align-items: center; gap: .5rem; margin-bottom: .45rem; }
 .hf-range__title { flex: 1; font-size: .7rem; letter-spacing: .18em; text-transform: uppercase; color: var(--c-accent, #f0b35b); }
 .hf-range__clock { font-family: var(--f-mono); font-size: .75rem; color: rgba(243,236,224,.66); direction: ltr; unicode-bidi: isolate; }
@@ -63,7 +65,7 @@ body.q-low .hf-range { backdrop-filter: none; -webkit-backdrop-filter: none; bac
 .hf-range__seg button.on { background: var(--c-accent, #f0b35b); color: var(--c-ink, #1d1712); }
 .hf-range__speedlbl { font-size: .62rem; letter-spacing: .12em; text-transform: uppercase; color: rgba(243,236,224,.5); margin-top: .5rem; }
 .hf-range__toggle { display: none; }
-body.touch-ui .hf-range { inset-inline-end: auto; inset-inline-start: auto; left: calc(var(--safe-l, 0px) + .7rem); top: calc(var(--safe-t, 0px) + 5.6rem); width: auto; max-width: 16rem; padding: .4rem .55rem; font-size: .72rem; }
+body.touch-ui .hf-range { left: calc(var(--safe-l, 0px) + 11.6rem); top: calc(var(--safe-t, 0px) + .55rem); width: auto; max-width: 16rem; padding: .4rem .55rem; font-size: .72rem; }
 body.touch-ui .hf-range__toggle { display: inline-grid; place-items: center; min-width: 48px; min-height: 40px; border-radius: 8px; border: 1px solid rgba(243,236,224,.28); background: rgba(243,236,224,.06); color: inherit; font: 600 .78rem var(--f-mono); direction: ltr; }
 body.touch-ui .hf-range:not(.is-open) .hf-range__body, body.touch-ui .hf-range:not(.is-open) .hf-range__title, body.touch-ui .hf-range:not(.is-open) .hf-range__clock { display: none; }
 body.touch-ui .hf-range:not(.is-open) .hf-range__head { margin: 0; }
@@ -275,13 +277,14 @@ export class RangePanel implements MatchExtension {
     const best = profile.value.rangeBest;
     const v = this.vals;
     v[0].textContent = s.shots ? pct(s.accuracy) : '—';
-    if (best?.bestAccuracy) v[0].append(el('small', '', pct(best.bestAccuracy)));
+    // Personal bests ride along, labelled: a bare second number next to the value reads as noise.
+    if (best?.bestAccuracy) v[0].append(this.pbTag(pct(best.bestAccuracy)));
     v[1].textContent = `${s.hits}/${s.shots}`;
     v[2].textContent = s.hits ? pct(s.headRate) : '—';
     v[3].textContent = String(s.kills);
-    if (best?.mostTargets) v[3].append(el('small', '', String(best.mostTargets)));
+    if (best?.mostTargets) v[3].append(this.pbTag(String(best.mostTargets)));
     v[4].textContent = String(s.bestStreak);
-    if (best?.bestStreak) v[4].append(el('small', '', String(best.bestStreak)));
+    if (best?.bestStreak) v[4].append(this.pbTag(String(best.bestStreak)));
     this.toggle.textContent = s.shots ? pct(s.accuracy) : '—';
     // Time to eliminate per band (always all five bands: empty ones dimmed).
     this.ttk.replaceChildren();
@@ -299,6 +302,14 @@ export class RangePanel implements MatchExtension {
     this.wpn.replaceChildren();
     if (!s.weapons.length) this.wpn.append(el('div', 'hf-range__empty', this.t('range.ttkEmpty')));
     for (const w of s.weapons) this.wpn.append(el('span', '', this.t(WEAPONS[w.weapon].nameKey)), el('b', '', `${w.hits}/${w.shots}`), el('b', '', w.shots ? pct(w.accuracy) : '—'));
+  }
+
+  /** Small "best 81%" tag after a value. */
+  private pbTag(value: string): HTMLElement {
+    const tag = el('small', '', `${this.t('range.best')} ${value}`);
+    tag.title = `${this.t('range.best')} ${value}`;
+    tag.dir = this.api.i18n.dir; // the value cell is LTR (numbers); the tag reads in the UI direction
+    return tag;
   }
 
   /** Persists improved personal bests (and toasts each category once per session). */

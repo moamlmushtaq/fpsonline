@@ -21,6 +21,8 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import type { GradingSettings } from '../contracts';
 
+const _c = new THREE.Color();
+
 /** CSS hex → display-space (non-linearized) RGB triple. */
 export function hexToDisplayRGB(hex: string, out = new THREE.Vector3()): THREE.Vector3 {
   const c = new THREE.Color();
@@ -73,6 +75,8 @@ uniform vec3 uShadowTint;
 uniform float uVignette;
 uniform float uGrain;
 uniform float uPaintRadius;
+uniform float uShadowSplit;
+uniform float uShadowFloor;
 varying vec2 vUv;
 
 // ACES filmic fit (identical to three.js ACESFilmicToneMapping).
@@ -138,21 +142,33 @@ void main() {
   quadrant(c0, uv, vec2(-1.0, 1.0), px, acc, wsum);
   quadrant(c0, uv, vec2(1.0, 1.0), px, acc, wsum);
   vec3 col = acc / max(wsum, 1e-5);
-  // Keep a little of the original so fine UI-critical detail never smears away.
-  col = mix(col, c0, 0.25);
+  // Keep a good share of the original so fine detail (distant enemies, text on
+  // signs) never smears away: the filter only calms texture noise into strokes.
+  col = mix(col, c0, 0.4);
 #else
   vec3 col = aces(texture2D(tDiffuse, uv).rgb);
 #endif
 
-  // Saturation (around luma) and warm tint (luminance-preserving).
+  // All grading below runs on LINEAR display-referred values (post ACES, pre
+  // sRGB encode). Thresholds are therefore linear: 0.18 linear ≈ 46% sRGB.
   float l = luma(col);
+
+  // Saturation (around luma) and warm tint (luminance-preserving).
   col = mix(vec3(l), col, uSaturation);
   col *= uTint / max(luma(uTint), 1e-3);
 
-  // Painterly shadow lift toward the cool-violet shadow tint (never pure black).
-  float sh = 1.0 - smoothstep(0.0, 0.42, l);
-  col = mix(col, max(col, uShadowTint), sh * 0.3);
-  col += uShadowTint * sh * sh * 0.06;
+  // Cool-violet split tone in the shadows. This is a luminance-preserving HUE
+  // shift (multiply by the normalized shadow chroma), NOT a lift toward grey:
+  // shadow values and contrast are kept, only their color leans cool. A tiny
+  // toe floor keeps the deepest crevices a rich blue-violet instead of black.
+  // (uShadowTint arrives linearized; see PostPipeline.setGrading.)
+  float sh = 1.0 - smoothstep(0.0, 0.2, l);
+  // (nudged a little toward violet: the palette's steel-blue shadowCool alone
+  // reads slightly cyan once multiplied into warm sandstone.)
+  vec3 shadowHue = uShadowTint * vec3(1.07, 0.95, 1.0);
+  shadowHue /= max(luma(shadowHue), 1e-4);
+  col = mix(col, col * shadowHue, sh * uShadowSplit);
+  col += uShadowTint * uShadowFloor * (1.0 - smoothstep(0.0, 0.05, l));
 
   // Soft oval vignette.
   vec2 q = (uv - 0.5) * vec2(uResolution.x / uResolution.y, 1.0);
@@ -163,14 +179,16 @@ void main() {
   // Paper tooth: fine mottling + long faint fibers, fixed in screen space.
   vec2 pp = gl_FragCoord.xy;
   float paper = vnoise(pp * 0.45) * 0.55 + vnoise(pp * 1.3) * 0.25 + vnoise(vec2(pp.x * 0.05, pp.y * 0.9)) * 0.2;
-  col *= 1.0 + (paper - 0.5) * 0.045;
+  col *= 1.0 + (paper - 0.5) * 0.04;
 #endif
 
-  // Animated film grain, strongest in the mid-tones.
+  vec3 outc = srgbEncode(clamp(col, 0.0, 1.0));
+  // Animated film grain in DISPLAY space (uniform perceived strength; doubles as
+  // dither against banding in the sky gradients), strongest in the mid-tones.
   float g = hash12(gl_FragCoord.xy + fract(uTime * 7.31) * 317.0) - 0.5;
-  col += g * uGrain * 0.09 * (0.35 + 0.65 * (1.0 - abs(l * 2.0 - 1.0)));
-
-  gl_FragColor = vec4(srgbEncode(clamp(col, 0.0, 1.0)), 1.0);
+  float ol = luma(outc);
+  outc += g * uGrain * 0.34 * (0.4 + 0.6 * (1.0 - abs(ol * 2.0 - 1.0)));
+  gl_FragColor = vec4(outc, 1.0);
 }`;
 
 class GradingPass extends Pass {
@@ -192,6 +210,8 @@ class GradingPass extends Pass {
         uVignette: { value: 0.3 },
         uGrain: { value: 0.04 },
         uPaintRadius: { value: 1.6 },
+        uShadowSplit: { value: 0.34 },
+        uShadowFloor: { value: 0.32 },
       },
       defines: painterly ? { PAINTERLY: '' } : {},
       vertexShader: GRADING_VERT,
@@ -215,7 +235,7 @@ class GradingPass extends Pass {
     this.material.uniforms.uTexel.value.set(1 / Math.max(1, w), 1 / Math.max(1, h));
     this.material.uniforms.uResolution.value.set(Math.max(1, w), Math.max(1, h));
     // Painterly radius grows a touch with resolution so the look is stable across DPRs.
-    this.material.uniforms.uPaintRadius.value = THREE.MathUtils.clamp(h / 720, 1, 2.2) * 1.35;
+    this.material.uniforms.uPaintRadius.value = THREE.MathUtils.clamp(h / 720, 1, 2) * 1.15;
   }
 
   override render(renderer: THREE.WebGLRenderer, writeBuffer: THREE.WebGLRenderTarget, readBuffer: THREE.WebGLRenderTarget): void {
@@ -241,8 +261,14 @@ export interface PostOptions {
   samples: number;
 }
 
-/** Luminance threshold: only emissives, the sun disc and hot glints bloom. */
-const BLOOM_THRESHOLD = 0.92;
+/**
+ * Luminance threshold (scene-linear, before exposure/ACES). Sunlit bone-white
+ * walls peak around 1.2 at golden hour, so the knee starts above that: only
+ * emissives (glow materials ≥ ~1.8), the sun disc/halo, water glints, muzzle
+ * flashes and beams bloom — never ordinary lit surfaces (that read as haze).
+ */
+const BLOOM_THRESHOLD = 1.3;
+const BLOOM_KNEE = 0.7;
 
 export class PostPipeline {
   readonly composer: EffectComposer;
@@ -279,9 +305,9 @@ export class PostPipeline {
 
   private addBloom(): void {
     const res = new THREE.Vector2(this.w, this.h);
-    const bloom = new UnrealBloomPass(res, 0.6, 0.55, BLOOM_THRESHOLD);
+    const bloom = new UnrealBloomPass(res, 0.6, 0.42, BLOOM_THRESHOLD);
     // Soft knee so the transition into bloom is gentle (default is a hard 0.01).
-    (bloom.highPassUniforms as Record<string, THREE.IUniform>).smoothWidth.value = 0.35;
+    (bloom.highPassUniforms as Record<string, THREE.IUniform>).smoothWidth.value = BLOOM_KNEE;
     this.bloomPass = bloom;
     this.composer.insertPass(bloom, 2);
   }
@@ -322,7 +348,9 @@ export class PostPipeline {
     const u = this.grading.material.uniforms;
     u.uSaturation.value = g.saturation;
     hexToDisplayRGB(g.tint, u.uTint.value);
-    hexToDisplayRGB(g.shadowTint, u.uShadowTint.value);
+    // Shadow tint is applied to linear values in the shader → linearize it.
+    const st = _c.setStyle(g.shadowTint);
+    (u.uShadowTint.value as THREE.Vector3).set(st.r, st.g, st.b);
     u.uVignette.value = THREE.MathUtils.clamp(g.vignette, 0, 1);
     u.uGrain.value = THREE.MathUtils.clamp(g.grain, 0, 1);
     if (this.bloomPass) this.bloomPass.strength = THREE.MathUtils.clamp(g.bloomStrength, 0, 1.5) * 0.75;

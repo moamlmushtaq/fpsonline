@@ -261,6 +261,12 @@ export class GameHud implements Hud {
     return { num, bar, wrap };
   }
 
+  /** Current score line for other screens (pause menu): local team first. */
+  summary(): { mode: ModeId; time: string; mine: number; theirs: number; localTeam: number } {
+    const mine = this.c.localTeam === 1 ? 1 : 0;
+    return { mode: this.mode, time: this.c.time, mine: this.teamScores[mine] ?? 0, theirs: this.teamScores[mine === 0 ? 1 : 0] ?? 0, localTeam: mine };
+  }
+
   // ── Contract: lifecycle ──────────────────────────────────────────────────
 
   mount(parent: HTMLElement): void {

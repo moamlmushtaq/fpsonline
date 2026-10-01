@@ -10,7 +10,16 @@
 //
 // Pointer lock with graceful fallback: when the browser refuses/ lacks pointer
 // lock (iframes, some mobile browsers with a mouse), looking works by dragging
-// with any mouse button held.
+// with any mouse button held. Once a lock has worked, a later refusal (Chrome's
+// ~1 s re-lock cooldown after Esc) never drops into drag-look: the click that
+// re-captures the mouse is swallowed instead of firing a shot.
+//
+// Edge cases handled here: raw deltas (unadjustedMovement) with a plain retry,
+// lock-engage spikes, emulated mouse events after touches, mouse back/forward
+// buttons (no browser history navigation mid-match), smooth-scrolling
+// trackpads (wheel deltas are accumulated into notches and rate-limited),
+// Alt/Tab default actions, and a leave-page confirmation while in gameplay
+// (Ctrl+W with the default crouch-on-Ctrl binding).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { InputDevice } from '../../shared/types';
@@ -50,6 +59,11 @@ export class KeyboardMouse {
   private lockFailed = false;
   private dragLook = false;
   private lastMove = 0;
+  /** A pointer lock has engaged at least once (so it works here). */
+  private everLocked = false;
+  private wheelAcc = 0;
+  private wheelLastT = 0;
+  private wheelEmitT = 0;
 
   constructor(private readonly target: HTMLElement, private readonly sink: KbmSink) {
     this.lockSupported = typeof target.requestPointerLock === 'function';
@@ -64,6 +78,7 @@ export class KeyboardMouse {
     document.addEventListener('visibilitychange', this.onVisibility);
     document.addEventListener('pointerlockerror', this.onLockError);
     document.addEventListener('pointerlockchange', this.onLockChange);
+    window.addEventListener('beforeunload', this.onBeforeUnload);
   }
 
   get pointerLocked(): boolean {
@@ -72,7 +87,7 @@ export class KeyboardMouse {
 
   /** True when look must use drag-to-look (no pointer lock available). */
   get fallback(): boolean {
-    return !this.lockSupported || this.lockFailed;
+    return !this.lockSupported || (this.lockFailed && !this.everLocked);
   }
 
   lockPointer(): void {
@@ -116,7 +131,17 @@ export class KeyboardMouse {
    * engage proves pointer lock works: leave the drag-to-look fallback.
    */
   private readonly onLockChange = (): void => {
-    if (this.pointerLocked) this.lockFailed = false;
+    if (this.pointerLocked) {
+      this.lockFailed = false;
+      this.everLocked = true;
+    }
+  };
+
+  /** Leaving the page mid-match (Ctrl+W with crouch on Ctrl, a stray Back) asks first. */
+  private readonly onBeforeUnload = (e: BeforeUnloadEvent): void => {
+    if (!this.sink.isActive()) return;
+    e.preventDefault();
+    e.returnValue = '';
   };
 
   private typing(e: Event): boolean {
@@ -136,6 +161,8 @@ export class KeyboardMouse {
   };
 
   private readonly onKeyUp = (e: KeyboardEvent): void => {
+    // Alt (Firefox menu bar) and similar default actions on release of a bound key.
+    if (this.sink.isActive() && this.sink.isBound(e.code) && e.code !== 'Escape' && !this.typing(e)) e.preventDefault();
     if (!this.held.has(e.code)) return;
     this.held.delete(e.code);
     this.sink.code(e.code, false);
@@ -145,8 +172,13 @@ export class KeyboardMouse {
     if (this.sink.sinceTouch() < 900) return; // emulated mouse after a touch
     this.sink.noteDevice('kbm');
     if (!this.sink.isActive()) return;
+    // Mouse back/forward buttons must never navigate away mid-match.
+    if (e.button === 3 || e.button === 4) e.preventDefault();
     // Only clicks on the game surface (or while locked) count as gameplay input.
     if (!this.pointerLocked && e.target !== this.target) return;
+    // Not captured yet but lock works here: this click only (re)captures the mouse
+    // (the App requests the lock on pointerdown) — it must not also fire a shot.
+    if (!this.pointerLocked && !this.fallback) return;
     const code = mouseButtonCode(e.button);
     if (this.fallback) this.dragLook = true;
     if (this.held.has(code)) return;
@@ -155,6 +187,7 @@ export class KeyboardMouse {
   };
 
   private readonly onMouseUp = (e: MouseEvent): void => {
+    if ((e.button === 3 || e.button === 4) && this.sink.isActive()) e.preventDefault();
     const code = mouseButtonCode(e.button);
     if (e.buttons === 0) this.dragLook = false;
     if (!this.held.has(code)) return;
@@ -182,8 +215,22 @@ export class KeyboardMouse {
   private readonly onWheel = (e: WheelEvent): void => {
     if (!this.sink.isActive()) return;
     e.preventDefault();
-    if (Math.abs(e.deltaY) < 1) return;
-    const code = e.deltaY > 0 ? 'Wheel+' : 'Wheel-';
+    // Normalise to pixels; a classic wheel notch is ~100 px, trackpads send many tiny deltas.
+    const dy = e.deltaY * (e.deltaMode === 1 ? 33 : e.deltaMode === 2 ? 400 : 1);
+    if (Math.abs(dy) < 0.5) return;
+    const now = performance.now();
+    if (now - this.wheelLastT > 180 || Math.sign(dy) !== Math.sign(this.wheelAcc)) this.wheelAcc = 0;
+    this.wheelLastT = now;
+    this.wheelAcc += dy;
+    if (Math.abs(this.wheelAcc) < 45) return;
+    // At most one weapon step per 110 ms: an inertial trackpad flick is one swap, not five.
+    if (now - this.wheelEmitT < 110) {
+      this.wheelAcc = 0;
+      return;
+    }
+    const code = this.wheelAcc > 0 ? 'Wheel+' : 'Wheel-';
+    this.wheelAcc = 0;
+    this.wheelEmitT = now;
     // A wheel notch is a press that releases in the same frame (the hub latches it).
     this.sink.code(code, true);
     this.sink.code(code, false);
@@ -205,5 +252,6 @@ export class KeyboardMouse {
     document.removeEventListener('visibilitychange', this.onVisibility);
     document.removeEventListener('pointerlockerror', this.onLockError);
     document.removeEventListener('pointerlockchange', this.onLockChange);
+    window.removeEventListener('beforeunload', this.onBeforeUnload);
   }
 }

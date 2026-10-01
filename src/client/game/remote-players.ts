@@ -242,7 +242,8 @@ export class RemotePlayers {
       e.stride -= STRIDE_LENGTH;
       if (e.stride > STRIDE_LENGTH) e.stride = 0;
       const kind = (f & PF_SPRINT) !== 0 ? 'sprint' : s.c > 50 ? 'crouch' : 'walk';
-      audio.footstep(this.surfaceAt(s.x, s.y, s.z), e.pos, kind);
+      // Audio pass: teammates' steps are quieter than enemies'.
+      audio.footstep(this.surfaceAt(s.x, s.y, s.z), e.pos, kind, !this.ctx.isEnemy(e.ident.id));
     }
   }
 

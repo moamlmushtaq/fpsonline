@@ -14,7 +14,7 @@ import type { Effects, QualitySettings } from '../contracts';
 import type { Faction, SurfaceTag, Team, ThrowableId, Vec3, WeaponId } from '../../shared/types';
 import { findElimFx } from '../../shared/cosmetics';
 import { DANGER_COLOR, ENV, PICKUP_COLOR, teamColors } from './palette';
-import { glowTexture, ParticlePool, particleAtlas, SPRITE } from './particles';
+import { FLASH_CELL, flashAtlas, glowTexture, ParticlePool, SPRITE } from './particles';
 
 const rnd = Math.random;
 const rr = (a: number, b: number): number => a + (b - a) * rnd();
@@ -33,13 +33,25 @@ const SURFACE_DUST: Partial<Record<SurfaceTag, string>> = {
   foliage: ENV.olive,
 };
 
-const MUZZLE: Record<WeaponId, { size: number; len: number; color: string }> = {
-  meridian: { size: 0.34, len: 0.55, color: '#ffe2b0' },
-  swift: { size: 0.26, len: 0.4, color: '#ffe6bb' },
-  longline: { size: 0.5, len: 0.9, color: '#ffdca0' },
-  breaker: { size: 0.6, len: 0.8, color: '#ffd29a' },
-  pulse: { size: 0.24, len: 0.32, color: '#ffe9c4' },
-  sunspear: { size: 0.7, len: 0.6, color: PICKUP_COLOR },
+interface MuzzleSpec {
+  /** Starburst card size (m, third person). */
+  size: number;
+  /** Side flame length (m). */
+  len: number;
+  /** Side flame width relative to the default. */
+  side: number;
+  color: string;
+  /** Visible time (s): ~2 frames, a touch longer for the heavy hitters. */
+  life: number;
+}
+
+const MUZZLE: Record<WeaponId, MuzzleSpec> = {
+  meridian: { size: 0.34, len: 0.55, side: 1, color: '#ffe2b0', life: 0.034 },
+  swift: { size: 0.25, len: 0.38, side: 0.8, color: '#ffe8c2', life: 0.03 },
+  longline: { size: 0.46, len: 1.0, side: 0.65, color: '#ffdca0', life: 0.05 },
+  breaker: { size: 0.64, len: 0.62, side: 1.5, color: '#ffd29a', life: 0.05 },
+  pulse: { size: 0.24, len: 0.28, side: 0.6, color: '#fff1d6', life: 0.034 },
+  sunspear: { size: 0.72, len: 0.6, side: 1.25, color: PICKUP_COLOR, life: 0.06 },
 };
 
 const TRACER: Record<'bullet' | 'heavy' | 'pellet', { speed: number; width: number; len: number; k: number }> = {
@@ -59,34 +71,42 @@ const TRACER_OF: Record<WeaponId, 'bullet' | 'heavy' | 'pellet'> = {
 
 const _tc = new THREE.Color();
 
+/** Parsed palette colors, cached (read-only!): effect events must not allocate. */
+const PAL = new Map<string, THREE.Color>();
+function pal(hex: string): THREE.Color {
+  let c = PAL.get(hex);
+  if (!c) PAL.set(hex, (c = new THREE.Color(hex)));
+  return c;
+}
+
 function col(hex: string, k = 1): THREE.Color {
   return new THREE.Color(hex).multiplyScalar(k);
 }
 
 // ── Muzzle flash cards ──────────────────────────────────────────────────────
 
-/** Front starburst card + two crossed side flame cards, UV-mapped into the atlas. */
-function flashGeometry(): THREE.BufferGeometry {
+/** Front starburst card + two crossed side flame cards, UV-mapped into the flash atlas (4×2). */
+function flashGeometry(front: number, sideW: number): THREE.BufferGeometry {
   const cellUV = (cell: number, u: number, v: number): [number, number] => {
     const c = cell % 4;
     const r = Math.floor(cell / 4);
-    return [(c + u) * 0.25, (3 - r + v) * 0.25];
+    return [(c + u) * 0.25, (1 - r + v) * 0.5];
   };
   const pos: number[] = [];
   const uv: number[] = [];
-  const quad = (p: THREE.Vector3[], cell: number, uvs: [number, number][]): void => {
+  const quad = (p: number[][], cell: number, uvs: [number, number][]): void => {
     for (const i of [0, 1, 2, 0, 2, 3]) {
-      pos.push(p[i].x, p[i].y, p[i].z);
+      pos.push(p[i][0], p[i][1], p[i][2]);
       uv.push(...cellUV(cell, uvs[i][0], uvs[i][1]));
     }
   };
-  const V = (x: number, y: number, z: number): THREE.Vector3 => new THREE.Vector3(x, y, z);
   // Front card (faces −Z = along the shot).
-  quad([V(-0.5, -0.5, 0), V(0.5, -0.5, 0), V(0.5, 0.5, 0), V(-0.5, 0.5, 0)], SPRITE.starburst, [[0, 0], [1, 0], [1, 1], [0, 1]]);
-  // Side cards along −Z (length 1), streak cell's long axis mapped along Z.
-  const sideUV: [number, number][] = [[0.2, 0], [0.8, 0], [0.8, 1], [0.2, 1]];
-  quad([V(-0.25, 0, 0.1), V(0.25, 0, 0.1), V(0.25, 0, -1), V(-0.25, 0, -1)], SPRITE.streak, sideUV);
-  quad([V(0, -0.25, 0.1), V(0, 0.25, 0.1), V(0, 0.25, -1), V(0, -0.25, -1)], SPRITE.streak, sideUV);
+  quad([[-0.5, -0.5, 0], [0.5, -0.5, 0], [0.5, 0.5, 0], [-0.5, 0.5, 0]], front, [[0, 0], [1, 0], [1, 1], [0, 1]]);
+  // Side flame cards along −Z (length 1): flame base at the muzzle, tip forward.
+  const w = 0.25 * sideW;
+  const sideUV: [number, number][] = [[0.15, 0], [0.85, 0], [0.85, 1], [0.15, 1]];
+  quad([[-w, 0, 0.08], [w, 0, 0.08], [w, 0, -1], [-w, 0, -1]], FLASH_CELL.flame, sideUV);
+  quad([[0, -w, 0.08], [0, w, 0.08], [0, w, -1], [0, -w, -1]], FLASH_CELL.flame, sideUV);
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
@@ -94,10 +114,31 @@ function flashGeometry(): THREE.BufferGeometry {
 }
 
 interface Flash {
+  group: THREE.Group;
   mesh: THREE.Mesh;
   mat: THREE.MeshBasicMaterial;
+  /** First-person flashes carry their own glow (the world glow would hide behind the gun). */
+  glow: THREE.Sprite | null;
   t: number;
+  life: number;
+  /** Spawned since the last update → always rendered at least once (low fps safe). */
+  fresh: boolean;
 }
+
+/** First-person layer: the viewmodel overlay scene the local flash is drawn into. */
+interface FpLayer {
+  scene: THREE.Scene;
+  camera: THREE.PerspectiveCamera;
+  flashes: Flash[];
+  idx: number;
+}
+
+const _v1 = new THREE.Vector3();
+const _v2 = new THREE.Vector3();
+const _m4 = new THREE.Matrix4();
+const _fwd = new THREE.Vector3(0, 0, -1);
+const _c1 = new THREE.Color();
+const _c2 = new THREE.Color();
 
 // ── Sunspear beam ribbon ────────────────────────────────────────────────────
 
@@ -174,7 +215,12 @@ export class EffectsSystem implements Effects {
   private readonly alpha: ParticlePool;
   private readonly flashes: Flash[] = [];
   private flashIdx = 0;
-  private readonly flashGeo = flashGeometry();
+  /** One flash geometry per weapon (its own starburst silhouette + side flame width). */
+  private readonly flashGeos = {} as Record<WeaponId, THREE.BufferGeometry>;
+  private fp: FpLayer | null = null;
+  /** Main (world) camera from the last update(): maps world muzzle points into the overlay. */
+  private mainCam: THREE.PerspectiveCamera | null = null;
+  private viewportH = 0;
   private readonly beams: Beam[] = [];
   private readonly beamGeo = new THREE.PlaneGeometry(1, 1, 1, 8);
   private readonly smokes = new Map<number, SmokeVolume>();
@@ -194,15 +240,11 @@ export class EffectsSystem implements Effects {
     this.q = quality;
     this.add = new ParticlePool(scene, Math.round(1800 * Math.max(0.35, quality.particles)), true, 'additive');
     this.alpha = new ParticlePool(scene, Math.round(1100 * Math.max(0.35, quality.particles)), false, 'alpha');
-    const atlas = particleAtlas();
+    for (const w of Object.keys(MUZZLE) as WeaponId[]) this.flashGeos[w] = flashGeometry(FLASH_CELL[w], MUZZLE[w].side);
     for (let i = 0; i < 10; i++) {
-      const mat = new THREE.MeshBasicMaterial({ map: atlas, color: col('#ffe2b0', 3), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
-      const mesh = new THREE.Mesh(this.flashGeo, mat);
-      mesh.visible = false;
-      mesh.frustumCulled = false;
-      mesh.renderOrder = 40;
-      scene.add(mesh);
-      this.flashes.push({ mesh, mat, t: 0 });
+      const f = this.makeFlash(false);
+      scene.add(f.group);
+      this.flashes.push(f);
     }
     for (let i = 0; i < 4; i++) {
       const mat = new THREE.ShaderMaterial({
@@ -264,30 +306,132 @@ export class EffectsSystem implements Effects {
   private pulseLight(pos: THREE.Vector3, color: string, k: number, dur: number): void {
     if (!this.light) return;
     this.light.position.copy(pos);
-    this.light.color.set(color);
+    this.light.color.copy(pal(color));
     this.lightK = k;
     this.lightT = dur;
   }
 
   // ── Weapons ──────────────────────────────────────────────────────────────
 
-  muzzleFlash(pos: THREE.Vector3, dir: THREE.Vector3, weapon: WeaponId, firstPerson: boolean): void {
-    const f = this.flashes[this.flashIdx];
-    this.flashIdx = (this.flashIdx + 1) % this.flashes.length;
-    const spec = MUZZLE[weapon] ?? MUZZLE.meridian;
-    const s = spec.size * (firstPerson ? 0.55 : 1) * rr(0.85, 1.15);
-    f.mesh.position.copy(pos);
+  private makeFlash(fp: boolean): Flash {
+    const mat = new THREE.MeshBasicMaterial({
+      map: flashAtlas(),
+      color: col('#ffe2b0', 3),
+      transparent: true,
+      depthWrite: false,
+      // First person: drawn over the gun (the flash sits in front of the muzzle,
+      // so nothing of the viewmodel may cover it).
+      depthTest: !fp,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+      fog: !fp,
+    });
+    const group = new THREE.Group();
+    group.visible = false;
+    const mesh = new THREE.Mesh(this.flashGeos.meridian, mat);
+    mesh.frustumCulled = false;
+    mesh.renderOrder = fp ? 1000 : 40;
+    group.add(mesh);
+    let glow: THREE.Sprite | null = null;
+    if (fp) {
+      glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: col('#ffcf94', 1.4), blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false, transparent: true, fog: false }));
+      glow.renderOrder = 999;
+      glow.frustumCulled = false;
+      group.add(glow);
+    }
+    return { group, mesh, mat, glow, t: 0, life: 0, fresh: false };
+  }
+
+  /**
+   * Extra (not in the Effects contract): the viewmodel overlay scene + camera.
+   * With it, the LOCAL player's muzzle flash is drawn in the overlay pass, on
+   * top of the gun, instead of in the world where the gun model (and nearby
+   * walls) hid it. Pass null to detach.
+   */
+  attachOverlay(scene: THREE.Scene | null, camera: THREE.PerspectiveCamera | null): void {
+    if (this.fp) {
+      for (const f of this.fp.flashes) {
+        f.group.removeFromParent();
+        f.mat.dispose();
+        (f.glow?.material as THREE.Material | undefined)?.dispose();
+      }
+      this.fp = null;
+    }
+    if (!scene || !camera) return;
+    const flashes: Flash[] = [];
+    for (let i = 0; i < 3; i++) {
+      const f = this.makeFlash(true);
+      scene.add(f.group);
+      flashes.push(f);
+    }
+    this.fp = { scene, camera, flashes, idx: 0 };
+  }
+
+  /** World point/dir (as returned by ViewModel.muzzleWorld) → overlay space. False if not mappable. */
+  private toOverlay(pos: THREE.Vector3, dir: THREE.Vector3, outPos: THREE.Vector3, outDir: THREE.Vector3): number {
+    const cam = this.mainCam;
+    const fp = this.fp;
+    if (!cam || !fp) return 0;
+    const vmc = fp.camera;
+    _m4.copy(cam.matrixWorld).invert();
+    const v = _v1.copy(pos).applyMatrix4(_m4);
+    const depth = -v.z;
+    if (!(depth > 0.02)) return 0;
+    // Same depth, same screen position under the overlay camera's projection.
+    const k = Math.tan(THREE.MathUtils.degToRad(vmc.fov) / 2) / Math.tan(THREE.MathUtils.degToRad(cam.fov) / 2);
+    const ka = vmc.aspect / Math.max(1e-3, cam.aspect);
+    outPos.set(v.x * k * ka, v.y * k, -depth).applyMatrix4(vmc.matrixWorld);
+    outDir.copy(dir).transformDirection(_m4).transformDirection(vmc.matrixWorld);
+    return k;
+  }
+
+  private showFlash(f: Flash, pos: THREE.Vector3, dir: THREE.Vector3, weapon: WeaponId, spec: MuzzleSpec, scale: number, lenScale: number): void {
+    f.mesh.geometry = this.flashGeos[weapon] ?? this.flashGeos.meridian;
+    f.group.position.copy(pos);
     this.tmp.copy(dir).normalize();
-    this.qTmp.setFromUnitVectors(new THREE.Vector3(0, 0, -1), this.tmp);
-    f.mesh.quaternion.copy(this.qTmp);
-    f.mesh.rotateZ(rnd() * Math.PI);
-    f.mesh.scale.set(s, s, spec.len * (firstPerson ? 0.55 : 1) * rr(0.8, 1.2));
-    f.mat.color.copy(col(spec.color, weapon === 'sunspear' ? 4 : 3.2));
+    this.qTmp.setFromUnitVectors(_fwd, this.tmp);
+    f.group.quaternion.copy(this.qTmp);
+    f.mesh.rotation.set(0, 0, rnd() * Math.PI * 2);
+    const s = spec.size * scale * rr(0.88, 1.12);
+    f.mesh.scale.set(s, s, spec.len * lenScale * rr(0.82, 1.18));
+    f.mat.color.set(spec.color).multiplyScalar(weapon === 'sunspear' ? 4.5 : 3.6);
+    if (f.glow) {
+      f.glow.scale.setScalar(s * 1.25);
+      (f.glow.material as THREE.SpriteMaterial).color.set(spec.color).multiplyScalar(0.55);
+    }
+    f.group.visible = true;
+    f.t = spec.life;
+    f.life = spec.life;
+    f.fresh = true;
     f.mat.opacity = 1;
-    f.mesh.visible = true;
-    f.t = weapon === 'breaker' || weapon === 'longline' ? 0.05 : 0.034;
-    // Hot glow + a couple of sparks.
-    this.add.spawn({ x: pos.x, y: pos.y, z: pos.z, life: 0.07, size: s * 1.4, size1: s * 1.9, r: 1, g: 0.78, b: 0.5, a: 0.6, sprite: SPRITE.glow });
+    if (f.glow) (f.glow.material as THREE.SpriteMaterial).opacity = 1;
+  }
+
+  muzzleFlash(pos: THREE.Vector3, dir: THREE.Vector3, weapon: WeaponId, firstPerson: boolean): void {
+    const spec = MUZZLE[weapon] ?? MUZZLE.meridian;
+    let fpDone = false;
+    if (firstPerson && this.fp) {
+      const k = this.toOverlay(pos, dir, _v2, this.tmp2);
+      if (k > 0) {
+        const fp = this.fp;
+        const f = fp.flashes[fp.idx];
+        fp.idx = (fp.idx + 1) % fp.flashes.length;
+        // Nudge forward so the starburst blooms just past the muzzle crown.
+        _v2.addScaledVector(this.tmp2.normalize(), 0.02);
+        this.showFlash(f, _v2, this.tmp2, weapon, spec, 0.9 * k, 0.6 * k);
+        fpDone = true;
+      }
+    }
+    if (!fpDone) {
+      const f = this.flashes[this.flashIdx];
+      this.flashIdx = (this.flashIdx + 1) % this.flashes.length;
+      const k = firstPerson ? 0.55 : 1;
+      this.showFlash(f, pos, dir, weapon, spec, k, k);
+      // Hot glow (the first-person flash carries its own in the overlay).
+      const gs = spec.size * k;
+      this.add.spawn({ x: pos.x, y: pos.y, z: pos.z, life: 0.07, size: gs * 1.4, size1: gs * 1.9, r: 1, g: 0.78, b: 0.5, a: 0.6, sprite: SPRITE.glow });
+    }
+    // A couple of sparks thrown along the shot (they fly clear of the gun).
     if (!firstPerson || rnd() < 0.5) {
       for (let i = 0; i < 2; i++) {
         this.add.spawn({
@@ -366,16 +510,16 @@ export class EffectsSystem implements Effects {
     if (surface === 'foliage') {
       for (let i = 0; i < this.n(6); i++) {
         const v = cone(rr(0.8, 2.2), 1);
-        const c = new THREE.Color(rnd() < 0.5 ? ENV.olive : ENV.sage);
+        const c = pal(rnd() < 0.5 ? ENV.olive : ENV.sage);
         this.alpha.spawn({ x: p.x, y: p.y, z: p.z, vx: v[0], vy: v[1] + 0.8, vz: v[2], life: rr(0.9, 1.6), size: rr(0.05, 0.09), r: c.r, g: c.g, b: c.b, a: 1, a1: 0, gravity: 1.2, drag: 2.2, swirl: 1.5, sprite: SPRITE.leaf, spin: rr(-4, 4), flip: rr(5, 10) });
       }
-      const g = new THREE.Color(ENV.glowChartreuse);
+      const g = pal(ENV.glowChartreuse);
       for (let i = 0; i < this.n(3); i++) this.add.spawn({ x: p.x, y: p.y, z: p.z, vx: rr(-0.4, 0.4), vy: rr(0.2, 0.7), vz: rr(-0.4, 0.4), life: rr(0.8, 1.4), size: 0.035, r: g.r * 2, g: g.g * 2, b: g.b * 2, a: 1, swirl: 1, sprite: SPRITE.ember });
       return;
     }
     // Stone / earth / wood / snow: dust puffs + a few chunks.
     const hex = SURFACE_DUST[surface] ?? ENV.concrete;
-    const c = new THREE.Color(hex);
+    const c = pal(hex);
     const snow = surface === 'snow';
     for (let i = 0; i < this.n(snow ? 7 : 5); i++) {
       const v = cone(rr(0.8, 2.6), 0.5);
@@ -406,7 +550,7 @@ export class EffectsSystem implements Effects {
     (u.uA.value as THREE.Vector3).copy(from);
     (u.uB.value as THREE.Vector3).copy(to);
     // Gold-white always; the team only warms/cools the outer glow very slightly.
-    (u.uGlow.value as THREE.Color).copy(col(PICKUP_COLOR, 2.2)).lerp(col(teamColors(team).primary, 2.2), 0.12);
+    (u.uGlow.value as THREE.Color).copy(pal(PICKUP_COLOR)).lerp(pal(teamColors(team).primary), 0.12).multiplyScalar(2.2);
     // Sparkles along the beam and a flash at the hit.
     const d = this.tmp.subVectors(to, from);
     const len = d.length();
@@ -439,35 +583,55 @@ export class EffectsSystem implements Effects {
     const count = this.n(60);
     switch (kind) {
       case 'petals': {
-        const a = new THREE.Color(tc.primary), b = new THREE.Color(tc.secondary);
-        for (let i = 0; i < count; i++) {
+        // Bloom: the body unravels into drifting petals of light (team primary,
+        // a third in the secondary violet) that rise, curl and fade — plus a few
+        // soft glowing motes and a brief silhouette glow.
+        const a = _c1.set(tc.primary), b = _c2.set(tc.secondary);
+        const n = this.n(90);
+        for (let i = 0; i < n; i++) {
           const [x, y, z] = body();
-          const c = rnd() < 0.6 ? a : b;
+          const c = i % 3 === 0 ? b : a;
+          const dx = x - pos.x, dz = z - pos.z;
+          const k = rr(2, 2.6);
           this.add.spawn({
-            x, y, z, vx: rr(-0.5, 0.5), vy: rr(0.3, 1.2), vz: rr(-0.5, 0.5), life: rr(1.1, 1.6), size: rr(0.09, 0.15), size1: 0.04,
-            r: c.r * 2.4, g: c.g * 2.4, b: c.b * 2.4, a: 1, a1: 0, fadeIn: 0.08, drag: 0.8, swirl: 1.6, sprite: SPRITE.petal, rot: rnd() * 6, spin: rr(-3, 3), flip: rr(3, 7),
+            x, y, z, vx: dx * 0.9 + rr(-0.35, 0.35), vy: rr(0.35, 1.3), vz: dz * 0.9 + rr(-0.35, 0.35), life: rr(1.3, 2.1), size: rr(0.1, 0.19), size1: 0.03,
+            r: c.r * k, g: c.g * k, b: c.b * k, a: 1, a1: 0, fadeIn: 0.1, drag: 0.9, swirl: 1.8, sprite: SPRITE.petal, rot: rnd() * 6, spin: rr(-2.5, 2.5), flip: rr(2.5, 6),
           });
         }
-        this.add.spawn({ x: pos.x, y: pos.y + h * 0.55, z: pos.z, life: 0.5, size: 1.2, size1: 2, r: a.r, g: a.g, b: a.b, a: 0.5, sprite: SPRITE.glow });
+        for (let i = 0; i < this.n(24); i++) {
+          const [x, y, z] = body();
+          this.add.spawn({ x, y, z, vx: rr(-0.25, 0.25), vy: rr(0.5, 1.4), vz: rr(-0.25, 0.25), life: rr(1.2, 2), size: rr(0.035, 0.06), r: a.r * 3, g: a.g * 3, b: a.b * 3, a: 1, a1: 0, swirl: 1.2, sprite: SPRITE.ember });
+        }
+        this.add.spawn({ x: pos.x, y: pos.y + h * 0.55, z: pos.z, vy: 0.4, life: 0.5, size: 1.1, size1: 2.1, r: a.r * 1.4, g: a.g * 1.4, b: a.b * 1.4, a: 0.55, sprite: SPRITE.glow });
         break;
       }
       case 'shards': {
-        const glint = new THREE.Color(tc.primary);
-        for (let i = 0; i < count; i++) {
+        // Halcyon: the ceramic shell breaks into clean white shards that burst
+        // outward, tumble and fall; warm team-colored glints on the edges and a
+        // puff of bone-white ceramic dust.
+        const glint = _c1.set(tc.primary);
+        const bone = _c2.set(ENV.bone);
+        const n = this.n(72);
+        for (let i = 0; i < n; i++) {
           const [x, y, z] = body();
           const dx = x - pos.x, dz = z - pos.z;
           const l = Math.hypot(dx, dz) || 1;
-          const sp = rr(1.2, 3.4);
-          const w = rr(0.88, 1);
+          const sp = rr(1.4, 3.8);
+          const w = rr(0.9, 1.02);
           this.alpha.spawn({
-            x, y, z, vx: (dx / l) * sp, vy: rr(0.5, 2.6), vz: (dz / l) * sp, life: rr(1.0, 1.6), size: rr(0.05, 0.11),
-            r: w, g: w * 0.98, b: w * 0.94, a: 1, a1: 0, gravity: 5, drag: 1.2, sprite: SPRITE.shard, rot: rnd() * 6, spin: rr(-9, 9), flip: rr(6, 14),
+            x, y, z, vx: (dx / l) * sp + rr(-0.4, 0.4), vy: rr(0.6, 3), vz: (dz / l) * sp + rr(-0.4, 0.4), life: rr(1.1, 1.8), size: rr(0.06, 0.14),
+            r: w, g: w * 0.98, b: w * 0.95, a: 1, a1: 0, gravity: 6, drag: 1.1, sprite: SPRITE.shard, rot: rnd() * 6, spin: rr(-9, 9), flip: rr(6, 14),
           });
         }
-        for (let i = 0; i < this.n(18); i++) {
+        for (let i = 0; i < this.n(22); i++) {
           const [x, y, z] = body();
-          this.add.spawn({ x, y, z, vx: rr(-2, 2), vy: rr(0.5, 2.5), vz: rr(-2, 2), life: rr(0.3, 0.7), size: rr(0.04, 0.08), r: glint.r * 3, g: glint.g * 3, b: glint.b * 3, gravity: 4, sprite: SPRITE.flare, rot: rnd() * 3 });
+          this.add.spawn({ x, y, z, vx: rr(-2, 2), vy: rr(0.5, 2.5), vz: rr(-2, 2), life: rr(0.3, 0.7), size: rr(0.05, 0.1), r: glint.r * 3, g: glint.g * 3, b: glint.b * 3, gravity: 4, sprite: SPRITE.flare, rot: rnd() * 3 });
         }
+        for (let i = 0; i < this.n(7); i++) {
+          const [x, y, z] = body();
+          this.alpha.spawn({ x, y, z, vx: rr(-0.6, 0.6), vy: rr(0.1, 0.6), vz: rr(-0.6, 0.6), life: rr(0.8, 1.2), size: rr(0.25, 0.4), size1: rr(0.7, 1), r: bone.r, g: bone.g, b: bone.b, a: 0.35, drag: 2.5, sprite: SPRITE.dust, rot: rnd() * 6 });
+        }
+        this.add.spawn({ x: pos.x, y: pos.y + h * 0.55, z: pos.z, life: 0.3, size: 1, size1: 1.9, r: 1.6, g: 1.45, b: 1.25, a: 0.5, sprite: SPRITE.glow });
         break;
       }
       case 'embers': {
@@ -522,7 +686,7 @@ export class EffectsSystem implements Effects {
       const sp = rr(6, 16);
       this.add.spawn({ x: p.x, y: p.y + 0.2, z: p.z, vx: Math.cos(a) * sp * (1 - e * 0.5), vy: e * sp * 0.8, vz: Math.sin(a) * sp * (1 - e * 0.5), life: rr(0.2, 0.5), size: 0.03, r: 3, g: 2, b: 1, gravity: 12, drag: 1.5, sprite: SPRITE.streak, stretch: 0.02 });
     }
-    const dust = new THREE.Color('#b8a893');
+    const dust = pal('#b8a893');
     for (let i = 0; i < this.n(16); i++) {
       const a = rnd() * Math.PI * 2;
       const sp = rr(1.5, 4.5);
@@ -534,7 +698,7 @@ export class EffectsSystem implements Effects {
     for (let i = 0; i < this.n(10); i++) {
       this.alpha.spawn({ x: p.x, y: p.y + 0.3, z: p.z, vx: rr(-6, 6), vy: rr(3, 8), vz: rr(-6, 6), life: rr(0.6, 1.1), size: rr(0.05, 0.1), r: 0.35, g: 0.32, b: 0.3, a: 1, a1: 0.5, gravity: 16, sprite: SPRITE.chunk, spin: rr(-10, 10) });
     }
-    this.pulseLight(p.clone().setY(p.y + 1), '#ffc27a', 30, 0.25);
+    this.pulseLight(_v1.copy(p).setY(p.y + 1), '#ffc27a', 30, 0.25);
   }
 
   // ── Smoke ────────────────────────────────────────────────────────────────
@@ -642,7 +806,7 @@ export class EffectsSystem implements Effects {
   // ── Movement / spawn ─────────────────────────────────────────────────────
 
   dust(pos: THREE.Vector3, amount: number, surface: SurfaceTag): void {
-    const c = new THREE.Color(SURFACE_DUST[surface] ?? ENV.sand);
+    const c = pal(SURFACE_DUST[surface] ?? ENV.sand);
     const n = this.n(3 + Math.round(Math.max(0, Math.min(1, amount)) * 6));
     for (let i = 0; i < n; i++) {
       const a = rnd() * Math.PI * 2;
@@ -655,7 +819,7 @@ export class EffectsSystem implements Effects {
   }
 
   spawnFlash(pos: Vec3, team: Team): void {
-    const c = new THREE.Color(teamColors(team).primary);
+    const c = pal(teamColors(team).primary);
     this.add.spawn({ x: pos.x, y: pos.y + 0.05, z: pos.z, life: 0.6, size: 0.4, size1: 2.2, r: c.r * 1.6, g: c.g * 1.6, b: c.b * 1.6, a: 0.8, sprite: SPRITE.ring });
     this.add.spawn({ x: pos.x, y: pos.y + 1, z: pos.z, life: 0.5, size: 1.6, size1: 2.2, r: c.r * 0.9, g: c.g * 0.9, b: c.b * 0.9, a: 0.5, sprite: SPRITE.glow });
     for (let i = 0; i < this.n(18); i++) {
@@ -670,15 +834,38 @@ export class EffectsSystem implements Effects {
 
   // ── Frame ────────────────────────────────────────────────────────────────
 
+  private stepFlash(f: Flash, dt: number): void {
+    if (!f.group.visible) return;
+    if (f.fresh) {
+      // Guarantee one full-strength frame even when dt > life (20 fps phones).
+      f.fresh = false;
+      return;
+    }
+    f.t -= dt;
+    if (f.t <= 0) {
+      f.group.visible = false;
+      return;
+    }
+    // Crisp: full strength for the first frame, a quick falloff after.
+    const k = f.t / Math.max(1e-3, f.life);
+    f.mat.opacity = 0.55 + 0.45 * k;
+    if (f.glow) (f.glow.material as THREE.SpriteMaterial).opacity = 0.35 + 0.65 * k;
+  }
+
   update(dt: number, camera: THREE.Camera): void {
     dt = Math.min(Math.max(dt, 0), 0.1);
     this.time += dt;
     void camera;
-    for (const f of this.flashes) {
-      if (!f.mesh.visible) continue;
-      f.t -= dt;
-      if (f.t <= 0) f.mesh.visible = false;
+    if ((camera as THREE.PerspectiveCamera).isPerspectiveCamera) this.mainCam = camera as THREE.PerspectiveCamera;
+    // Streak min-width needs the drawing-buffer height (approximate; cheap).
+    const vh = Math.round((typeof window !== 'undefined' ? window.innerHeight : 720) * this.q.pixelRatio);
+    if (vh !== this.viewportH) {
+      this.viewportH = vh;
+      this.add.setViewportHeight(vh);
+      this.alpha.setViewportHeight(vh);
     }
+    for (const f of this.flashes) this.stepFlash(f, dt);
+    if (this.fp) for (const f of this.fp.flashes) this.stepFlash(f, dt);
     const fog = this.scene.fog as THREE.FogExp2 | null;
     for (const b of this.beams) {
       if (!b.active) continue;
@@ -716,11 +903,12 @@ export class EffectsSystem implements Effects {
   dispose(): void {
     this.add.dispose();
     this.alpha.dispose();
+    this.attachOverlay(null, null);
     for (const f of this.flashes) {
-      f.mesh.removeFromParent();
+      f.group.removeFromParent();
       f.mat.dispose();
     }
-    this.flashGeo.dispose();
+    for (const g of Object.values(this.flashGeos)) g.dispose();
     for (const b of this.beams) {
       b.mesh.removeFromParent();
       b.mat.dispose();

@@ -13,6 +13,7 @@ import { RANGE_SPEEDS } from '../../../shared/sim/range';
 import { PRIMARY_WEAPON_IDS, type WeaponId } from '../../../shared/types';
 import { WEAPONS } from '../../../shared/weapons';
 import type { MatchApi } from '../extensions';
+import { currentPadStyle, padLabel } from './glyphs';
 
 const C = RANGE_COURSE;
 /** Rack slots are narrow: stand in front of the weapon you want. */
@@ -60,7 +61,7 @@ export class RangeStations {
     const hit = mv && api.controllable ? stationAt(mv.pos) : null;
     const c = api.combat;
     const current = c ? c.slots[0].id : null;
-    const key = api.device === 'kbm' ? api.keyLabel('interact') : api.device === 'gamepad' ? 'RB' : '';
+    const key = api.device === 'kbm' ? api.keyLabel('interact') : api.device === 'gamepad' ? padLabel('interact', currentPadStyle(), 'RB') : '';
     let sig = `${key}|${api.i18n.lang}|${this.speedIndex}|${current}|`;
     sig += hit ? (hit.kind === 'rack' ? `rack${hit.index}` : hit.kind) : '';
     if (sig !== this.promptSig) {

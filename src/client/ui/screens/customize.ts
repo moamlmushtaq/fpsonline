@@ -1,17 +1,31 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // HALCYON FRONT — Customize: faction preference, armor tint, visor, name card,
 // elimination effect and weapon skins. Locked items show their unlock level.
-// The live 3D character preview is the menu scene (rebuilt on profile change).
+// The live 3D character is the menu scene: hovering / focusing any item (locked
+// ones included) previews it on the character — elimination effects play on
+// it, weapon skins float in the foreground — and a tag names the item and its
+// unlock level. Tapping a locked item pins its preview (touch has no hover).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { App } from '../../app';
 import { ARMOR_TINTS, ELIM_EFFECTS, NAMECARDS, VISOR_STYLES, WEAPON_SKINS, skinUnlockLevel, type VisorStyle, type WeaponSkin } from '../../../shared/cosmetics';
-import type { WeaponId } from '../../../shared/types';
+import type { Faction, WeaponId } from '../../../shared/types';
 import { WEAPON_IDS } from '../../../shared/types';
 import { WEAPONS } from '../../../shared/weapons';
 import { card, h, namecard, screenHeader, segmented, stagger, tabs } from '../components';
 import { icon, weaponIcon } from '../icons';
+import { setText } from '../i18n';
+import type { MenuPreview } from '../menu-scene';
 import { BaseScreen } from './base';
+
+interface PreviewItem {
+  preview: MenuPreview;
+  /** i18n key of the item name. */
+  name: string;
+  locked: number | null;
+  elimFx?: string;
+  selected?: boolean;
+}
 
 type Tab = 'faction' | 'armor' | 'visor' | 'namecard' | 'elim' | 'skins';
 
@@ -75,9 +89,77 @@ export class CustomizeScreen extends BaseScreen {
   private tab: Tab = 'faction';
   private pane: HTMLElement | null = null;
   private skinWeapon: WeaponId = 'meridian';
+  private tag: HTMLElement | null = null;
+  private pinned: PreviewItem | null = null;
+  private hoverTimer = 0;
+  private lastElimAt = 0;
 
   constructor(app: App) {
     super(app, 'screen--sub');
+  }
+
+  override leave(): void {
+    super.leave();
+    window.clearTimeout(this.hoverTimer);
+    this.pinned = null;
+    this.app.menuScene?.setPreview(null);
+    this.app.menuScene?.setWeaponShowcase(false);
+  }
+
+  /** Wires hover / focus / tap previews on a cosmetic card. */
+  private bindPreview(el: HTMLElement, item: PreviewItem): void {
+    const show = () => {
+      window.clearTimeout(this.hoverTimer);
+      this.showPreview(item);
+    };
+    const hide = () => {
+      window.clearTimeout(this.hoverTimer);
+      // Small grace period so sweeping across the grid never flickers back to the saved look.
+      this.hoverTimer = window.setTimeout(() => this.showPreview(this.pinned, !!this.pinned && this.pinned.locked !== null), 140);
+    };
+    el.addEventListener('pointerenter', (e) => {
+      if (e.pointerType === 'mouse') show();
+    });
+    el.addEventListener('pointerleave', (e) => {
+      if (e.pointerType === 'mouse') hide();
+    });
+    el.addEventListener('focus', () => {
+      if (el.matches(':focus-visible')) show();
+    });
+    el.addEventListener('blur', hide);
+    el.addEventListener('click', () => {
+      // Locked: pin the preview (touch players have no hover). Unlocked: the pick is saved.
+      this.pinned = item.locked !== null ? item : null;
+      this.showPreview(item.locked !== null ? item : { ...item, selected: true });
+    });
+  }
+
+  private showPreview(item: PreviewItem | null, withTag = true): void {
+    const scene = this.app.menuScene;
+    scene?.setPreview(item ? item.preview : null);
+    if (item?.elimFx && scene && performance.now() - this.lastElimAt > 1700) {
+      this.lastElimAt = performance.now();
+      scene.playElimination(item.elimFx);
+    }
+    const tag = this.tag;
+    if (!tag) return;
+    if (!item || !withTag) {
+      tag.classList.remove('is-on');
+      return;
+    }
+    const name = tag.querySelector('.cust-tag__name') as HTMLElement;
+    const state = tag.querySelector('.cust-tag__state') as HTMLElement;
+    setText(name, item.name);
+    tag.classList.toggle('is-locked', item.locked !== null);
+    state.replaceChildren();
+    if (item.locked !== null) {
+      state.insertAdjacentHTML('beforeend', icon('lock'));
+      state.append(h('span', { t: 'common.unlocksAt', params: { level: item.locked } }));
+    } else {
+      state.insertAdjacentHTML('beforeend', icon('check'));
+      state.append(h('span', { t: item.selected ? 'common.equipped' : 'customize.previewSelect' }));
+    }
+    tag.classList.add('is-on');
   }
 
   protected build(): void {
@@ -99,8 +181,18 @@ export class CustomizeScreen extends BaseScreen {
       },
     });
     this.pane = h('div', { class: 'scroll', style: 'flex:1;min-height:0;padding:2px' });
-    const body = h('div', { class: 'cust-body content-col content-col--wide' }, t.el, this.pane);
-    this.el.append(head, body);
+    const touch = this.app.input?.device === 'touch';
+    const hint = h('p', { class: 'cust-hint', html: icon('eye') }, h('span', { t: touch ? 'customize.previewHint.touch' : 'customize.previewHint' }));
+    const body = h('div', { class: 'cust-body content-col content-col--wide' }, t.el, hint, this.pane);
+    this.tag = h(
+      'div',
+      { class: 'cust-tag panel', attrs: { 'aria-live': 'polite' } },
+      h('div', { class: 'eyebrow', t: 'customize.preview' }),
+      h('div', { class: 'cust-tag__name' }),
+      h('div', { class: 'cust-tag__state' }),
+    );
+    this.pinned = null;
+    this.el.append(head, body, this.tag);
     stagger([head, t.el, this.pane]);
     this.renderPane(false);
     this.track(this.app.profile.onChange(() => this.renderPane(false)));
@@ -114,6 +206,11 @@ export class CustomizeScreen extends BaseScreen {
     const p = this.app.profile.value;
     const level = p.level;
     const note = (key: string) => h('p', { class: 'dim', style: 'font-size:.8rem;margin:.2rem 0 .8rem', t: key });
+    this.app.menuScene?.setWeaponShowcase(this.tab === 'skins');
+    if (animate) {
+      this.pinned = null;
+      this.showPreview(null);
+    }
     switch (this.tab) {
       case 'faction': {
         pane.append(note('customize.faction.note'));
@@ -128,6 +225,7 @@ export class CustomizeScreen extends BaseScreen {
             children: [iconEl(icon('faction', 'faction-card__emblem'))],
           });
           c.style.setProperty('--tc', `var(--team${f})`);
+          this.bindPreview(c, { preview: { faction: f as Faction }, name: `common.faction.${f}`, locked: null, selected: p.faction === f });
           grid.append(c);
         }
         pane.append(grid);
@@ -139,16 +237,17 @@ export class CustomizeScreen extends BaseScreen {
         for (const a of ARMOR_TINTS) {
           const sw = h('span', { class: 'cust-swatch' });
           sw.style.background = a.color;
-          grid.append(
-            card({
-              title: a.nameKey,
-              cls: 'cust-item',
-              selected: p.cosmetics.armor === a.id,
-              lockedLevel: a.unlockLevel > level ? a.unlockLevel : null,
-              onClick: () => this.app.profile.setCosmetics({ armor: a.id }),
-              children: [sw],
-            }),
-          );
+          const locked = a.unlockLevel > level ? a.unlockLevel : null;
+          const c = card({
+            title: a.nameKey,
+            cls: 'cust-item',
+            selected: p.cosmetics.armor === a.id,
+            lockedLevel: locked,
+            onClick: () => this.app.profile.setCosmetics({ armor: a.id }),
+            children: [sw],
+          });
+          this.bindPreview(c, { preview: { cosmetics: { armor: a.id } }, name: a.nameKey, locked, selected: p.cosmetics.armor === a.id });
+          grid.append(c);
         }
         pane.append(grid);
         break;
@@ -159,16 +258,17 @@ export class CustomizeScreen extends BaseScreen {
         for (const v of VISOR_STYLES) {
           const vis = iconEl(visorSvg(v.shape));
           (vis as SVGElement).style.color = `var(--team${p.faction})`;
-          grid.append(
-            card({
-              title: v.nameKey,
-              cls: 'cust-item',
-              selected: p.cosmetics.visor === v.id,
-              lockedLevel: v.unlockLevel > level ? v.unlockLevel : null,
-              onClick: () => this.app.profile.setCosmetics({ visor: v.id }),
-              children: [vis],
-            }),
-          );
+          const locked = v.unlockLevel > level ? v.unlockLevel : null;
+          const c = card({
+            title: v.nameKey,
+            cls: 'cust-item',
+            selected: p.cosmetics.visor === v.id,
+            lockedLevel: locked,
+            onClick: () => this.app.profile.setCosmetics({ visor: v.id }),
+            children: [vis],
+          });
+          this.bindPreview(c, { preview: { cosmetics: { visor: v.id } }, name: v.nameKey, locked, selected: p.cosmetics.visor === v.id });
+          grid.append(c);
         }
         pane.append(grid);
         break;
@@ -177,16 +277,17 @@ export class CustomizeScreen extends BaseScreen {
         pane.append(note('customize.namecard.note'));
         const grid = h('div', { class: 'cust-grid cust-grid--wide' });
         for (const n of NAMECARDS) {
-          grid.append(
-            card({
-              title: n.nameKey,
-              cls: 'cust-item cust-namecard',
-              selected: p.cosmetics.namecard === n.id,
-              lockedLevel: n.unlockLevel > level ? n.unlockLevel : null,
-              onClick: () => this.app.profile.setCosmetics({ namecard: n.id }),
-              children: [namecard({ id: n.id, name: p.name, level })],
-            }),
-          );
+          const locked = n.unlockLevel > level ? n.unlockLevel : null;
+          const c = card({
+            title: n.nameKey,
+            cls: 'cust-item cust-namecard',
+            selected: p.cosmetics.namecard === n.id,
+            lockedLevel: locked,
+            onClick: () => this.app.profile.setCosmetics({ namecard: n.id }),
+            children: [namecard({ id: n.id, name: p.name, level })],
+          });
+          this.bindPreview(c, { preview: {}, name: n.nameKey, locked, selected: p.cosmetics.namecard === n.id });
+          grid.append(c);
         }
         pane.append(grid);
         break;
@@ -195,16 +296,17 @@ export class CustomizeScreen extends BaseScreen {
         pane.append(note('customize.elim.note'));
         const grid = h('div', { class: 'cust-grid' });
         for (const e of ELIM_EFFECTS) {
-          grid.append(
-            card({
-              title: e.nameKey,
-              cls: 'cust-item',
-              selected: p.cosmetics.elimFx === e.id,
-              lockedLevel: e.unlockLevel > level ? e.unlockLevel : null,
-              onClick: () => this.app.profile.setCosmetics({ elimFx: e.id }),
-              children: [iconEl(elimSvg(e.style))],
-            }),
-          );
+          const locked = e.unlockLevel > level ? e.unlockLevel : null;
+          const c = card({
+            title: e.nameKey,
+            cls: 'cust-item cust-elim-card',
+            selected: p.cosmetics.elimFx === e.id,
+            lockedLevel: locked,
+            onClick: () => this.app.profile.setCosmetics({ elimFx: e.id }),
+            children: [iconEl(elimSvg(e.style))],
+          });
+          this.bindPreview(c, { preview: {}, name: e.nameKey, locked, elimFx: e.id, selected: p.cosmetics.elimFx === e.id });
+          grid.append(c);
         }
         pane.append(grid);
         break;
@@ -220,6 +322,10 @@ export class CustomizeScreen extends BaseScreen {
           },
         });
         seg.el.classList.add('skin-weapons');
+        // The showcase follows the weapon being browsed (its saved skin until an item is hovered).
+        const base: PreviewItem = { preview: { weapon: { id: this.skinWeapon, skin: p.cosmetics.skins[this.skinWeapon] ?? 'factory' } }, name: WEAPONS[this.skinWeapon].nameKey, locked: null };
+        if (!this.pinned || !this.pinned.preview.weapon || this.pinned.preview.weapon.id !== this.skinWeapon) this.pinned = base;
+        this.app.menuScene?.setPreview(this.pinned.preview);
         pane.append(seg.el, h('div', { style: 'height:.75rem' }));
         const grid = h('div', { class: 'cust-grid cust-grid--wide' });
         const w = this.skinWeapon;
@@ -232,15 +338,17 @@ export class CustomizeScreen extends BaseScreen {
             i.style.background = c;
             chips.append(i);
           }
+          const locked = req > level ? req : null;
           const c = card({
             title: s.nameKey,
             cls: 'cust-item',
             selected: current === s.id,
-            lockedLevel: req > level ? req : null,
+            lockedLevel: locked,
             onClick: () => this.app.profile.setCosmetics({ skins: { [w]: s.id } }),
             children: [iconEl(skinSvg(w, s))],
           });
           c.append(chips);
+          this.bindPreview(c, { preview: { weapon: { id: w, skin: s.id } }, name: s.nameKey, locked, selected: current === s.id });
           grid.append(c);
         }
         pane.append(grid);

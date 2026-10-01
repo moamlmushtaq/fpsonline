@@ -31,7 +31,7 @@ export default {
   'cos.elim.starfall': 'تساقط النجوم',
   'cos.elim.prism': 'موشور',
 
-  'cos.skin.factory': 'المصنع',
+  'cos.skin.factory': 'طلاء المصنع',
   'cos.skin.sunburst': 'وهج الشمس',
   'cos.skin.verdigris': 'زنجار',
   'cos.skin.orbital': 'مداري',

@@ -147,6 +147,8 @@ function iconForLandmark(label: string): Parameters<typeof icon>[0] {
 
 interface ObjSlot {
   el: HTMLElement;
+  arrow: HTMLElement;
+  arrowDeg: number;
   ring: SVGCircleElement;
   shape: SVGElement;
   letter: HTMLElement;
@@ -177,11 +179,16 @@ export class ObjectiveMarkers {
     const letter = h('span', { class: 'obj__letter' });
     badge.append(letter);
     const dist = h('span', { class: 'obj__dist' });
+    // Edge chevron: points from the screen centre toward an off-screen objective.
+    const arrow = h('i', { class: 'obj__arrow' });
+    badge.append(arrow);
     el.append(badge, dist);
     el.style.display = 'none';
     this.el.append(el);
     const s: ObjSlot = {
       el,
+      arrow,
+      arrowDeg: Number.NaN,
       ring: badge.querySelector('.obj-ring') as SVGCircleElement,
       shape: badge.querySelector('.obj-shape') as SVGElement,
       letter,
@@ -230,6 +237,13 @@ export class ObjectiveMarkers {
         s.x = x;
         s.y = y;
         s.el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translateX(-50%)`;
+        if (o.offscreen) {
+          const deg = Math.round((Math.atan2(y - vh / 2, x - vw / 2) * RAD) / 3) * 3;
+          if (deg !== s.arrowDeg) {
+            s.arrowDeg = deg;
+            s.arrow.style.transform = `rotate(${deg}deg) translateX(1.35em)`;
+          }
+        }
       }
       const p = Math.round(Math.max(0, Math.min(1, o.progress)) * 100) / 100;
       if (p !== s.prog) {

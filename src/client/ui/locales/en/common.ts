@@ -65,4 +65,5 @@ export default {
   'common.hint.back': 'Back',
   'common.rotate.title': 'Rotate your device',
   'common.rotate.body': 'HALCYON FRONT plays in landscape.',
+  'common.maxLevel': 'Max level',
 } satisfies Record<string, string>;

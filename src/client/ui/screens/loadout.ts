@@ -8,6 +8,7 @@ import type { App } from '../../app';
 import { THROWABLES, WEAPONS, type WeaponDef } from '../../../shared/weapons';
 import type { PrimaryWeaponId, ThrowableId, WeaponId } from '../../../shared/types';
 import { PRIMARY_WEAPON_IDS } from '../../../shared/types';
+import { MAX_HEALTH } from '../../../shared/constants';
 import { card, h, screenHeader, sectionLabel, stagger, statBar } from '../components';
 import { i18n } from '../i18n';
 import { icon, weaponIcon } from '../icons';
@@ -15,17 +16,26 @@ import { BaseScreen } from './base';
 
 const DEG = 180 / Math.PI;
 
-/** Normalized 0..1 stats for the bars (hand-shaped so differences read clearly). */
+/**
+ * Normalized 0..1 bar lengths, straight from weapons.ts (curves only compress
+ * the huge spread between a shotgun blast and an SMG bullet so every bar reads).
+ */
 export function weaponStats(w: WeaponDef): { damage: number; fireRate: number; range: number; mobility: number; control: number } {
   const perShot = w.damage * w.pellets;
-  const damage = 0.25 + 0.75 * Math.sqrt(Math.max(0, perShot - 8) / 117);
-  const fireRate = Math.max(0.08, Math.min(1, w.rpm / 900));
+  const damage = Math.sqrt(Math.min(1, perShot / 120));
+  const fireRate = Math.max(0.06, Math.min(1, w.rpm / 900));
   const range = Math.min(1, Math.sqrt(w.falloffEnd / 160));
-  const mobility = Math.max(0.1, Math.min(1, (w.moveSpeedMult - 0.8) / 0.3));
+  const mobility = Math.max(0.08, Math.min(1, (w.moveSpeedMult - 0.8) / 0.3));
   const kicks = w.recoil.pattern.slice(0, 10);
   const kick = (kicks.reduce((s, k) => s + Math.abs(k[0]), 0) / Math.max(1, kicks.length)) * DEG;
   const control = Math.max(0.08, Math.min(1, 1 - ((kick / 4) * 0.6 + ((w.hipSpread * DEG) / 5) * 0.4)));
-  return { damage: Math.min(1, damage), fireRate, range, mobility, control };
+  return { damage, fireRate, range, mobility, control };
+}
+
+/** Close-range body-shot time to eliminate a full-health pilot (all pellets hit). */
+export function weaponTtk(w: WeaponDef): { shots: number; seconds: number } {
+  const shots = Math.max(1, Math.ceil(MAX_HEALTH / (w.damage * w.pellets)));
+  return { shots, seconds: ((shots - 1) * 60) / w.rpm };
 }
 
 export class LoadoutScreen extends BaseScreen {
@@ -96,6 +106,8 @@ export class LoadoutScreen extends BaseScreen {
     if (!d) return;
     const w = WEAPONS[id];
     const s = weaponStats(w);
+    const ttk = weaponTtk(w);
+    const fact = (k: string, v: string) => h('span', { class: 'wfact' }, h('b', { text: v }), h('span', { t: k }));
     const left = h(
       'div',
       {},
@@ -106,19 +118,21 @@ export class LoadoutScreen extends BaseScreen {
       h(
         'div',
         { class: 'weapon-detail__facts' },
-        h('span', { t: 'loadout.mag', params: { n: w.magSize } }),
-        h('span', { t: 'loadout.rpm', params: { n: w.rpm } }),
+        fact('loadout.fact.ttk', ttk.shots === 1 ? i18n.t('loadout.oneShot') : `${ttk.seconds.toFixed(2)}s`),
+        fact('loadout.fact.shots', String(ttk.shots)),
+        fact('loadout.fact.mag', String(w.magSize)),
+        fact('loadout.fact.head', `×${Number(w.headMult.toFixed(2))}`),
       ),
     );
-    const n = (v: number) => String(Math.round(v * 100));
+    // Readouts are the real numbers from weapons.ts; the bars compare them.
     const stats = h(
       'div',
       { class: 'weapon-detail__stats' },
-      statBar('loadout.stat.damage', s.damage, n(s.damage)),
-      statBar('loadout.stat.fireRate', s.fireRate, n(s.fireRate)),
-      statBar('loadout.stat.range', s.range, n(s.range)),
-      statBar('loadout.stat.mobility', s.mobility, n(s.mobility)),
-      statBar('loadout.stat.control', s.control, n(s.control)),
+      statBar('loadout.stat.damage', s.damage, w.pellets > 1 ? `${w.damage}×${w.pellets}` : String(w.damage)),
+      statBar('loadout.stat.fireRate', s.fireRate, i18n.t('loadout.rpm', { n: w.rpm })),
+      statBar('loadout.stat.range', s.range, `${w.falloffEnd} m`),
+      statBar('loadout.stat.mobility', s.mobility, `${Math.round(w.moveSpeedMult * 100)}%`),
+      statBar('loadout.stat.control', s.control, String(Math.round(s.control * 100))),
     );
     d.replaceChildren(left, stats);
   }

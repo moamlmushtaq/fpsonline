@@ -32,7 +32,7 @@ import type { Faction, Team, Vec3, WeaponId } from '../../../shared/types';
 import { WEAPONS } from '../../../shared/weapons';
 import { damp, smoothNoise, Spring } from '../../engine/camera-feel';
 import type { WeaponModelView } from '../weapon-models';
-import { bodyGeometry, triangleCount } from './body';
+import { bodyGeometry, releaseBodyGeometry, triangleCount } from './body';
 import { HOLDS, PALM, lookBasis, twoBone, type Hold } from './ik';
 import type { Detail } from './kit';
 import { CHARGE_COLOR, blobShadow, fxMaterial, releaseFxMaterial, sharedMaterial, syncColorMode, tierFor, type CharMaterial, type MatTier } from './material';
@@ -371,6 +371,10 @@ export class CharacterInstance implements CharacterView {
     if (this.fx) releaseFxMaterial(this.fx);
     this.fx = null;
     this.body.skeleton.dispose();
+    // Rendering: return the shared body geometries to the refcounted cache
+    // (characters/body.ts keeps a few idle ones warm, disposes the rest LRU).
+    releaseBodyGeometry(this.geoNear, this);
+    releaseBodyGeometry(this.geoFar, this);
     this.root.removeFromParent();
   }
 

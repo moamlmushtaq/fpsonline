@@ -53,4 +53,7 @@ export default {
   'play.room.playing': 'Match in progress',
   'play.room.creating': 'Opening a room…',
   'play.room.joining': 'Joining room {code}…',
+  'play.room.waitDesc': 'Talking to the game server. This takes a second.',
+  'play.fact.solo': 'Solo',
+  'play.fact.targets': 'Moving targets · live stats',
 } satisfies Record<string, string>;

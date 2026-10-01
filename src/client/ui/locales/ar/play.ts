@@ -53,4 +53,7 @@ export default {
   'play.room.playing': 'المباراة جارية',
   'play.room.creating': 'جارٍ فتح غرفة…',
   'play.room.joining': 'جارٍ الانضمام إلى الغرفة {code}…',
+  'play.room.waitDesc': 'جارٍ التواصل مع خادم اللعبة. لن يستغرق ذلك سوى لحظة.',
+  'play.fact.solo': 'فردي',
+  'play.fact.targets': 'أهداف متحركة · إحصاءات مباشرة',
 } satisfies Record<string, string>;

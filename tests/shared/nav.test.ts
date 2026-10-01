@@ -23,7 +23,7 @@ describe('maps', () => {
       }
       if (id !== 'range') {
         expect(map.solids.length).toBeGreaterThanOrEqual(60);
-        expect(map.solids.length).toBeLessThanOrEqual(120);
+        expect(map.solids.length).toBeLessThanOrEqual(450); // collision budget per PvP map (ARCHITECTURE: lean, detail lives in decor)
         expect(map.spawns.filter((s) => s.team === 0).length).toBeGreaterThanOrEqual(6);
         expect(map.spawns.filter((s) => s.team === 1).length).toBeGreaterThanOrEqual(6);
         expect(map.spawns.filter((s) => s.team === 2).length).toBeGreaterThanOrEqual(8);

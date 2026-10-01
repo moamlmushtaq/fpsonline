@@ -259,6 +259,11 @@ export class BotDirector {
     for (const [id, c] of this.targetOf) {
       if (id === exceptBot || c.target !== target) continue;
       if (!this.sim.ffa && c.team !== team) continue;
+      const b = this.sim.player(id);
+      if (!b || !b.alive) {
+        this.targetOf.delete(id); // left or died without telling us
+        continue;
+      }
       n++;
     }
     return n;

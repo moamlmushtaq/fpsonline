@@ -12,6 +12,8 @@ import { ACTIONS, keyLabel } from '../../state/settings';
 import { button, h, keybind, screenHeader, sectionLabel, segmented, settingRow, slider, stagger, tabs, toggle } from '../components';
 import { i18n, refreshDom, setText } from '../i18n';
 import { BaseScreen } from './base';
+// Controls (input engineer): rebinding swaps on conflict instead of silently stealing.
+import { rebindWithSwap } from '../../input/rebind';
 
 type Tab = 'gameplay' | 'controls' | 'graphics' | 'audio' | 'accessibility' | 'language';
 
@@ -293,7 +295,12 @@ export class SettingsScreen extends BaseScreen {
         code: keys[slot] ?? null,
         format: keyLabel,
         onCapture: (code) => {
-          this.app.settings.bind(a, slot, code);
+          // A key taken from another action swaps with this slot's old key; tell the player.
+          const r = rebindWithSwap(this.app.settings, a, slot, code);
+          if (r.from && code) {
+            const p = { key: keyLabel(code), action: i18n.t(`settings.action.${r.from}`), old: r.swapped ? keyLabel(r.swapped) : '' };
+            this.app.ui.toast(i18n.t(r.swapped ? 'controls.bind.swapped' : 'controls.bind.moved', p), 'info');
+          }
           // Another action may have lost this key: repaint the list.
           requestAnimationFrame(() => this.renderPane(false));
         },

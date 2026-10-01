@@ -35,11 +35,16 @@ body.q-low .hf-tut__card { backdrop-filter: none; -webkit-backdrop-filter: none;
 .hf-tut__card.is-on { opacity: 1; transform: translate(-50%, 0); }
 .hf-tut__card.is-done { border-color: rgba(185,224,122,.8); box-shadow: 0 0 0 1px rgba(185,224,122,.35), 0 10px 40px rgba(0,0,0,.25); }
 .hf-tut__row { display: flex; align-items: center; justify-content: center; gap: .65rem; }
-.hf-tut__verb { font-size: 1.5rem; font-weight: 600; letter-spacing: .01em; line-height: 1.2; white-space: nowrap; }
+.hf-tut__verb { font-size: 1.5rem; font-weight: 600; letter-spacing: .01em; line-height: 1.2; text-wrap: balance; }
 .hf-tut__keys { display: inline-flex; align-items: center; gap: .3rem; direction: ltr; unicode-bidi: isolate; }
 .hf-tut__keys kbd { font-family: var(--f-mono); font-size: .8rem; min-width: 1.7em; padding: .18em .5em; border: 1px solid rgba(243,236,224,.55); border-bottom-width: 2px; border-radius: 6px; background: rgba(243,236,224,.08); text-align: center; }
 .hf-tut__keys kbd.pad { border-radius: 999px; min-width: 1.9em; border-color: rgba(240,179,91,.7); color: #fbe3bd; }
 .hf-tut__keys .join { font-size: .72rem; color: rgba(243,236,224,.6); }
+/* A sequence ("A then B") flows with the reading direction; key caps stay LTR inside. */
+.hf-tut__keys.is-seq { direction: inherit; }
+.hf-tut__keys kbd { unicode-bidi: isolate; direction: ltr; }
+/* Touch gesture pill (drag / push the stick): words, not a key cap. */
+.hf-tut__keys .gesture { font: 500 .78rem var(--f-ui); padding: .2em .65em; border-radius: 999px; border: 1px dashed rgba(240,179,91,.75); color: #fbe3bd; background: rgba(240,179,91,.1); white-space: nowrap; direction: inherit; }
 .hf-tut__check { width: 1.6rem; height: 1.6rem; flex: none; display: none; }
 .hf-tut__card.is-done .hf-tut__check { display: block; }
 .hf-tut__card.is-done .hf-tut__keys { display: none; }
@@ -66,7 +71,14 @@ body.q-low .hf-tut__card { backdrop-filter: none; -webkit-backdrop-filter: none;
 .hf-tut__skip svg { width: 1.1rem; height: 1.1rem; direction: ltr; }
 .hf-tut__skip svg circle { fill: none; stroke: var(--c-accent, #f0b35b); stroke-width: 3; stroke-dasharray: 50.3; stroke-dashoffset: 50.3; transform: rotate(-90deg); transform-origin: 50% 50%; }
 /* Touch: the corners belong to the HUD panels; the chip sits beside the prompt card (physical: touch layout is not mirrored). */
+/* Touch: the chip sits beside the card, so the card may never grow into it (long verbs wrap). */
+body.touch-ui .hf-tut__card { max-width: calc(2 * min(10.5rem, 27vw) - 1.2rem); }
 body.touch-ui .hf-tut__skip { min-height: 48px; min-width: 64px; justify-content: center; inset-inline-end: auto; left: calc(50% + min(10.5rem, 27vw)); top: calc(var(--safe-t, 0px) + 3.9rem); }
+/* Until the capture drill, the pad's HUD objective marker (and the Sunspear diamond) would float
+   among the drill targets: one goal on screen at a time. */
+body.hf-tut-focus .hud-objectives { opacity: 0; transition: opacity 300ms var(--ease); }
+/* Holding View (⧉) skips on a gamepad; the same button would open a one-row scoreboard. */
+body.hf-tutorial-active .hud-sb { display: none !important; }
 .hf-tut.is-paused .hf-tut__skip { background: var(--c-accent, #f0b35b); color: var(--c-ink, #1d1712); border-color: transparent; transform: scale(1.06); }
 .hf-tut.is-paused .hf-tut__card, .hf-tut.is-paused .hf-tut__arrow { opacity: 0 !important; }
 .hf-tut__arrow { position: absolute; left: 0; top: 0; width: 44px; height: 44px; margin: -22px 0 0 -22px; opacity: 0; transition: opacity 200ms; display: grid; place-items: center; }
@@ -207,14 +219,16 @@ export class TutorialUI {
     this.bar.setAttribute('aria-label', label);
   }
 
-  /** Shows the card for a drill (verb + glyphs). */
-  prompt(verb: string, glyphs: readonly GlyphToken[]): void {
+  /** Shows the card for a drill (verb + glyphs). `sequence`: the glyphs read in order (A then B). */
+  prompt(verb: string, glyphs: readonly GlyphToken[], sequence = false): void {
     window.clearTimeout(this.doneTimer);
     this.card.classList.remove('is-done', 'is-hint');
     this.verb.textContent = verb;
     this.keys.replaceChildren();
+    this.keys.classList.toggle('is-seq', sequence);
     for (const g of glyphs) {
       if (g.kind === 'join') this.keys.append(el('span', 'join', g.text));
+      else if (g.kind === 'gesture') this.keys.append(el('span', 'gesture', g.text));
       else this.keys.append(el('kbd', g.kind === 'pad' ? 'pad' : '', g.text));
     }
     this.keys.style.display = glyphs.length ? '' : 'none';

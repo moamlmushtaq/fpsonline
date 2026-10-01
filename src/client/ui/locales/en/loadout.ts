@@ -19,4 +19,9 @@ export default {
   'loadout.equip': 'Equip',
   'loadout.equipped': 'Equipped',
   'loadout.skin': 'Skin',
+  'loadout.fact.ttk': 'Time to eliminate',
+  'loadout.fact.shots': 'Body shots',
+  'loadout.fact.mag': 'Magazine',
+  'loadout.fact.head': 'Headshot',
+  'loadout.oneShot': 'One shot',
 } satisfies Record<string, string>;

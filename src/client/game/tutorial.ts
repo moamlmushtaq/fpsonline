@@ -26,7 +26,7 @@ import type { GameEvent, Vec3 } from '../../shared/types';
 import { PRIMARY_WEAPON_IDS } from '../../shared/types';
 import type { MatchApi, MatchExtension } from './extensions';
 import { Beacons, type BeaconSpec } from './tutorial/beacons';
-import { skipGlyph, stepGlyphs } from './tutorial/glyphs';
+import { currentPadStyle, hintKey, padLabel, skipGlyph, stepGlyphs } from './tutorial/glyphs';
 import { STEP_ORDER, TutorialMachine, type StepId } from './tutorial/steps';
 import { TutorialUI } from './tutorial/ui';
 
@@ -37,6 +37,8 @@ const SKIP_HOLD = 0.8;
 const SUMMARY_GRACE = 1.6;
 /** Body class while the tutorial runs (the range stats panel hides itself). */
 export const TUTORIAL_BODY_CLASS = 'hf-tutorial-active';
+/** Body class hiding the HUD objective markers until the capture drill (one goal at a time). */
+const FOCUS_CLASS = 'hf-tut-focus';
 
 function center(r: CourseRegion, y = 0): Vec3 {
   return { x: (r.minX + r.maxX) / 2, y, z: (r.minZ + r.maxZ) / 2 };
@@ -204,6 +206,7 @@ class Tutorial implements MatchExtension {
       this.m.steps.map((s) => s.done),
       this.m.index,
     );
+    document.body.classList.toggle(FOCUS_CLASS, !!id && id !== 'capture');
     if (!id) return;
     this.renderPrompt();
     this.beacons?.set(this.beaconSpecs(id));
@@ -213,13 +216,14 @@ class Tutorial implements MatchExtension {
     const id = this.shownStep;
     if (!id) return;
     const device = this.api.device;
-    const sig = `${id}|${device}|${this.api.i18n.lang}`;
+    const style = device === 'gamepad' ? currentPadStyle() : 'generic';
+    const sig = `${id}|${device}|${style}|${this.api.i18n.lang}`;
     if (sig === this.promptSig) return;
     this.promptSig = sig;
-    const g = stepGlyphs(id, device, (a) => this.api.keyLabel(a), (k) => this.t(k));
-    this.ui.prompt(this.t(`tutorial.${id}`), g.tokens);
+    const g = stepGlyphs(id, device, (a) => this.api.keyLabel(a), (k) => this.t(k), style);
+    this.ui.prompt(this.t(`tutorial.${id}`), g.tokens, g.sequence);
     this.ui.highlightTouch(g.touch);
-    if (this.hintShown) this.ui.setHint(this.t(`tutorial.hint.${id}`));
+    if (this.hintShown) this.ui.setHint(this.t(hintKey(id, device)));
   }
 
   private refreshTexts(): void {
@@ -233,7 +237,14 @@ class Tutorial implements MatchExtension {
   private updateSkipChip(): void {
     const device = this.api.device;
     const hold = device === 'gamepad';
-    this.ui.setSkip(hold && this.skipHold > 0 ? this.t('tutorial.skipHold') : this.t('tutorial.skip'), skipGlyph(device), hold ? this.skipHold / SKIP_HOLD : 0);
+    // Esc only skips while the cursor is free: with the mouse captured it opens the pause
+    // menu (where the chip is the highlighted way out), so the chip must not promise it.
+    const glyph = device === 'kbm' && this.pointerLocked() ? null : skipGlyph(device, hold ? currentPadStyle() : 'generic');
+    this.ui.setSkip(hold && this.skipHold > 0 ? this.t('tutorial.skipHold') : this.t('tutorial.skip'), glyph, hold ? this.skipHold / SKIP_HOLD : 0);
+  }
+
+  private pointerLocked(): boolean {
+    return typeof document !== 'undefined' && !!document.pointerLockElement;
   }
 
   private tickSkipHold(dt: number): void {
@@ -245,8 +256,9 @@ class Tutorial implements MatchExtension {
       this.skip();
       return;
     }
-    if (prev !== this.skipHold || holding || api.device !== this.chipDevice) {
-      this.chipDevice = api.device;
+    const chip = `${api.device}|${this.pointerLocked()}`;
+    if (prev !== this.skipHold || holding || chip !== this.chipDevice) {
+      this.chipDevice = chip;
       this.updateSkipChip();
     }
   }
@@ -285,7 +297,7 @@ class Tutorial implements MatchExtension {
     // Gentle hint when stuck.
     if (this.m.hint && !this.hintShown) {
       this.hintShown = true;
-      this.ui.setHint(this.t(`tutorial.hint.${id}`));
+      this.ui.setHint(this.t(hintKey(id, api.device)));
     }
     if (this.beacons) {
       this.beacons.hint = this.m.hint ? Math.min(1, this.beacons.hint + dt * 2) : Math.max(0, this.beacons.hint - dt * 2);
@@ -415,6 +427,7 @@ class Tutorial implements MatchExtension {
     if (this.ended) return;
     this.ended = true;
     const api = this.api;
+    document.body.classList.remove(FOCUS_CLASS);
     this.beacons?.clear();
     this.ui.setArrow(null);
     this.ui.highlightTouch(null);
@@ -457,7 +470,7 @@ class Tutorial implements MatchExtension {
         accuracy: s.shots ? `${Math.round(s.accuracy * 100)}%` : '—',
         targets: String(s.kills),
         best: pb && !!best?.tutorial,
-        playKey: device === 'kbm' ? 'Enter' : device === 'gamepad' ? 'RB' : '',
+        playKey: device === 'kbm' ? 'Enter' : device === 'gamepad' ? padLabel('interact', currentPadStyle(), 'RB') : '',
       },
       () => this.playNow(),
       () => this.keepPracticing(),
@@ -509,7 +522,7 @@ class Tutorial implements MatchExtension {
 
   dispose(): void {
     for (const off of this.offs.splice(0)) off();
-    document.body.classList.remove(TUTORIAL_BODY_CLASS);
+    document.body.classList.remove(TUTORIAL_BODY_CLASS, FOCUS_CLASS);
     this.teardownVisuals();
   }
 

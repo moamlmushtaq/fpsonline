@@ -183,7 +183,9 @@ export const RANGE_COURSE: RangeCourse = {
   trio: trio.map((t) => t.id),
   trioCenter: v(12, 0, -60.2),
   long: long.id,
-  pad: v(12, 0, -54.6),
+  // East of the perch→trio sightline: the pad's glowing beam must never stand between the
+  // player and the drill targets (it washed them out when it sat on the centre line).
+  pad: v(15.9, 0, -54.8),
   padZone: 'A',
   rackSlots: [v(-18.1, 0, 6.6), v(-17.0, 0, 6.6), v(-15.9, 0, 6.6), v(-14.8, 0, 6.6)],
   rackFacing: 0,

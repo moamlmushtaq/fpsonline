@@ -55,6 +55,7 @@ const POS: Vec3 = { x: 0, y: 0, z: 0 };
 const AIM = { yaw: 0, pitch: 0 };
 const AIM_CMD: InputCmd = { seq: 0, mx: 0, mz: 0, yaw: 0, pitch: 0, buttons: 0, slot: 0, viewTick: 0 };
 const LANE_COUNTS = [0, 0, 0];
+const TRAIL = 32;
 
 export class BotController {
   readonly id: number;
@@ -106,7 +107,12 @@ export class BotController {
   /** Tick after which a marksman may settle into another long-range watch. */
   private watchReady = 0;
   private readonly stillRef: Vec3 = { x: 0, y: 0, z: 0 };
-  private stillSince = 0;
+  /** Recent positions (ring of TRAIL samples, every 0.2 s) and how long we have been still. */
+  private readonly trail = new Float32Array(TRAIL * 3);
+  private trailHead = 0;
+  private trailLen = 0;
+  private trailTick = -1000;
+  private stillFor = 0;
   private searchT = 0;
   private coverT = 0;
   private coverUntil = 0;
@@ -123,6 +129,8 @@ export class BotController {
   private unstickT = 0;
   private unstickDir = 1;
   private dodgeT = 0;
+  private wedgeT = 0;
+  private shiftTick = -100000;
   private moveX = 0;
   private moveZ = 0;
   private wantSprint = false;
@@ -193,12 +201,8 @@ export class BotController {
     this.hurtLookT = 0;
     this.lastHurtTick = this.sim.tick;
     this.lastContactTick = this.sim.tick;
-    this.stillSince = this.sim.tick;
-    if (p) {
-      this.stillRef.x = p.move.pos.x;
-      this.stillRef.y = p.move.pos.y;
-      this.stillRef.z = p.move.pos.z;
-    }
+    this.trailLen = 0;
+    this.stillFor = 0;
   }
 
   /** Produces this tick's command. */
@@ -217,6 +221,13 @@ export class BotController {
 
     const aimed = this.updateAim(p);
     this.computeMove(p);
+    // Airborne but motionless = wedged under a low ceiling (e.g. a jump released
+    // mid-air in a tunnel): crouching always frees the player.
+    const mv = p.move.vel;
+    if (!p.move.onGround && Math.abs(mv.x) + Math.abs(mv.y) + Math.abs(mv.z) < 0.05) {
+      this.wedgeT += SIM_DT;
+      if (this.wedgeT > 0.2) this.crouchT = Math.max(this.crouchT, 0.6);
+    } else this.wedgeT = 0;
     let buttons = 0;
     const w = WEAPONS[activeWeapon(p.combat)];
     if (this.shouldFire(p)) {
@@ -230,7 +241,7 @@ export class BotController {
     const hiding = this.goalKind === 'cover' && settled;
     if (this.crouchT > 0 || this.slideWish || hiding) buttons |= BTN_CROUCH;
     if (this.wantSprint && !(buttons & (BTN_FIRE | BTN_ADS))) buttons |= BTN_SPRINT;
-    if (this.mantleJump || (this.unstickT > 0 && this.jumpCd <= 0)) {
+    if ((this.mantleJump || (this.unstickT > 0 && this.jumpCd <= 0)) && this.headroom(p)) {
       buttons |= BTN_JUMP;
       this.jumpCd = 0.5;
     }
@@ -360,22 +371,39 @@ export class BotController {
   }
 
   /**
-   * Nobody stands on one spot for long, even mid-fight: after ~7 s without
-   * moving 1.5 m the bot relocates (a marksman changes angle, a zone holder
-   * shifts position, a lane holder moves on).
+   * Nobody stands on one spot for long, even mid-fight: after ~5 s inside a
+   * small circle the bot relocates (a marksman changes angle, a zone holder
+   * shifts position, a lane holder moves on). Positions are sampled 5×/s into
+   * a ring; "still for" = how far back every sample stays within 1.3 m of us.
    */
   private checkStill(p: SimPlayer): void {
     const pos = p.move.pos;
     const tick = this.sim.tick;
-    if (Math.hypot(pos.x - this.stillRef.x, pos.y - this.stillRef.y, pos.z - this.stillRef.z) > 1.5) {
-      this.stillRef.x = pos.x;
-      this.stillRef.y = pos.y;
-      this.stillRef.z = pos.z;
-      this.stillSince = tick;
-      return;
+    if (tick - this.trailTick >= 12) {
+      this.trailTick = tick;
+      const i = this.trailHead;
+      this.trail[i * 3] = pos.x;
+      this.trail[i * 3 + 1] = pos.y;
+      this.trail[i * 3 + 2] = pos.z;
+      this.trailHead = (i + 1) % TRAIL;
+      if (this.trailLen < TRAIL) this.trailLen++;
     }
-    if (tick - this.stillSince < SIM_HZ * (6.5 + this.rng() * 1.5)) return;
-    this.stillSince = tick;
+    let n = 0;
+    for (; n < this.trailLen; n++) {
+      const i = (this.trailHead - 1 - n + TRAIL * 2) % TRAIL;
+      const dx = this.trail[i * 3] - pos.x;
+      const dy = this.trail[i * 3 + 1] - pos.y;
+      const dz = this.trail[i * 3 + 2] - pos.z;
+      if (dx * dx + dy * dy + dz * dz > 1.3 * 1.3) break;
+    }
+    this.stillFor = n * 0.2;
+    if (this.stillFor < 4.8 + this.rng() * 0.6) return;
+    this.trailLen = 0;
+    this.stillFor = 0;
+    this.stillRef.x = pos.x;
+    this.stillRef.y = pos.y;
+    this.stillRef.z = pos.z;
+    this.shiftTick = tick;
     if (this.targetVisible) {
       // Mid-fight: at least side-step hard for a moment (and then relocate).
       this.dodgeT = this.rand(0.7, 1.1);
@@ -396,12 +424,15 @@ export class BotController {
         if (i < 6 && after < before - 3 && activeWeapon(p.combat) === 'longline') continue;
       }
       this.setGoal('shift', np, 5);
-      return;
+      this.plan(p);
+      if (this.goalKind === 'shift') return;
     }
-    const k = nav.randomNode(this.rng, pos, 20);
-    if (k >= 0) {
+    for (let i = 0; i < 4; i++) {
+      const k = nav.randomNode(this.rng, pos, 20);
+      if (k < 0) continue;
       this.setGoal('shift', nav.nodePos(k), 6);
-      return;
+      this.plan(p);
+      if (this.goalKind === 'shift') return;
     }
     this.goalKind = 'none';
     this.path = null;
@@ -504,7 +535,7 @@ export class BotController {
         this.lastContactTick = tick;
         this.hurtYaw = yawFromDir(f.x - eye.x, f.z - eye.z);
         if (this.hurtLookT <= 0) this.hurtT = prof.reaction * this.rand(0.8, 1.15);
-        this.hurtLookT = 1.6;
+        this.hurtLookT = this.hurtT + 1.6;
         const dd = Math.hypot(f.x - eye.x, f.z - eye.z);
         const err = dd * 0.12;
         this.setLastKnown({ x: f.x + (this.rng() - 0.5) * err, y: f.y - EYE_HEIGHT, z: f.z + (this.rng() - 0.5) * err }, tick, false);
@@ -573,7 +604,11 @@ export class BotController {
     // 1. Cover: hurt under fire, or reloading a dry magazine behind something solid.
     if (this.goalKind !== 'cover') {
       const threatened = this.targetVisible || tick - p.lastDamageTick < SIM_HZ;
-      const hurt = threatened && p.health < prof.retreatHp;
+      // Break off when losing the trade (they are healthier, or it's 2-on-1);
+      // a fight we are winning is finished instead.
+      const foe = this.targetVisible ? sim.player(this.target) : undefined;
+      const losing = !foe || foe.health > p.health + 10 || this.vis.length >= 6;
+      const hurt = threatened && p.health < prof.retreatHp && losing;
       const dry =
         this.targetVisible &&
         prof.tactics >= 0.5 &&
@@ -598,11 +633,13 @@ export class BotController {
         return;
       }
       this.hasPeek = false;
+      this.advanceStation(p); // the fight moved us on: don't walk back to the same corner
     }
     if (this.goalKind === 'peek') {
       if (!this.targetVisible && this.goalT > 0 && this.path && this.pathIdx < this.path.points.length) return;
       this.goalKind = 'none';
       this.path = null;
+      this.advanceStation(p);
     }
 
     if (this.goalKind === 'shift') {
@@ -651,7 +688,7 @@ export class BotController {
       // Lane discipline: don't desert the flank to chase something across the map.
       const info = this.dir.lanes;
       const crossLane = !!info && zone === null && !sim.ffa && laneOfX(info, this.lastKnown.x) !== this.lane && d > (this.prof.tactics >= 0.5 ? 18 : 26);
-      if (wid === 'longline' && d > 14 && this.knownBySight && (this.goalKind === 'hold' ? tick - this.holdStart < SIM_HZ * 6 : tick >= this.watchReady && tick - this.stillSince < SIM_HZ * 2)) {
+      if (wid === 'longline' && d > 14 && this.knownBySight && (this.goalKind === 'hold' ? tick - this.holdStart < SIM_HZ * 6 : tick >= this.watchReady && this.stillFor < 2)) {
         // Marksmen keep the angle instead of running into close quarters (for a while).
         if (this.goalKind !== 'hold') {
           this.startHold(yawFromDir(this.lastKnown.x - pos.x, this.lastKnown.z - pos.z), this.rand(2, 4));
@@ -665,6 +702,8 @@ export class BotController {
       }
     }
     if (this.goalKind === 'chase') {
+      // Keep pressing while they are in sight; drop it once the trail goes cold.
+      if (fresh && this.targetVisible) return;
       this.goalKind = 'none';
       this.path = null;
     }
@@ -880,7 +919,9 @@ export class BotController {
       threat = { x: f.x, y: f.y, z: f.z };
     }
     const tries = 8 + Math.round(12 * this.prof.tactics);
-    const k = findCoverNode(sim.nav, sim.world, this.rng, p.move.pos, threat, 13, tries);
+    // Just told to get moving: don't duck behind the same box again.
+    const avoid = sim.tick - this.shiftTick < SIM_HZ * 3 ? this.stillRef : null;
+    const k = findCoverNode(sim.nav, sim.world, this.rng, p.move.pos, threat, 13, tries, avoid);
     if (k < 0) return false;
     this.peekPos.x = p.move.pos.x;
     this.peekPos.y = p.move.pos.y;
@@ -1035,7 +1076,8 @@ export class BotController {
         const ux = tx / td;
         const uz = tz / td;
         const pref = PREFERRED_RANGE[wid];
-        const hasPath = dx !== 0 || dz !== 0;
+        // Only a path that leads to them helps close the distance.
+        const hasPath = (dx !== 0 || dz !== 0) && (this.goalKind === 'chase' || this.goalKind === 'objective' || repositioning);
         let bx = 0;
         let bz = 0;
         if (repositioning || (this.goalKind === 'objective' && hasPath && td > pref * 0.55)) {
@@ -1094,12 +1136,30 @@ export class BotController {
     this.moveZ = dz;
   }
 
-  /** True if walking ~1 m in (dx,dz) keeps us over ground not far below. */
+  /** Room to jump without hitting a ceiling (standing box raised by a jump's height). */
+  private headroom(p: SimPlayer): boolean {
+    const m = p.move;
+    return !this.sim.world.boxOverlaps(m.pos.x, m.pos.y + 1.1, m.pos.z, 0.34, 1.8);
+  }
+
+  /**
+   * True if walking ~1 m in (dx,dz) keeps us over ground not far below, and any
+   * drop lands somewhere we can walk out of (never into a dead-end pit).
+   */
   private safeAhead(p: SimPlayer, dx: number, dz: number): boolean {
     const x = p.move.pos.x + dx * 1.1;
     const z = p.move.pos.z + dz * 1.1;
     const g = this.sim.world.supportHeight(x, z, 0.2, p.move.pos.y + 0.5, 6);
-    return !Number.isNaN(g) && g > this.sim.map.killY + 1;
+    if (Number.isNaN(g) || g <= this.sim.map.killY + 1) return false;
+    if (g < p.move.pos.y - 1.2) {
+      POS.x = x;
+      POS.y = g;
+      POS.z = z;
+      const nav = this.sim.nav;
+      const k = nav.nearestNode(POS, 1.5);
+      if (k < 0 || nav.comp[k] !== nav.mainComp) return false;
+    }
+    return true;
   }
 
   // ── Aim & trigger ────────────────────────────────────────────────────────
@@ -1210,7 +1270,8 @@ export class BotController {
     const dz = t.move.pos.z - eye.z;
     const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
     if (d > w.range * 0.95) return false;
-    if (w.id === 'breaker' && d > 24) return false;
+    // Shotguns wait until the pellets will count (recruits are less patient).
+    if (w.id === 'breaker' && d > (this.prof.tactics >= 0.5 ? 15 : 22)) return false;
     // Angular error between where the gun points and the target.
     AIM_CMD.yaw = this.aim.yaw;
     AIM_CMD.pitch = this.aim.pitch;
@@ -1230,7 +1291,7 @@ export class BotController {
       // Burst discipline: long sprays up close, controlled bursts at range.
       if (this.pauseT > 0) return false;
       if (this.burstT <= 0) {
-        const k = d < 12 ? 2 : d < 30 ? 1.3 : 0.7;
+        const k = d < 12 ? 2.2 : d < 30 ? 1.5 : 0.8;
         this.burstT = this.rand(this.prof.burst[0], this.prof.burst[1]) * k;
       }
     }

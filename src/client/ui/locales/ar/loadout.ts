@@ -19,4 +19,9 @@ export default {
   'loadout.equip': 'تجهيز',
   'loadout.equipped': 'مُجهَّز',
   'loadout.skin': 'الطلاء',
+  'loadout.fact.ttk': 'زمن الإقصاء',
+  'loadout.fact.shots': 'طلقات الجسد',
+  'loadout.fact.mag': 'المخزن',
+  'loadout.fact.head': 'إصابة الرأس',
+  'loadout.oneShot': 'طلقة واحدة',
 } satisfies Record<string, string>;

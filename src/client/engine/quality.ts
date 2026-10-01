@@ -169,20 +169,44 @@ export type AdaptiveAction =
 
 const ORDER: ResolvedPreset[] = ['low', 'medium', 'high'];
 
+/** Tunables (exported for tests / tuning). */
+export const ADAPTIVE = {
+  /** Frames at the start / after any change that are ignored (shader compiles, loading). */
+  settleMs: 3000,
+  /** p90 above this (ms) = struggling (≈ below 45 fps). */
+  badMs: 22,
+  /** Sustained struggle before stepping down. */
+  badHoldMs: 4000,
+  /** Clean vsync-locked frames needed before probing one step up. */
+  goodHoldMs: 20000,
+  /** After an upward step, a struggle within this window reverts it at once and
+   *  blacklists that configuration for the session (no ping-pong). */
+  probeWindowMs: 12000,
+  /** Render-scale steps. */
+  scaleStep: 0.1,
+  minScale: 0.7,
+} as const;
+
 /**
  * Frame-time driven quality controller (pure logic; the Renderer applies the
- * returned actions). Rules:
- *  • ignore the first 3 s after start / any change (shader compiles, loading)
- *    and frames while the tab is hidden or after long stalls;
- *  • p90 frame time > 22 ms sustained for 4 s → step down: first reduce the
- *    render scale in 0.1 steps (down to 0.7), then drop a preset;
- *  • p90 < 11 ms sustained for 12 s → step up cautiously: restore scale first,
- *    then raise the preset (max 2 preset upgrades per session).
+ * returned actions). Robust by construction — it can never oscillate:
+ *
+ *  • Frames are ignored for `settleMs` after start / any change and while the
+ *    tab is hidden or after long stalls.
+ *  • DOWN: p90 > badMs sustained for badHoldMs → trim render scale in 0.1 steps
+ *    (to 0.7), then drop a preset (scale back to 1 on the lower preset).
+ *  • UP (probe): rAF intervals are vsync-locked when the budget is met, so a
+ *    p90 below 11 ms never happens on a 60 Hz screen. Instead "good" means
+ *    clean, vsync-locked frames (p90 ≤ 1.12 × the measured refresh interval, no
+ *    long frames) for goodHoldMs → one step up (scale first, then preset).
+ *  • Hysteresis: if the device struggles within probeWindowMs of a step up, it
+ *    reverts immediately and that configuration is never probed again this
+ *    session. A configuration abandoned for sustained struggle is also
+ *    blacklisted, so Auto settles instead of ping-ponging between presets.
  */
 export class AdaptiveQuality {
   preset: ResolvedPreset;
   scale = 1;
-  private upgrades = 0;
   private readonly samples = new Float32Array(120);
   private sampleCount = 0;
   private sampleIdx = 0;
@@ -190,19 +214,31 @@ export class AdaptiveQuality {
   private badSince = -1;
   private goodSince = -1;
   private lastEval = 0;
-  private scratch = new Float32Array(120);
+  private readonly scratch = new Float32Array(120);
+  /** Configurations ("preset@scale") proven too heavy on this device. */
+  private readonly failed = new Set<string>();
+  /** Configuration to return to if the current probe fails (null = not probing). */
+  private probeFrom: { preset: ResolvedPreset; scale: number; until: number } | null = null;
+  /** Smoothed refresh interval estimate (ms): low percentile of recent frames. */
+  private vsyncMs = 16.7;
 
   constructor(start: ResolvedPreset, now: number) {
     this.preset = start;
-    this.settleUntil = now + 3000;
+    this.settleUntil = now + ADAPTIVE.settleMs;
   }
 
   /** Re-arm the settle window (e.g. after a resize or map load). */
-  settle(now: number, ms = 3000): void {
+  settle(now: number, ms: number = ADAPTIVE.settleMs): void {
     this.settleUntil = Math.max(this.settleUntil, now + ms);
     this.sampleCount = 0;
     this.badSince = -1;
     this.goodSince = -1;
+    if (this.probeFrom) this.probeFrom.until = Math.max(this.probeFrom.until, now + ms + ADAPTIVE.probeWindowMs);
+  }
+
+  /** True once `preset@scale` failed on this device (diagnostics / tests). */
+  hasFailed(preset: ResolvedPreset, scale: number): boolean {
+    return this.failed.has(key(preset, scale));
   }
 
   /** Feed one frame. `frameMs` is the wall-clock interval between frames. */
@@ -221,26 +257,50 @@ export class AdaptiveQuality {
     if (this.sampleCount < 30 || now - this.lastEval < 250) return NONE;
     this.lastEval = now;
 
-    const p90 = this.percentile(0.9);
-    if (p90 > 22) {
+    this.sortSamples();
+    const p10 = this.pct(0.1);
+    const p90 = this.pct(0.9);
+    const p98 = this.pct(0.98);
+    // Refresh interval: ~the fastest frames we see (clamped to 30..240 Hz).
+    const vs = Math.min(34, Math.max(4, p10));
+    this.vsyncMs += (vs - this.vsyncMs) * 0.25;
+
+    if (this.probeFrom && now > this.probeFrom.until) this.probeFrom = null; // probe survived
+
+    if (p90 > ADAPTIVE.badMs) {
       this.goodSince = -1;
+      // A fresh probe that struggles: revert immediately, remember the failure.
+      if (this.probeFrom) return this.revertProbe(now);
       if (this.badSince < 0) this.badSince = now;
-      if (now - this.badSince >= 4000) return this.stepDown(now);
-    } else if (p90 < 11) {
-      this.badSince = -1;
-      if (this.goodSince < 0) this.goodSince = now;
-      if (now - this.goodSince >= 12000) return this.stepUp(now);
-    } else {
-      this.badSince = -1;
-      this.goodSince = -1;
+      if (now - this.badSince >= ADAPTIVE.badHoldMs) return this.stepDown(now);
+      return NONE;
     }
+    this.badSince = -1;
+    const clean = p90 <= this.vsyncMs * 1.12 + 0.5 && p98 <= Math.max(this.vsyncMs * 1.6, this.vsyncMs + 6);
+    if (clean) {
+      if (this.goodSince < 0) this.goodSince = now;
+      if (now - this.goodSince >= ADAPTIVE.goodHoldMs) return this.stepUp(now);
+    } else this.goodSince = -1;
     return NONE;
+  }
+
+  private revertProbe(now: number): AdaptiveAction {
+    const from = this.probeFrom!;
+    this.failed.add(key(this.preset, this.scale));
+    this.probeFrom = null;
+    const presetChanged = from.preset !== this.preset;
+    this.preset = from.preset;
+    this.scale = from.scale;
+    this.settle(now, 2500);
+    return presetChanged ? { kind: 'preset', preset: this.preset, scale: this.scale } : { kind: 'scale', scale: this.scale };
   }
 
   private stepDown(now: number): AdaptiveAction {
     this.settle(now, 2500);
-    if (this.scale > 0.75) {
-      this.scale = Math.round((this.scale - 0.1) * 100) / 100;
+    // Sustained struggle here: never come back to this configuration.
+    this.failed.add(key(this.preset, this.scale));
+    if (this.scale > ADAPTIVE.minScale + 0.05) {
+      this.scale = round2(this.scale - ADAPTIVE.scaleStep);
       return { kind: 'scale', scale: this.scale };
     }
     const i = ORDER.indexOf(this.preset);
@@ -254,28 +314,46 @@ export class AdaptiveQuality {
   }
 
   private stepUp(now: number): AdaptiveAction {
-    this.settle(now, 3000);
-    if (this.scale < 1) {
-      this.scale = Math.min(1, Math.round((this.scale + 0.1) * 100) / 100);
-      return { kind: 'scale', scale: this.scale };
+    this.goodSince = -1;
+    // Candidate: restore scale first, then the next preset (at full scale).
+    let preset = this.preset;
+    let scale = this.scale;
+    if (scale < 1) scale = Math.min(1, round2(scale + ADAPTIVE.scaleStep));
+    else {
+      const i = ORDER.indexOf(preset);
+      if (i >= ORDER.length - 1) return NONE;
+      preset = ORDER[i + 1];
+      scale = 1;
     }
-    const i = ORDER.indexOf(this.preset);
-    if (i < ORDER.length - 1 && this.upgrades < 2) {
-      this.upgrades++;
-      this.preset = ORDER[i + 1];
-      return { kind: 'preset', preset: this.preset, scale: this.scale };
-    }
-    return NONE;
+    if (this.failed.has(key(preset, scale))) return NONE;
+    this.probeFrom = { preset: this.preset, scale: this.scale, until: 0 };
+    const presetChanged = preset !== this.preset;
+    this.preset = preset;
+    this.scale = scale;
+    this.settle(now, ADAPTIVE.settleMs);
+    this.probeFrom.until = now + ADAPTIVE.settleMs + ADAPTIVE.probeWindowMs;
+    return presetChanged ? { kind: 'preset', preset, scale } : { kind: 'scale', scale };
   }
 
-  private percentile(p: number): number {
+  private sortSamples(): void {
     const n = this.sampleCount;
     const s = this.scratch;
     for (let i = 0; i < n; i++) s[i] = this.samples[i];
-    const view = s.subarray(0, n);
-    view.sort();
-    return view[Math.min(n - 1, Math.floor(p * n))];
+    s.subarray(0, n).sort();
   }
+
+  private pct(p: number): number {
+    const n = this.sampleCount;
+    return this.scratch[Math.min(n - 1, Math.floor(p * n))];
+  }
+}
+
+function key(p: ResolvedPreset, s: number): string {
+  return `${p}@${s.toFixed(2)}`;
+}
+
+function round2(x: number): number {
+  return Math.round(x * 100) / 100;
 }
 
 const NONE: AdaptiveAction = { kind: 'none' };

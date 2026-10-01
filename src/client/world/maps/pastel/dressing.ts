@@ -242,6 +242,13 @@ export function groundStory(d: Dress): PuddleSet {
   // Main street: heaved asphalt along the wheel ruts, weeds at the gutters,
   // leaves banked against the curbs.
   for (const sz of [1, -1]) {
+    // Long tar seams / repair strips down the lanes (big value shapes that
+    // read even at grazing angles).
+    for (let i = 0; i < 4; i++) {
+      const x = 33.5 + rng() * 7;
+      const z = (15 + i * 9.5 + rng() * 4) * sz;
+      decals.ground(DECAL.patch, x, z, 0.031 + DY - 0.008, 4 + rng() * 4, 1.2 + rng() * 1.2, Math.PI / 2 + (rng() - 0.5) * 0.08, tint(rng, 0.75, 1));
+    }
     for (let i = 0; i < Math.round(22 * det); i++) {
       const gutter = rng() < 0.45;
       const x = gutter ? (rng() < 0.5 ? 31.5 + rng() * 0.8 : 41.7 + rng() * 0.8) : 32.5 + rng() * 9;

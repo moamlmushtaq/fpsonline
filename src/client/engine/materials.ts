@@ -7,6 +7,11 @@
 //  • painted(color, opts)          flat stylized material.
 //  • glow(color, intensity)        HDR emissive plant material (bloom source).
 //  • canvasTexture(key, w, h, fn)  cached canvas textures for decor.
+//  • contactShadow*()              shared soft contact-shadow decal (props,
+//                                  characters; every preset, one draw call).
+//
+// Medium/high surface + painted materials carry the world-space painterly
+// finish (engine/painterly.ts); low keeps the painterly textures only.
 //
 // Low preset → MeshLambertMaterial (per-vertex lighting, much cheaper on
 // phones); otherwise MeshStandardMaterial. Textures are neutral greys tinted by
@@ -181,8 +186,9 @@ export class Materials implements MaterialLibrary {
         });
       }
     }
-    // Hand-painted finish (world-space mottling, hue drift, painted form): every preset.
-    enablePainterly(m, this.tier === 'low');
+    // Hand-painted finish (world-space mottling, hue drift, painted form). Low
+    // keeps the painterly textures + baked vertex colors only (no per-pixel cost).
+    if (this.tier !== 'low') enablePainterly(m, this.tier === 'high');
     m.name = `surface.${tag}.${style || 'default'}`;
     this.cache.set(key, m);
     return m;
@@ -206,7 +212,7 @@ export class Materials implements MaterialLibrary {
         : new THREE.MeshStandardMaterial({ ...common, roughness: opts.roughness ?? 0.85, metalness: opts.metalness ?? 0 });
     if (opts.transparent) m.depthWrite = false;
     // Flat stylized props still read hand-painted (skipped for see-through ones).
-    enablePainterly(m, this.tier === 'low');
+    if (this.tier !== 'low') enablePainterly(m, this.tier === 'high');
     m.name = `painted.${color}`;
     this.cache.set(key, m);
     return m;

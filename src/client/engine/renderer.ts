@@ -166,10 +166,9 @@ export class Renderer implements RenderEngine {
     this.syncDirectGrading();
   }
 
-  /** Low preset (no post): the same grade is applied inside every material (painterly.ts). */
+  /** Low preset (no post): the grade moves onto the scene's lights, fog and sky palette (painterly.ts / atmosphere.ts). */
   private syncDirectGrading(): void {
-    const px = this.q.pixelRatio;
-    setDirectGrading(this.post ? null : this.grading, Math.round(this.size.width * px), Math.round(this.size.height * px));
+    setDirectGrading(this.post ? null : this.grading);
   }
 
   /** Current merged grading (read-only copy). */
@@ -253,7 +252,7 @@ export class Renderer implements RenderEngine {
         this.post = null;
       }
     }
-    // Without post (low, or no HalfFloat support) the grade moves into the materials.
+    // Without post (low, or no HalfFloat support) the grade moves onto the palette.
     this.syncDirectGrading();
   }
 
@@ -295,7 +294,6 @@ export class Renderer implements RenderEngine {
     this.resizeDirty = false;
     const changed = this.measure();
     this.post?.setSize(this.size.width, this.size.height, this.q.pixelRatio);
-    this.syncDirectGrading();
     this.syncCamera(this.camera);
     this.syncCamera(this.overlayCamera);
     if (changed) {

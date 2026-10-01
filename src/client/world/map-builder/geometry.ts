@@ -23,13 +23,16 @@ export class Bucket {
   readonly nor: number[] = [];
   readonly uv: number[] = [];
   readonly col: number[] = [];
+  /** Indexed: a quad is 4 vertices + 6 indices (⅓ fewer vertex invocations than a triangle soup). */
+  readonly idx: number[] = [];
   constructor(
     readonly material: THREE.Material,
     readonly cast: boolean,
     readonly tile: number,
   ) {}
 
-  private vert(x: number, y: number, z: number, nx: number, ny: number, nz: number, shade: Shade, ax: number): void {
+  private vert(x: number, y: number, z: number, nx: number, ny: number, nz: number, shade: Shade, ax: number): number {
+    const i = this.pos.length / 3;
     this.pos.push(x, y, z);
     this.nor.push(nx, ny, nz);
     const t = this.tile;
@@ -39,37 +42,35 @@ export class Bucket {
     else this.uv.push(x / t, y / t);
     const c = shade(x, y, z, nx, ny, nz);
     this.col.push(c[0], c[1], c[2]);
+    return i;
   }
 
   /** Triangle with a flat normal; winding fixed to face `out` (outward hint). */
   tri(a: V3, b: V3, c: V3, out: V3 | null, shade: Shade): void {
-    const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2];
-    const vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
-    let nx = uy * vz - uz * vy;
-    let ny = uz * vx - ux * vz;
-    let nz = ux * vy - uy * vx;
-    const l = Math.hypot(nx, ny, nz);
-    if (l < 1e-9) return;
-    nx /= l;
-    ny /= l;
-    nz /= l;
-    if (out && nx * out[0] + ny * out[1] + nz * out[2] < 0) {
-      const t = b;
-      b = c;
-      c = t;
-      nx = -nx;
-      ny = -ny;
-      nz = -nz;
-    }
-    const ax = Math.abs(ny) >= Math.abs(nx) && Math.abs(ny) >= Math.abs(nz) ? 1 : Math.abs(nx) >= Math.abs(nz) ? 0 : 2;
-    this.vert(a[0], a[1], a[2], nx, ny, nz, shade, ax);
-    this.vert(b[0], b[1], b[2], nx, ny, nz, shade, ax);
-    this.vert(c[0], c[1], c[2], nx, ny, nz, shade, ax);
+    const n = flatNormal(a, b, c, out);
+    if (!n) return;
+    const ax = dominantAxis(n);
+    const i0 = this.vert(a[0], a[1], a[2], n[0], n[1], n[2], shade, ax);
+    const i1 = this.vert(b[0], b[1], b[2], n[0], n[1], n[2], shade, ax);
+    const i2 = this.vert(c[0], c[1], c[2], n[0], n[1], n[2], shade, ax);
+    if (n[3] < 0) this.idx.push(i0, i2, i1);
+    else this.idx.push(i0, i1, i2);
   }
 
+  /** Planar quad a-b-c-d: 4 shared vertices, one flat normal. */
   quad(a: V3, b: V3, c: V3, d: V3, out: V3, shade: Shade): void {
-    this.tri(a, b, c, out, shade);
-    this.tri(a, c, d, out, shade);
+    const n = flatNormal(a, b, c, out);
+    if (!n) {
+      this.tri(a, c, d, out, shade);
+      return;
+    }
+    const ax = dominantAxis(n);
+    const i0 = this.vert(a[0], a[1], a[2], n[0], n[1], n[2], shade, ax);
+    const i1 = this.vert(b[0], b[1], b[2], n[0], n[1], n[2], shade, ax);
+    const i2 = this.vert(c[0], c[1], c[2], n[0], n[1], n[2], shade, ax);
+    const i3 = this.vert(d[0], d[1], d[2], n[0], n[1], n[2], shade, ax);
+    if (n[3] < 0) this.idx.push(i0, i2, i1, i0, i3, i2);
+    else this.idx.push(i0, i1, i2, i0, i2, i3);
   }
 
   /** Appends an arbitrary geometry (any index/normals) transformed by `m`. */
@@ -83,7 +84,7 @@ export class Bucket {
     for (let i = 0; i < p.count; i++) {
       const nx = n.getX(i), ny = n.getY(i), nz = n.getZ(i);
       const ax = Math.abs(ny) >= Math.abs(nx) && Math.abs(ny) >= Math.abs(nz) ? 1 : Math.abs(nx) >= Math.abs(nz) ? 0 : 2;
-      this.vert(p.getX(i), p.getY(i), p.getZ(i), nx, ny, nz, shade, ax);
+      this.idx.push(this.vert(p.getX(i), p.getY(i), p.getZ(i), nx, ny, nz, shade, ax));
     }
     g.dispose();
   }
@@ -95,6 +96,7 @@ export class Bucket {
     g.setAttribute('normal', new THREE.Float32BufferAttribute(this.nor, 3));
     g.setAttribute('uv', new THREE.Float32BufferAttribute(this.uv, 2));
     g.setAttribute('color', new THREE.Float32BufferAttribute(this.col, 3));
+    g.setIndex(this.idx);
     g.computeBoundingSphere();
     g.computeBoundingBox();
     const mesh = new THREE.Mesh(g, this.material);
@@ -107,6 +109,26 @@ export class Bucket {
     mesh.updateMatrix();
     return mesh;
   }
+}
+
+/** Unit flat normal of a-b-c as [nx, ny, nz, s]; s = −1 when the winding must flip to face `out`. */
+function flatNormal(a: V3, b: V3, c: V3, out: V3 | null): [number, number, number, number] | null {
+  const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2];
+  const vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
+  let nx = uy * vz - uz * vy;
+  let ny = uz * vx - ux * vz;
+  let nz = ux * vy - uy * vx;
+  const l = Math.hypot(nx, ny, nz);
+  if (l < 1e-9) return null;
+  nx /= l;
+  ny /= l;
+  nz /= l;
+  if (out && nx * out[0] + ny * out[1] + nz * out[2] < 0) return [-nx, -ny, -nz, -1];
+  return [nx, ny, nz, 1];
+}
+
+function dominantAxis(n: readonly number[]): number {
+  return Math.abs(n[1]) >= Math.abs(n[0]) && Math.abs(n[1]) >= Math.abs(n[2]) ? 1 : Math.abs(n[0]) >= Math.abs(n[2]) ? 0 : 2;
 }
 
 // ── Noise helpers (deterministic, for painterly vertex variation) ───────────

@@ -20,7 +20,8 @@
 // sampled through one hardware-PCF fetch, so long golden shadows survive.
 //
 // Sunset / golden skies also get painted cloud strata near the horizon with
-// sun-lit rims; on low the sky (like every material) is graded in-shader.
+// sun-lit rims (medium/high); on low the sky, like every material, is graded
+// in-shader.
 //
 // Weather: ONE Points draw call; particles live in a box that wraps around the
 // camera entirely in the vertex shader (zero CPU work per frame).
@@ -31,7 +32,7 @@ import type { Atmosphere, QualitySettings } from '../contracts';
 import type { MapLighting } from '../../shared/maps/types';
 import type { Vec3 } from '../../shared/types';
 import { ENV } from './palette';
-import { gradeUniforms } from './painterly';
+import { directGradingOn, directGradingVersion, gradeRGB } from './painterly';
 
 /** Half-size (m) of the sun's shadow box; texel = 2·half / mapSize. */
 const SHADOW_HALF: Record<QualitySettings['shadows'], number> = { off: 35, low: 34, high: 40 };
@@ -73,7 +74,6 @@ uniform vec3 uSunDir;
 uniform float uTime;
 uniform float uStars;
 uniform float uClouds;
-uniform float uBands;
 varying vec3 vDir;
 
 float hash12(vec2 p) {
@@ -136,22 +136,27 @@ void main() {
   // (warm) on the sun side and turn cool violet away from it. The azimuth is
   // measured from the sun, so the atan wrap sits opposite the sun where the
   // bands have faded out (no seam).
+#ifdef HF_BANDS
+  // (Compile-time: only the sunset / golden skies pay for the strata; ~3 value
+  // noises + 3 exp per sky pixel in the band region.)
   vec2 hxz = d.xz;
   float hl = length(hxz);
-  if (uBands > 0.0 && h > -0.03 && h < 0.4 && hl > 1e-4) {
+  if (h > -0.03 && h < 0.3 && hl > 1e-4) {
     vec2 sxz = normalize(uSunDir.xz + vec2(1e-5, 0.0));
     vec2 dd = vec2(dot(hxz, sxz), dot(hxz, vec2(-sxz.y, sxz.x))) / hl;
     float azr = atan(dd.y, dd.x);
     float side = smoothstep(-0.97, -0.3, dd.x);
-    float streak = fbm(vec2(azr * 2.4 + uTime * 0.003, h * 44.0));
+    vec2 sp = vec2(azr * 2.4 + uTime * 0.003, h * 44.0);
+    float streak = vnoise(sp) * 0.62 + vnoise(sp * 2.03 + vec2(17.1, 3.7)) * 0.31;
     float bristle = vnoise(vec2(azr * 11.0, h * 150.0));
     float bands = 0.0;
     float rim = 0.0;
     float sunH = uSunDir.y;
     for (int i = 0; i < 3; i++) {
       float fi = float(i);
-      float c0 = 0.04 + fi * 0.07 + (vnoise(vec2(azr * 0.85 + fi * 5.1, fi * 3.3)) - 0.5) * 0.06;
-      float th = 0.015 + fi * 0.008 + vnoise(vec2(azr * 1.4 - fi * 7.3, 1.0 + fi)) * 0.026;
+      // Centre / thickness wander along the horizon (cheap sine sums).
+      float c0 = 0.04 + fi * 0.07 + (sin(azr * 1.7 + fi * 2.3) + 0.5 * sin(azr * 3.9 - fi * 1.7)) * 0.02;
+      float th = 0.015 + fi * 0.008 + (0.5 + 0.5 * sin(azr * 2.3 + fi * 4.1)) * 0.026;
       float x = (h - c0) / th;
       float env = exp(-x * x);
       float m = smoothstep(0.48, 0.62, env * (0.42 + streak * 1.0) + (bristle - 0.5) * 0.18);
@@ -162,7 +167,7 @@ void main() {
       float toward = sunH > c0 ? x : -x;
       rim = max(rim, m * smoothstep(-0.2, 0.9, toward));
     }
-    bands *= side * uBands;
+    bands *= side;
     // Body: a cooler, deeper version of the sky behind it (lavender-mauve
     // strata, never grey); rim: warm sun-lit cream, brightest toward the sun.
     vec3 body = col * vec3(0.84, 0.81, 0.94) + uZenith * 0.05;
@@ -170,6 +175,7 @@ void main() {
     float rk = clamp(rim * (0.3 + 0.7 * pow(sd, 2.0)), 0.0, 1.0);
     col = mix(col, mix(body, glow, rk), bands * 0.88);
   }
+#endif
 
   // Horizon haze band = fog color (sun-tinted exactly like the geometry fog,
   // see installSunFog), so fogged geometry meets the sky seamlessly.
@@ -321,11 +327,14 @@ export interface SceneFogSun {
   color: THREE.Color;
   /** 0..1 blend toward `color` when looking straight at the sun. */
   strength: number;
+  /** Ungraded fog color (scene.fog.color is set from it each frame, graded on low). */
+  baseFog?: THREE.Color;
 }
 
 const FOG_SUN_STRENGTH = 0.7;
 const FOG_SUN_DIR = new Float32Array(4);
 const FOG_SUN_COLOR = new Float32Array(3);
+const _rgb = new Float32Array(3);
 let sunFogInstalled = false;
 /** False only if the low preset's shadow-sampler chunk patch could not apply (three.js changed). */
 let bakedShadowSupported = true;
@@ -359,9 +368,6 @@ export function installSunFog(): void {
 		float hfSa = max( dot( normalize( vFogView ), hfSunV ), 0.0 );
 		hfFogColor = mix( fogColor, fogSunColor, fogSunDir.w * hfSa * hfSa * hfSa );
 	}
-	#ifdef TONE_MAPPING
-		hfFogColor = hfGrade( hfFogColor ); // low preset: graded like the sky's haze band (identity otherwise)
-	#endif
 	gl_FragColor.rgb = mix( gl_FragColor.rgb, hfFogColor, fogFactor );`,
     );
   if (ok) {
@@ -406,8 +412,29 @@ export function installSunFog(): void {
       'uniform HF_SHADOW_SAMPLER directionalShadowMap[ NUM_DIR_LIGHT_SHADOWS ];',
     ) &&
     patchChunk('shadowmap_pars_fragment', 'uniform sampler2D spotShadowMap[ NUM_SPOT_LIGHT_SHADOWS ];', 'uniform HF_SHADOW_SAMPLER spotShadowMap[ NUM_SPOT_LIGHT_SHADOWS ];') &&
-    patchChunk('shadowmap_pars_fragment', 'float getShadow( sampler2D shadowMap, vec2 shadowMapSize', 'float getShadow( HF_SHADOW_SAMPLER shadowMap, vec2 shadowMapSize') &&
+    patchChunk(
+      'shadowmap_pars_fragment',
+      /float getShadow\( sampler2D shadowMap, vec2 shadowMapSize, float shadowIntensity, float shadowBias, float shadowRadius, vec4 shadowCoord \) \{/,
+      // BASIC = the baked map: an orthographic sun (w = 1) over a box that
+      // encloses every receiver with an empty (far-depth) border, so the
+      // perspective divide and frustum tests are skipped — one fetch, ~3 ALU.
+      `float getShadow( HF_SHADOW_SAMPLER shadowMap, vec2 shadowMapSize, float shadowIntensity, float shadowBias, float shadowRadius, vec4 shadowCoord ) {
+		#if defined( SHADOWMAP_TYPE_BASIC )
+			return texture( shadowMap, vec3( shadowCoord.xy, min( shadowCoord.z + shadowBias, 1.0 ) ) );
+		#endif`,
+    ) &&
     patchChunk('shadowmap_pars_fragment', 'shadow = texture2DCompare( shadowMap, shadowCoord.xy, shadowCoord.z );', 'shadow = texture( shadowMap, vec3( shadowCoord.xy, shadowCoord.z ) );');
+  // Vertex side of the baked lookup: the map holds back-face depth, so the
+  // per-vertex normal offset (a normalize + matrix per vertex) is skipped.
+  patchChunk(
+    'shadowmap_vertex',
+    'vec3 shadowWorldNormal = inverseTransformDirection( transformedNormal, viewMatrix );',
+    `#if defined( SHADOWMAP_TYPE_BASIC )
+		vec3 shadowWorldNormal = vec3( 0.0 );
+	#else
+		vec3 shadowWorldNormal = inverseTransformDirection( transformedNormal, viewMatrix );
+	#endif`,
+  );
   if (ok2) {
     const chunks = THREE.ShaderChunk as unknown as Record<string, string>;
     chunks.shadowmap_pars_fragment = `#if defined( SHADOWMAP_TYPE_BASIC )
@@ -425,9 +452,11 @@ ${chunks.shadowmap_pars_fragment}`;
     /\}\s*return mix\( 1\.0, shadow, shadowIntensity \);\s*\}/,
     `}
 		// Halcyon: fade toward the shadow frustum edge (no hard cut-off line).
-		vec2 hfEdge = abs( shadowCoord.xy * 2.0 - 1.0 );
-		// (Not for the low preset's whole-map baked shadow, which uses radius 1.)
-		shadow = mix( shadow, 1.0, shadowRadius > 1.05 ? smoothstep( 0.8, 0.97, max( hfEdge.x, hfEdge.y ) ) : 0.0 );
+		// (Not for the low preset's whole-map baked shadow: BASIC type.)
+		#ifndef SHADOWMAP_TYPE_BASIC
+			vec2 hfEdge = abs( shadowCoord.xy * 2.0 - 1.0 );
+			shadow = mix( shadow, 1.0, smoothstep( 0.8, 0.97, max( hfEdge.x, hfEdge.y ) ) );
+		#endif
 		return mix( 1.0, shadow, shadowIntensity );
 	}`,
   );
@@ -449,9 +478,24 @@ export function applySceneFogSun(scene: THREE.Scene | null): void {
   FOG_SUN_DIR[1] = fs.dir.y;
   FOG_SUN_DIR[2] = fs.dir.z;
   FOG_SUN_DIR[3] = fs.strength;
-  FOG_SUN_COLOR[0] = fs.color.r;
-  FOG_SUN_COLOR[1] = fs.color.g;
-  FOG_SUN_COLOR[2] = fs.color.b;
+  // Low preset (materials grade themselves): the fog colors are constants, so
+  // they are graded here on the CPU, once per frame, instead of per pixel —
+  // fogged geometry then meets the (shader-graded) sky's haze band.
+  const graded = directGradingOn();
+  _rgb[0] = fs.color.r;
+  _rgb[1] = fs.color.g;
+  _rgb[2] = fs.color.b;
+  if (graded) gradeRGB(_rgb);
+  FOG_SUN_COLOR[0] = _rgb[0];
+  FOG_SUN_COLOR[1] = _rgb[1];
+  FOG_SUN_COLOR[2] = _rgb[2];
+  if (fs.baseFog) {
+    _rgb[0] = fs.baseFog.r;
+    _rgb[1] = fs.baseFog.g;
+    _rgb[2] = fs.baseFog.b;
+    if (graded) gradeRGB(_rgb);
+    scene.fog.color.setRGB(_rgb[0], _rgb[1], _rgb[2]);
+  }
 }
 
 // ── Implementation ─────────────────────────────────────────────────────────
@@ -483,6 +527,9 @@ class AtmosphereImpl implements Atmosphere {
   private hemiBase = 1;
   /** Fog color looking toward the sun (aerial perspective): the sun glow scattered in the haze. */
   private readonly fogSunColor: THREE.Color;
+  /** [live color, ungraded base, cool-shadow split weight] for the low preset's CPU grade. */
+  private palette: [THREE.Color, THREE.Color, number][] = [];
+  private gradeVer = -1;
 
   constructor(private readonly scene: THREE.Scene, private readonly lighting: MapLighting, quality: QualitySettings) {
     this.quality = quality;
@@ -492,7 +539,7 @@ class AtmosphereImpl implements Atmosphere {
     this.fogSunColor = new THREE.Color(l.fogColor).lerp(new THREE.Color(l.sunGlow), 0.62).multiplyScalar(1.12);
     // Read by the Renderer every frame (applySceneFogSun) — per scene, so the
     // menu or another scene never inherits this map's sun.
-    const fogSun: SceneFogSun = { dir: this.sunDir, color: this.fogSunColor, strength: FOG_SUN_STRENGTH };
+    const fogSun: SceneFogSun = { dir: this.sunDir, color: this.fogSunColor, strength: FOG_SUN_STRENGTH, baseFog: new THREE.Color(l.fogColor) };
     scene.userData.fogSun = fogSun;
     this.lx.crossVectors(new THREE.Vector3(0, 1, 0), this.sunDir).normalize();
     if (this.lx.lengthSq() < 1e-6) this.lx.set(1, 0, 0);
@@ -538,7 +585,7 @@ class AtmosphereImpl implements Atmosphere {
         uZenith: { value: new THREE.Color(l.skyZenith) },
         uHorizon: { value: new THREE.Color(l.skyHorizon) },
         uFog: { value: new THREE.Color(l.fogColor) },
-        uFogSun: { value: this.fogSunColor },
+        uFogSun: { value: this.fogSunColor.clone() },
         uFogSunK: { value: FOG_SUN_STRENGTH },
         uSunGlow: { value: new THREE.Color(l.sunGlow) },
         uSunColor: { value: new THREE.Color(l.sunColor).lerp(new THREE.Color('#fff6e0'), 0.5) },
@@ -546,10 +593,6 @@ class AtmosphereImpl implements Atmosphere {
         uTime: { value: 0 },
         uStars: { value: 0 },
         uClouds: { value: l.mood === 'dusk' ? 0.75 : 1 },
-        // Painted strata for the sunset / golden skies (Observatory's dusk sky keeps its look).
-        uBands: { value: l.mood === 'dusk' ? 0 : 1 },
-        // In-material grading on the low preset (no post pass); identity otherwise.
-        ...gradeUniforms(),
       },
       defines: { OCTAVES: quality.preset === 'low' ? 3 : 4 },
       vertexShader: SKY_VERT,
@@ -564,6 +607,21 @@ class AtmosphereImpl implements Atmosphere {
     this.sky.renderOrder = -1000;
     this.sky.frustumCulled = false;
     scene.add(this.sky);
+
+    // Ungraded palette (the low preset grades copies of these on the CPU).
+    const su = this.skyMat.uniforms;
+    this.palette = [
+      [this.sun.color, this.sun.color.clone(), 0],
+      [this.hemi.color, this.hemi.color.clone(), 0.6],
+      [this.hemi.groundColor, this.hemi.groundColor.clone(), 0.3],
+      [this.fill.color, this.fill.color.clone(), 0.3],
+      [su.uZenith.value, su.uZenith.value.clone(), 0],
+      [su.uHorizon.value, su.uHorizon.value.clone(), 0],
+      [su.uFog.value, su.uFog.value.clone(), 0],
+      [su.uFogSun.value, su.uFogSun.value.clone(), 0],
+      [su.uSunGlow.value, su.uSunGlow.value.clone(), 0],
+      [su.uSunColor.value, su.uSunColor.value.clone(), 0],
+    ];
 
     this.setQuality(quality);
   }
@@ -611,8 +669,14 @@ class AtmosphereImpl implements Atmosphere {
       }
     }
     const oct = q.preset === 'low' ? 3 : 4;
-    if (this.skyMat.defines.OCTAVES !== oct) {
-      this.skyMat.defines.OCTAVES = oct;
+    // Painted strata only for the sunset / golden skies (Observatory's dusk sky
+    // keeps its look), and not on low (its sky keeps the streak clouds only).
+    const bands = this.lighting.mood !== 'dusk' && q.preset !== 'low';
+    const d = this.skyMat.defines as Record<string, unknown>;
+    if (d.OCTAVES !== oct || ('HF_BANDS' in d) !== bands) {
+      d.OCTAVES = oct;
+      if (bands) d.HF_BANDS = '';
+      else delete d.HF_BANDS;
       this.skyMat.needsUpdate = true;
     }
     this.buildWeather();
@@ -645,7 +709,7 @@ class AtmosphereImpl implements Atmosphere {
     // Back faces are what the bake renders, so a small bias suffices even at a
     // grazing golden-hour sun.
     sh.bias = -0.0004;
-    sh.normalBias = 0.04;
+    sh.normalBias = 0; // (not applied by the BASIC vertex path, see installSunFog)
     // Fit an orthographic box around the static bounds in light space.
     const b = this.staticBounds;
     let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, z0 = Infinity, z1 = -Infinity;
@@ -842,8 +906,34 @@ class AtmosphereImpl implements Atmosphere {
     this.scene.add(this.weather);
   }
 
+  /**
+   * Low preset (no post): grade the scene's constant colors on the CPU — lights,
+   * sky palette (fog is graded per frame in applySceneFogSun). Zero per-pixel
+   * cost; re-run only when the grade changes.
+   */
+  private syncGrade(): void {
+    const v = directGradingVersion();
+    if (v === this.gradeVer) return;
+    this.gradeVer = v;
+    const on = directGradingOn();
+    const rgb = [0, 0, 0];
+    for (const [live, base, split] of this.palette) {
+      if (!on) {
+        live.copy(base);
+        continue;
+      }
+      rgb[0] = base.r;
+      rgb[1] = base.g;
+      rgb[2] = base.b;
+      gradeRGB(rgb, 0, split);
+      live.setRGB(rgb[0], rgb[1], rgb[2]);
+    }
+    // (The geometry fog colors are graded per frame in applySceneFogSun.)
+  }
+
   update(dt: number, camera: THREE.Camera, starAmount: number): void {
     this.time += dt;
+    this.syncGrade();
     const cam = camera.position;
     this.sky.position.copy(cam);
     const su = this.skyMat.uniforms;

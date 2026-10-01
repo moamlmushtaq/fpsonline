@@ -387,7 +387,7 @@ export class MenuScene {
    * the screen strip that stays free of the UI in both LTR and RTL, desktop and
    * phone, and never read as blank blocks: ribbed, latched, stencilled cases in
    * sage and bone, a cable reel with coiled cable, and a pale-yellow fuel cart.
-   * Everything shares ONE vertex-colored painterly material (+ one stencil decal
+   * Everything shares ONE vertex-colored material (+ one stencil decal
    * mesh + one contact-shadow mesh): 3 draw calls.
    */
   private buildLaunchProps(low: boolean, shadows: boolean): void {
@@ -548,7 +548,7 @@ export class MenuScene {
       const mat = this.own(
         low ? new THREE.MeshLambertMaterial({ vertexColors: true }) : new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.66, metalness: 0.05 }),
       );
-      enablePainterly(mat, low);
+      if (!low) enablePainterly(mat, this.app.engine?.quality.preset === 'high');
       const mesh = this.addMesh(merged, mat, true);
       mesh.castShadow = shadows;
       mesh.name = 'menu.props';

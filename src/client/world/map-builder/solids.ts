@@ -201,6 +201,9 @@ export function makeShade(ctx: Ctx, s: Solid, base: V3, onGround: boolean, patch
   const pa = pc ? linearColor(pc[0]) : null;
   const pb = pc ? linearColor(pc[1]) : null;
   const col: V3 = [0, 0, 0];
+  const low = ctx.quality.preset === 'low';
+  const vAmp = low ? 0.17 : 0.12;
+  const hAmp = low ? 0.1 : 0.06;
   return (x, y, z, nx, ny, nz) => {
     let k = 1;
     col[0] = base[0];
@@ -232,11 +235,12 @@ export function makeShade(ctx: Ctx, s: Solid, base: V3, onGround: boolean, patch
       k *= top ? 1.22 : 1.12;
       warm = top ? 0.05 : 0.03;
     }
-    // Low-frequency painterly variation (value + a faint warm/cool drift).
+    // Low-frequency painterly variation (value + a faint warm/cool drift). On
+    // low (no per-pixel painterly layer) the vertex colors carry a bit more.
     const n = vnoise2(x * 0.14 + 3.1, z * 0.14 - 7.7) - 0.5;
     const w = vnoise2(x * 0.05 - 1.3, (z + y) * 0.05 + 9.2) - 0.5;
-    k *= 1 + n * 0.12;
-    return [col[0] * k * (1 + w * 0.06 + warm), col[1] * k * (1 + warm * 0.4), col[2] * k * (1 - w * 0.06 - warm * 0.6)];
+    k *= 1 + n * vAmp;
+    return [col[0] * k * (1 + w * hAmp + warm), col[1] * k * (1 + warm * 0.4), col[2] * k * (1 - w * hAmp - warm * 0.6)];
   };
 }
 

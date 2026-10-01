@@ -233,7 +233,8 @@ const ffaHalf: SpawnPoint[] = [
   spawn(-12.5, GAL, 7, yawToward(-12.5, 7, 0, 0), 2),
   spawn(-49, 0, 10, yawToward(-49, 10, -39, 0), 2),
   spawn(48, 0, 12, yawToward(48, 12, 37, 0), 2),
-  spawn(0, 0, 25, 0, 2),
+  // Faces along the lot (≈ 26 m clear), not into the 12.6 m pylon half a metre in front of it.
+  spawn(0, 0, 25, 2, 2),
 ];
 
 export const PASTEL: MapDef = {

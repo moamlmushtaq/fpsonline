@@ -47,6 +47,8 @@ export class CameraDirector {
   private readonly back = new THREE.Vector3();
   // outro
   private outroKind: 'rocket' | 'orbit' = 'orbit';
+  /** The straight swoop to the finale pose would fly through walls: cut instead. */
+  private outroCut = false;
   private readonly center = new THREE.Vector3();
   private orbitA = 0;
   // scratch
@@ -101,6 +103,10 @@ export class CameraDirector {
       this.pose.pos.set(pose.pos.x, pose.pos.y, pose.pos.z);
       this.pose.target.set(pose.target.x, pose.target.y, pose.target.z);
       this.pose.fov = pose.fov;
+      const f = this.fromPos;
+      const dx = pose.pos.x - f.x, dy = pose.pos.y - f.y, dz = pose.pos.z - f.z;
+      const len = Math.hypot(dx, dy, dz);
+      this.outroCut = len > 0.01 && this.world.rayDist(f.x, f.y, f.z, dx / len, dy / len, dz / len, len, 'sight') < len;
     } else {
       this.outroKind = 'orbit';
       this.center.copy(center ?? camera.position);
@@ -204,8 +210,8 @@ export class CameraDirector {
   }
 
   private applyOutro(dt: number, camera: THREE.PerspectiveCamera, orbitCenter: THREE.Vector3 | null): void {
-    const b = easeInOut(clamp01(this.t / 0.9));
     if (this.outroKind === 'rocket') {
+      const b = this.outroCut ? 1 : easeInOut(clamp01(this.t / 0.9));
       // Slow dolly toward the rocket; tilt up as it climbs.
       const k = easeOut(clamp01(this.t / 8));
       this.p.lerpVectors(this.pose.pos, this.pose.target, 0.12 * k);
@@ -217,6 +223,7 @@ export class CameraDirector {
       camera.fov = THREE.MathUtils.lerp(this.fromFov, this.pose.fov, b);
       return;
     }
+    const b = easeInOut(clamp01(this.t / 0.9));
     if (orbitCenter) this.center.lerp(orbitCenter, 1 - Math.exp(-dt * 2));
     this.orbitA += dt * 0.22;
     const r = 5.2;

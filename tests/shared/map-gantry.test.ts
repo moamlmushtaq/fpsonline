@@ -1,8 +1,9 @@
 // Gantry-specific layout guarantees: reachability, spawn safety, lane flow.
 import { describe, expect, it } from 'vitest';
-import { EYE_HEIGHT, PLAYER_HEIGHT, SIM_HZ } from '../../src/shared/constants';
+import { EYE_HEIGHT, PLAYER_HEIGHT, SIM_DT, SIM_HZ } from '../../src/shared/constants';
 import { GANTRY, GANTRY_DECK } from '../../src/shared/maps/gantry';
 import { makeGameConfig } from '../../src/shared/modes';
+import { createMoveState, stepMovement } from '../../src/shared/movement';
 import { CollisionWorld } from '../../src/shared/physics';
 import { GameSim } from '../../src/shared/sim/game';
 import { NavGraph } from '../../src/shared/sim/nav';
@@ -133,6 +134,21 @@ describe('gantry layout', () => {
     const pk = map.pickups[0];
     expect(world.supportHeight(pk.pos.x, pk.pos.z, 0.4, GANTRY_DECK + 0.05, 5)).toBeCloseTo(0, 3);
     expect(world.supportHeight(pk.pos.x + 0.9, pk.pos.z + 0.9, 0.4, GANTRY_DECK + 0.05, 5)).toBeCloseTo(0, 3);
+  });
+
+  it('stepping off the deck under L1 (west edge, |z| ≤ 5) does not trap the player', () => {
+    // Regression: x −18.6…−16 under L1 was a 3.6 m pit between the stair flanks
+    // and the service wall. It is now filled to deck level.
+    for (const z of [-4.5, -2, 0, 2, 4.5]) {
+      const m = createMoveState({ x: -13, y: GANTRY_DECK, z });
+      // Walk west (yaw π/2 → forward = −X) into the alcove, then back east.
+      for (let i = 0; i < 90; i++) stepMovement(world, m, { seq: i, mx: 0, mz: 1, yaw: Math.PI / 2, pitch: 0, buttons: 0, slot: 0, viewTick: 0 }, 1, SIM_DT);
+      expect(m.pos.x, `z=${z}`).toBeLessThan(-17.5);
+      expect(m.pos.y, `z=${z}`).toBeCloseTo(GANTRY_DECK, 3);
+      for (let i = 0; i < 90; i++) stepMovement(world, m, { seq: i, mx: 0, mz: 1, yaw: -Math.PI / 2, pitch: 0, buttons: 0, slot: 0, viewTick: 0 }, 1, SIM_DT);
+      expect(m.pos.x, `z=${z}`).toBeGreaterThan(-12);
+      expect(m.pos.y, `z=${z}`).toBeCloseTo(GANTRY_DECK, 3);
+    }
   });
 
   it('team spawns face an open way out (not the rocket stage beside them)', () => {

@@ -18,6 +18,7 @@ export default {
   'menu.language': 'اللغة',
   'menu.langSwitch': 'English',
   'menu.status.online': 'الطيارون المتصلون: {n}',
+  'menu.status.onlineQuiet': 'الخادم متصل',
   'menu.status.offline': 'غير متصل — مباريات ضد الآليين',
   'menu.status.connecting': 'جارٍ الاتصال بالخادم…',
   'menu.season': 'الموسم 01 · نافذة الإطلاق',

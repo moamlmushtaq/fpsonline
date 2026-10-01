@@ -601,6 +601,18 @@ export function screenHeader(o: { title: string; eyebrow?: string; sub?: string;
   return head;
 }
 
+/**
+ * Mono stat readouts are forced LTR so "17" / "38%" / "1,496" never reorder. A value that
+ * carries a localized unit ("84 ث") must flow RTL instead, or Arabic reads the unit first.
+ */
+export function unitDir<T extends HTMLElement>(el: T): T {
+  if (/[\u0600-\u06ff]/.test(el.textContent ?? '')) {
+    el.style.direction = 'rtl';
+    el.style.textAlign = 'start';
+  }
+  return el;
+}
+
 /** Formats a number for mono readouts (always Western digits). */
 export function fmt(n: number, digits = 0): string {
   return i18n.num(n, digits);

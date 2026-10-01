@@ -150,7 +150,8 @@ export class RoomScreen extends BaseScreen {
       modeSeg.el,
       h('div', { class: 'field__label', t: 'play.map' }),
       mapCyc.el,
-      h('div', { class: 'row', style: 'padding-inline:0' }, h('div', { class: 'row__label', t: 'play.room.botFill' }), h('div', { class: 'row__control' }, bots.el)),
+      // A toggle needs no 12rem control column: give the label the width (it wrapped word by word).
+      h('div', { class: 'row', style: 'padding-inline:0;grid-template-columns:minmax(0,1fr) auto' }, h('div', { class: 'row__label', t: 'play.room.botFill' }), h('div', { class: 'row__control' }, bots.el)),
       h('div', { class: 'field__label', t: 'play.difficulty' }),
       diff.el,
     );

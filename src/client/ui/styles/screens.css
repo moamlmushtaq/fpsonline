@@ -567,7 +567,12 @@ html[lang='ar'] .play-btn__sub {
   display: flex;
   justify-content: space-between;
   font-size: 0.66rem;
-  /* Sits on the bright sunset sky: dim (not faint) text with a soft shadow keeps it legible. */
+  /* Sits on the bright sunset sky: a smoked strip under dim text (a text-shadow alone
+     still read as near-invisible over the sun glow). */
+  margin-top: 0.15rem;
+  padding: 0.12rem 0.45rem;
+  border-radius: 5px;
+  background: rgba(20, 16, 13, 0.42);
   color: var(--c-text-dim);
   text-shadow: 0 1px 3px rgba(20, 14, 10, 0.75);
 }
@@ -735,6 +740,12 @@ html[lang='ar'] .play-btn__sub {
   aspect-ratio: 16 / 10;
   justify-content: flex-end;
   background-color: #2a2327;
+  background-size: cover;
+  background-position: center;
+}
+
+/* .card.is-selected uses the `background` shorthand, which resets size/position: keep the key art framed. */
+.map-card.is-selected {
   background-size: cover;
   background-position: center;
 }
@@ -2245,6 +2256,12 @@ html[lang='ar'] .levelup-tag {
 .lvup__inner {
   min-height: 0;
   overflow: hidden;
+  /* Badge and unlock cards share one row: stacked, the reveal pushed the stats column past
+     the fold at 720p and auto-scrolling then clipped the top stat cards. */
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--sp-2);
+  align-items: stretch;
 }
 
 .lvup.is-in {
@@ -2324,9 +2341,13 @@ html[lang='ar'] .levelup-tag {
 
 .unlock-reveal {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(11.5rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr));
   gap: var(--sp-2);
-  margin-top: var(--sp-2);
+  align-content: start;
+}
+
+.unlock-reveal:empty {
+  display: none;
 }
 
 .unlock-card {

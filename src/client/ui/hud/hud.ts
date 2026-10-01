@@ -158,7 +158,8 @@ export class GameHud implements Hud {
     this.timeEl = h('span', { class: 'hs-time', text: '0:00' });
     this.phaseEl = h('span', { class: 'hs-phase' });
     const clockEl = h('div', { class: 'hs-clock' }, this.timeEl, this.phaseEl);
-    this.zonesEl = h('div', { class: 'hs-zones' });
+    // Zone pills read A·B·C west→east like the map (spatial, so not mirrored in RTL — same as the compass).
+    this.zonesEl = h('div', { class: 'hs-zones', attrs: { dir: 'ltr' } });
     this.ffaEl = h('div', { class: 'hud-ffa' });
     this.scoreEl = h('div', { class: 'hud-score hud-panel' }, this.teamA.wrap, clockEl, this.teamB.wrap);
     const top = h('div', { class: 'hud-top' }, this.compass.el, this.compass.heading, this.scoreEl, this.zonesEl);
@@ -289,9 +290,13 @@ export class GameHud implements Hud {
     this.killerName = '';
     for (const k of Object.keys(this.c) as (keyof typeof this.c)[]) {
       const v = this.c[k];
-      (this.c as Record<string, unknown>)[k] = typeof v === 'number' ? -1 : typeof v === 'string' ? '' : v;
+      // Strings reset to a sentinel, not '': '' is a real value (e.g. "no ammo status"), and caching it
+      // would leave the previous match's DOM text (a stale red "RELOAD" over a full magazine) in place.
+      (this.c as Record<string, unknown>)[k] = typeof v === 'number' ? -1 : typeof v === 'string' ? '__' : v;
     }
+    // Cache says "alive": make the DOM agree (leaving while dead must not carry the respawn card over).
     this.c.alive = true;
+    this.respawn.classList.remove('is-on');
     this.c.lastHealth = 100;
   }
 
@@ -568,7 +573,8 @@ export class GameHud implements Hud {
       const key = `${s.ffa.rank}|${s.ffa.mine}|${s.ffa.leader}|${i18n.lang}`;
       if (key !== c.ffaKey) {
         c.ffaKey = key;
-        this.ffaEl.replaceChildren(h('span', { t: 'hud.rank' }), h('b', { text: `#${s.ffa.rank}` }), h('span', { class: 'mono', text: `${s.ffa.mine} · ` }), h('span', { t: 'hud.leader' }), h('b', { text: String(s.ffa.leader) }));
+        // "Rank #4 · You 0 · Leader 3" (a bare score after the rank read as part of it).
+        this.ffaEl.replaceChildren(h('span', { t: 'hud.rank' }), h('b', { text: `#${s.ffa.rank}` }), h('span', { text: '·' }), h('span', { t: 'hud.you' }), h('b', { text: String(s.ffa.mine) }), h('span', { text: '·' }), h('span', { t: 'hud.leader' }), h('b', { text: String(s.ffa.leader) }));
       }
     }
     // Launch Control zone pills (derived from zone objectives).

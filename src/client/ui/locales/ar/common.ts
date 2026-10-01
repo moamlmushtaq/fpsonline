@@ -59,6 +59,8 @@ export default {
   'common.version': 'الإصدار {v}',
   'common.seconds': '{n} ث',
   'common.minutes': '{n} دقيقة',
+  'common.playTimeM': '{m} د',
+  'common.playTimeHM': '{h} س {m} د',
   'common.meters': '{n} م',
   'common.hint.navigate': 'تنقّل',
   'common.hint.select': 'اختيار',

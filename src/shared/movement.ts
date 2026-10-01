@@ -208,7 +208,7 @@ export function stepMovement(world: CollisionWorld, m: MoveState, cmd: InputCmd,
   // ── Crouch (held); standing up requires headroom ──
   if (crouchHeld || m.slideT > 0) m.crouch = true;
   else if (m.crouch && !world.boxOverlaps(m.pos.x, m.pos.y, m.pos.z, R, PLAYER_HEIGHT)) m.crouch = false;
-  updateCrouchT(m, dt);
+  growCrouchFitted(world, m, dt);
 
   // ── Sprint: mostly-forward input, no ADS / fire / crouch / slide ──
   const sprintOk = (buttons & BTN_SPRINT) !== 0 && mz > 0.5 && !ads && !fire && !m.crouch && m.slideT <= 0;
@@ -342,6 +342,40 @@ function sanitizeState(m: MoveState): void {
 
 function updateCrouchT(m: MoveState, dt: number): void {
   m.crouchT = approach(m.crouchT, m.crouch ? 1 : 0, CROUCH_SPEED_T * dt);
+}
+
+/**
+ * updateCrouchT for the free-movement path: standing up grows the collision box
+ * over several ticks, and the growth itself must fit. (The stand-up check only
+ * proves the full box fits at the moment crouch is released; a crouch-jump
+ * released on the way up under a 2.4 m tunnel roof then rose into the roof, the
+ * box grew into it and the player hung there — every move overlapped.) If the
+ * taller box would hit a ceiling: airborne, it grows downward (the feet drop
+ * just under the ceiling, upward speed is cancelled); otherwise — or without
+ * room below — the player stays crouched and stands once there is headroom.
+ */
+function growCrouchFitted(world: CollisionWorld, m: MoveState, dt: number): void {
+  const prevT = m.crouchT;
+  updateCrouchT(m, dt);
+  if (m.crouchT >= prevT) return; // crouching only shrinks the box
+  const p = m.pos;
+  const h = playerHeight(m);
+  if (world.overlapInfo(p.x, p.y, p.z, R, h) === 0) return;
+  if (!m.onGround) {
+    const y = world.ovMinBottom - h - SKIN;
+    const grow = h - playerHeightAt(prevT);
+    if (y < p.y && y >= p.y - grow - 1e-6 && !world.boxOverlaps(p.x, y, p.z, R, h)) {
+      p.y = y;
+      if (m.vel.y > 0) m.vel.y = 0;
+      return;
+    }
+  }
+  m.crouchT = prevT;
+  m.crouch = true;
+}
+
+function playerHeightAt(crouchT: number): number {
+  return lerp(PLAYER_HEIGHT, PLAYER_CROUCH_HEIGHT, crouchT);
 }
 
 function endSlide(m: MoveState): void {

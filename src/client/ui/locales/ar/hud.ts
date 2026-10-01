@@ -34,6 +34,7 @@ export default {
   'hud.sb.score': 'النقاط',
   'hud.sb.ping': 'الاستجابة',
   'hud.sb.players': 'الطيارون',
+  'hud.sb.count': 'الطيارون: {n}',
   'hud.prompt.pickup': 'التقط {weapon}',
   'hud.prompt.hold': 'اضغط مطوّلًا {key}',
   'hud.pause.title': 'إيقاف مؤقت',

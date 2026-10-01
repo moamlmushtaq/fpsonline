@@ -52,7 +52,7 @@
 //
 // Heights: ground 0 · pier −1.2 · crawler 2.4 · deck 3.6 · catwalk / bunker
 // roof 4.8 · L1 8.4 · tower 64. Walls meant to block players are ≥ 2.6 m.
-// Collision is kept lean (119 solids; nav.test caps PvP maps at 120 — all
+// Collision is kept lean (120 solids; map-gantry.test caps it at 120 — all
 // detail lives in src/client/world/maps/gantry.ts); 'hidden' solids are drawn
 // by that decor module, and every drawn railing/wall a player can reach has a
 // matching solid (stair railings, the launch mount + fin skirt).
@@ -124,6 +124,11 @@ k.mirrorZ(m);
 
 // Unmirrored center pieces (straddle z = 0).
 k.box(-16, 0, -3.5, -12, D, 3.5, 'concrete', 'pad'); // trench west end
+// Deck-level infill under L1 between the two gantry stairs (x −18.6…−16,
+// |z| ≤ 5): this strip used to be a 3.6 m pit walled in by the stair flanks
+// and the service wall — anyone stepping off the deck's west edge was trapped.
+// It is now an alcove of the deck (4.4 m headroom under L1).
+k.box(-18.6, 0, -5, -16, D, 5, 'concrete', 'pad');
 k.box(-12, 3, -3.5, GANTRY_GRATE.x0, D, 3.5, 'concrete', 'pad'); // deck over the trench (west of the hole)
 k.box(GANTRY_GRATE.x1, 3, -3.5, 16, D, 3.5, 'concrete', 'pad'); // deck over the trench (east, to the mouth)
 k.box(1, 0, -2, 5, 3, 2, 'metal', 'hidden'); // flame deflector (under the rocket)
@@ -132,8 +137,8 @@ k.box(-10.5, D, -1, -8.5, 64, 1, 'metal', 'hidden'); // tower elevator core
 k.box(-18.6, GANTRY_L1 - 0.4, -5, -5, GANTRY_L1, 5, 'metal', 'hidden'); // L1 service platform
 k.box(-5.2, GANTRY_L1, -5, -5, GANTRY_L1 + 1, 5, 'metal', 'hidden', { shootThrough: true }); // L1 rail (rocket side)
 // Outer railing of both gantry stairs + L1's west rail in one see-through
-// solid (the drawn railing is solid to walk into); it also closes the dead-end
-// pocket under L1 (drawn as a riveted service wall).
+// solid (the drawn railing is solid to walk into); it also walls the deck-level
+// alcove under L1 off from the apron (drawn as a riveted service wall).
 k.box(-18.8, 0, -21, -18.6, GANTRY_L1 + 1, 21, 'metal', 'hidden', { shootThrough: true });
 // Launch mount + the fin skirt (y to 18.2): nobody stands on the mount among
 // the fins (a sprint-jump from L1 used to land there). Then the rocket body.

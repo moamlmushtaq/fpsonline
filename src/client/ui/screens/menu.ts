@@ -150,7 +150,8 @@ export class MenuScreen extends BaseScreen {
     pill.className = `pill pill--${status}`;
     pill.replaceChildren(h('span', { class: 'pill__dot' }));
     const text = h('span');
-    if (status === 'online') setText(text, 'menu.status.online', { n: this.app.net.onlineCount });
+    // "0/1 pilots online" reads as broken when the only pilot is you: just say the server is up.
+    if (status === 'online') setText(text, this.app.net.onlineCount > 1 ? 'menu.status.online' : 'menu.status.onlineQuiet', { n: this.app.net.onlineCount });
     else if (status === 'connecting') setText(text, 'menu.status.connecting');
     else setText(text, 'menu.status.offline');
     pill.append(text);

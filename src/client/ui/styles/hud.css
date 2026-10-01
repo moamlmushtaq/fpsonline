@@ -149,6 +149,10 @@ body.q-low .hud-panel {
   width: 26em;
   height: 2.1em;
   overflow: hidden;
+  /* A faint smoked band (faded out by the mask) keeps ticks and bearings legible over a
+     bright sunset sky, where bare 70%-white labels nearly vanished. */
+  background: linear-gradient(180deg, rgba(20, 18, 16, 0.38), rgba(20, 18, 16, 0.22));
+  border-radius: 6px;
   -webkit-mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent);
   mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent);
 }
@@ -395,7 +399,9 @@ html[lang='ar'] .hs-phase {
 }
 
 .kf.is-local {
-  background: rgba(240, 179, 91, 0.22);
+  /* Amber tint over the same dark base as other rows: on a bright sky a bare 22% amber
+     washed out to pale peach and the team-colored names lost their contrast. */
+  background: linear-gradient(rgba(240, 179, 91, 0.24), rgba(240, 179, 91, 0.24)), rgba(20, 18, 16, 0.6);
   box-shadow: inset 0 0 0 1px rgba(240, 179, 91, 0.45);
 }
 

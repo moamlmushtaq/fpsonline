@@ -11,7 +11,9 @@ import {
 } from '../../src/shared/constants';
 import { createMoveState, horizontalSpeed, playerHeight, stepMovement } from '../../src/shared/movement';
 import { CollisionWorld } from '../../src/shared/physics';
+import { GANTRY } from '../../src/shared/maps/gantry';
 import type { Solid } from '../../src/shared/maps/types';
+import { worldForMap } from '../../src/shared/sim/game';
 import type { InputCmd, MoveState } from '../../src/shared/types';
 import { BTN_CROUCH, BTN_JUMP, BTN_SPRINT } from '../../src/shared/types';
 
@@ -178,6 +180,54 @@ describe('movement', () => {
     run(w, m, {}, 30);
     expect(m.crouch).toBe(false);
     expect(playerHeight(m)).toBeCloseTo(PLAYER_HEIGHT, 5);
+  });
+
+  it('releasing crouch mid-jump under a 2.4 m ceiling never wedges the player in the air', () => {
+    // Regression: a crouch-jump in Gantry's 2.4 m maintenance tunnels, releasing
+    // crouch on the way up, left the player hanging under the ceiling (the box
+    // grew into the roof; nothing could move it) until they crouched again.
+    const tunnel = () => world([box(-3, 2.4, -20, 3, 4, 20)]);
+    for (let release = 0; release <= 40; release++) {
+      const w = tunnel();
+      const m = createMoveState({ x: 0, y: 0, z: 0 });
+      run(w, m, { buttons: BTN_CROUCH }, 20);
+      stepMovement(w, m, cmd({ buttons: BTN_CROUCH | BTN_JUMP }), 1, SIM_DT);
+      run(w, m, { buttons: BTN_CROUCH | BTN_JUMP }, release);
+      let maxHead = 0;
+      for (let i = 0; i < 90; i++) {
+        stepMovement(w, m, cmd({ buttons: i < 30 ? BTN_JUMP : 0 }), 1, SIM_DT);
+        maxHead = Math.max(maxHead, m.pos.y + playerHeight(m));
+        expect(w.boxOverlaps(m.pos.x, m.pos.y, m.pos.z, 0.4, playerHeight(m)), `release ${release} tick ${i}`).toBe(false);
+      }
+      expect(maxHead).toBeLessThanOrEqual(2.4 + 1e-6);
+      expect(m.onGround, `release ${release}`).toBe(true);
+      expect(m.pos.y).toBeCloseTo(0, 6);
+      expect(m.crouch).toBe(false);
+      expect(playerHeight(m)).toBeCloseTo(PLAYER_HEIGHT, 5);
+      // And walks on normally.
+      const z0 = m.pos.z;
+      run(w, m, { mz: 1 }, 30);
+      expect(m.pos.z).toBeLessThan(z0 - 2);
+    }
+  });
+
+  it('crouch-jump + release in the real Gantry tunnels lands and stands up', () => {
+    const w = worldForMap(GANTRY);
+    for (const [x, z] of [
+      [-8, -10],
+      [-8, 10],
+    ]) {
+      for (let release = 2; release <= 20; release += 3) {
+        const m = createMoveState({ x, y: 0, z });
+        run(w, m, { buttons: BTN_CROUCH }, 20);
+        stepMovement(w, m, cmd({ buttons: BTN_CROUCH | BTN_JUMP }), 1, SIM_DT);
+        run(w, m, { buttons: BTN_CROUCH }, release);
+        run(w, m, {}, 60);
+        expect(m.onGround, `${x},${z} release ${release}`).toBe(true);
+        expect(m.pos.y).toBeCloseTo(0, 6);
+        expect(playerHeight(m)).toBeCloseTo(PLAYER_HEIGHT, 5);
+      }
+    }
   });
 
   it('never tunnels through a 0.2 m wall at 30 m/s', () => {

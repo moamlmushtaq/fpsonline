@@ -8,7 +8,7 @@ import type { App } from '../../app';
 import { unlockTrack, type Unlock } from '../../../shared/progression';
 import { NAME_MAX } from '../../../shared/names';
 import { WEAPONS } from '../../../shared/weapons';
-import { button, h, iconButton, namecard, progressRing, screenHeader, sectionLabel, stagger } from '../components';
+import { button, h, iconButton, namecard, progressRing, screenHeader, sectionLabel, stagger, unitDir } from '../components';
 import { i18n, setAttr, setText } from '../i18n';
 import { icon, type IconName } from '../icons';
 import { ratingTier } from '../../state/profile';
@@ -19,7 +19,8 @@ const UNLOCK_ICON: Record<Unlock['kind'], IconName> = { armor: 'customize', viso
 function playTime(sec: number): string {
   const h = Math.floor(sec / 3600);
   const m = Math.floor((sec % 3600) / 60);
-  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+  // Localized units ("2h 5m" / "2 س 5 د").
+  return h > 0 ? i18n.t('common.playTimeHM', { h, m }) : i18n.t('common.playTimeM', { m });
 }
 
 export class ProfileScreen extends BaseScreen {
@@ -88,7 +89,7 @@ export class ProfileScreen extends BaseScreen {
 
     // Stats
     const L = p.lifetime;
-    const stat = (k: string, v: string) => h('div', { class: 'stat' }, h('span', { class: 'stat__v', text: v }), h('span', { class: 'stat__k', t: k }));
+    const stat = (k: string, v: string) => h('div', { class: 'stat' }, unitDir(h('span', { class: 'stat__v', text: v })), h('span', { class: 'stat__k', t: k }));
     const acc = L.shots > 0 ? L.hits / L.shots : 0;
     const grid = h(
       'div',
@@ -96,10 +97,11 @@ export class ProfileScreen extends BaseScreen {
       stat('profile.stat.matches', i18n.num(L.matches)),
       stat('profile.stat.wins', i18n.num(L.wins)),
       stat('profile.stat.winRate', L.matches ? `${Math.round((L.wins / L.matches) * 100)}%` : '—'),
-      stat('profile.stat.kd', (L.kills / Math.max(1, L.deaths)).toFixed(2)),
+      // A fresh pilot reads "—" (not "0.00" / "0%") until there is something to measure.
+      stat('profile.stat.kd', L.matches ? (L.kills / Math.max(1, L.deaths)).toFixed(2) : '—'),
       stat('profile.stat.kills', i18n.num(L.kills)),
       stat('profile.stat.headshots', i18n.num(L.headshots)),
-      stat('profile.stat.accuracy', `${Math.round(acc * 100)}%`),
+      stat('profile.stat.accuracy', L.shots > 0 ? `${Math.round(acc * 100)}%` : '—'),
       stat('profile.stat.playTime', playTime(L.playSeconds)),
     );
     if (p.rangeBest) grid.append(stat('profile.stat.rangeBest', i18n.num(p.rangeBest.score)));

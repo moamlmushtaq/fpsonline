@@ -59,6 +59,8 @@ export default {
   'common.version': 'Build {v}',
   'common.seconds': '{n}s',
   'common.minutes': '{n} min',
+  'common.playTimeM': '{m}m',
+  'common.playTimeHM': '{h}h {m}m',
   'common.meters': '{n} m',
   'common.hint.navigate': 'Navigate',
   'common.hint.select': 'Select',

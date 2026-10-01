@@ -82,7 +82,9 @@ export function buildPad(kit: DecorKit, rnd: () => number, root: THREE.Group, de
   kit.add('concrete', box(-16.06, D - 0.35, 16.94, 16.06, D, 17.06), ENV.bone);
   kit.add('concrete', box(15.94, D - 0.35, -17.06, 16.06, D, -3.5), ENV.bone);
   kit.add('concrete', box(15.94, D - 0.35, 3.5, 16.06, D, 17.06), ENV.bone);
-  kit.add('concrete', box(-16.06, D - 0.35, -17.06, -15.94, D, 17.06), ENV.bone);
+  // West coping stops at the deck-level alcove under L1 (|z| ≤ 5, filled to the deck).
+  kit.add('concrete', box(-16.06, D - 0.35, -17.06, -15.94, D, -5), ENV.bone);
+  kit.add('concrete', box(-16.06, D - 0.35, 5, -15.94, D, 17.06), ENV.bone);
   for (const s of halves) {
     for (let x = -14; x <= 14; x += 4) {
       if ((x > -10 && x < -6) || (x > 0 && x < 6)) continue; // tunnel mouth / crawlerway
@@ -462,6 +464,9 @@ export function buildPad(kit: DecorKit, rnd: () => number, root: THREE.Group, de
     kit.add('metal', box(-18.8, 0, -5, -18.62, L1 - 0.4, 5), '#8e877b', { base: 0 });
     for (let z = -4.5; z <= 4.5; z += 1.5) kit.add('metal', box(-18.86, 0.1, z - 0.05, -18.8, L1 - 0.5, z + 0.05), STEEL_DARK, { flat: true });
     for (const y of [2.6, 5.4]) kit.add('metal', box(-18.86, y, -5, -18.8, y + 0.1, 5), STEEL_DARK, { flat: true });
+    // Inner face, seen from the deck-level alcove under L1 (floor at the deck).
+    for (let z = -3.75; z <= 3.75; z += 2.5) kit.add('metal', box(-18.62, D, z - 0.05, -18.56, L1 - 0.5, z + 0.05), STEEL_DARK, { flat: true });
+    kit.add('metal', box(-18.62, 5.4, -5, -18.56, 5.5, 5), STEEL_DARK, { flat: true });
     kit.add('gloss', rbox(-18.9, 0.02, -1.2, -18.8, 2.4, 1.2, 0.04), '#a8a79f');
     kit.add('sign', quad(-18.92, 2.8, 0, 3.2, 0.4, -1, 0, uvOf('stencilService')), '#ffffff', { flat: true });
     lamp(kit, -18.9, 3.4, 0, -1, 0, ENV.glowGold, 2.8, 0);

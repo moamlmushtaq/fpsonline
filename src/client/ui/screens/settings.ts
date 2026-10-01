@@ -190,16 +190,23 @@ export class SettingsScreen extends BaseScreen {
             this.renderPane(false);
           },
         });
-        group('settings.group.keyboard', hint, ...rows, h('div', { style: 'padding:.6rem .9rem' }, reset));
-        const pad = h('div', { style: 'padding:.5rem .9rem', html: PAD_SVG });
-        refreshDom(pad);
-        group('settings.group.gamepad', pad, sl('gamepadSensitivity', 'settings.gamepadSensitivity', 0.1, 5, 0.05, x2));
-        const touchRows: HTMLElement[] = [sl('touchOpacity', 'settings.touch.opacity', 0.2, 1, 0.05, pct), sl('touchSensitivity', 'settings.touchSensitivity', 0.1, 5, 0.05, x2)];
-        const editor = this.app.openTouchLayoutEditor;
-        if (typeof editor === 'function') {
-          touchRows.unshift(settingRow('settings.touch.customize', button({ label: 'settings.touch.customize', icon: 'touch', size: 'sm', onClick: () => editor.call(this.app) })));
-        }
-        group('settings.group.touch', ...touchRows);
+        const kbm = () => group('settings.group.keyboard', hint, ...rows, h('div', { style: 'padding:.6rem .9rem' }, reset));
+        const gamepad = () => {
+          const pad = h('div', { style: 'padding:.5rem .9rem', html: PAD_SVG });
+          refreshDom(pad);
+          group('settings.group.gamepad', pad, sl('gamepadSensitivity', 'settings.gamepadSensitivity', 0.1, 5, 0.05, x2));
+        };
+        const touch = () => {
+          const touchRows: HTMLElement[] = [sl('touchOpacity', 'settings.touch.opacity', 0.2, 1, 0.05, pct), sl('touchSensitivity', 'settings.touchSensitivity', 0.1, 5, 0.05, x2)];
+          const editor = this.app.openTouchLayoutEditor;
+          if (typeof editor === 'function') {
+            touchRows.unshift(settingRow('settings.touch.customize', button({ label: 'settings.touch.customize', icon: 'touch', size: 'sm', onClick: () => editor.call(this.app) })));
+          }
+          group('settings.group.touch', ...touchRows);
+        };
+        // The device in hand comes first (a phone player should not scroll past 20 key bindings).
+        const dev = this.app.input?.device;
+        for (const add of dev === 'touch' ? [touch, gamepad, kbm] : dev === 'gamepad' ? [gamepad, kbm, touch] : [kbm, gamepad, touch]) add();
         break;
       }
       case 'graphics': {

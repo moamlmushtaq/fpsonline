@@ -18,6 +18,7 @@ export default {
   'menu.language': 'Language',
   'menu.langSwitch': 'العربية',
   'menu.status.online': '{n} pilots online',
+  'menu.status.onlineQuiet': 'Server online',
   'menu.status.offline': 'Offline — bot matches',
   'menu.status.connecting': 'Contacting server…',
   'menu.season': 'Season 01 · Launch Window',

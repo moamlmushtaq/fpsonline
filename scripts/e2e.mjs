@@ -299,7 +299,8 @@ async function scenarioD(browser, base) {
       buttons,
       overflowX: document.documentElement.scrollWidth - window.innerWidth,
       bodyOverflowX: document.body.scrollWidth - window.innerWidth,
-      sbButton: vis(document.querySelector('.hf-sbbtn')),
+      // The scoreboard toggle is one of the (movable) touch buttons.
+      sbButton: vis(root?.querySelector('.b-scoreboard')),
     };
   });
   check(ui.root && ui.buttons >= 6, `touch controls visible (${ui.buttons} buttons)`);

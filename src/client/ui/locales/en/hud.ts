@@ -34,6 +34,7 @@ export default {
   'hud.sb.score': 'Score',
   'hud.sb.ping': 'Ping',
   'hud.sb.players': 'Pilots',
+  'hud.sb.count': '{n} pilots',
   'hud.prompt.pickup': 'Pick up {weapon}',
   'hud.prompt.hold': 'Hold {key}',
   'hud.pause.title': 'Paused',

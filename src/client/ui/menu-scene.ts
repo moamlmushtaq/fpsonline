@@ -75,7 +75,8 @@ interface Framing {
 const FRAMING: Record<string, Framing> = {
   // Hero shot: camera slightly below the chest, looking up past the character into the sunset.
   menu: { tx: 0, ty: 1.2, tz: 0, radius: 5.9, height: 1.05, fov: 33, angle: -0.3, swing: 0.3, screenX: 0.66 },
-  sub: { tx: 0, ty: 1.15, tz: 0, radius: 6.6, height: 1.35, fov: 34, angle: -0.2, swing: 0.18, screenX: 0.79 },
+  // Sub screens: the hero stands clear of the Play detail panel (0.79 put its rifle under the card).
+  sub: { tx: 0, ty: 1.15, tz: 0, radius: 6.6, height: 1.35, fov: 34, angle: -0.2, swing: 0.18, screenX: 0.84 },
   loadout: { tx: 0, ty: 1.15, tz: 0, radius: 5.8, height: 1.3, fov: 33, angle: -0.3, swing: 0.1, screenX: 0.9 },
   skins: { tx: 0, ty: 1.15, tz: 0, radius: 5.6, height: 1.25, fov: 33, angle: -0.2, swing: 0.3, screenX: 0.89 },
   customize: { tx: 0, ty: 1.2, tz: 0, radius: 4.6, height: 1.15, fov: 34, angle: -0.15, swing: 0.5, screenX: 0.77 },
@@ -97,7 +98,8 @@ function framingFor(screen: ScreenId | null): Framing {
     case 'results':
       return FRAMING.results;
     case 'matchmaking':
-      return FRAMING.center;
+      // Off to the side: centred, the pilot stood behind the radar dial and the status text.
+      return FRAMING.sub;
     default:
       return FRAMING.sub;
   }
@@ -723,7 +725,11 @@ export class MenuScene {
     }
     // Slide the subject to the free side of the UI (mirrored in RTL).
     if (size && size.width > 0) {
-      const sx = i18n.dir === 'rtl' ? 1 - c.screenX : c.screenX;
+      // 4:3-ish screens: the UI columns take a larger share of the width (rem scales with
+      // 1.4vw), so the subject slides a little further out to stay clear of the panels.
+      const squeeze = c.screenX > 0.55 ? Math.min(0.06, Math.max(0, (1.65 - size.aspect) * 0.2)) : 0;
+      const sxL = Math.max(c.screenX, Math.min(0.9, c.screenX + squeeze));
+      const sx = i18n.dir === 'rtl' ? 1 - sxL : sxL;
       // Narrow (portrait-ish) screens keep the subject nearer the centre.
       const narrow = size.aspect < 1.2 ? 0.5 : 1;
       const f = 0.5 + (sx - 0.5) * narrow;

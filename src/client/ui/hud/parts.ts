@@ -312,7 +312,8 @@ export class ScoreboardView {
       const name = h('td', {}, h('span', { class: 'sb-lvl', text: String(r.level) }), h('bdi', { text: r.name }));
       if (r.isBot) name.append(h('span', { class: 'sb-bot', t: 'common.bot' }));
       const tr = h('tr', { class: `${r.local ? 'is-you' : ''} ${r.alive ? '' : 'is-dead'}` }, name, h('td', { text: String(r.kills) }), h('td', { text: String(r.deaths) }), h('td', { text: String(r.assists) }));
-      if (mode === 'control') tr.append(h('td', { text: `${Math.round(r.objectiveTime)}s` }));
+      // Localized unit ("42s" / "42 ث"); the row signature keys on i18n.lang so a switch repaints.
+      if (mode === 'control') tr.append(h('td', { text: i18n.t('common.seconds', { n: Math.round(r.objectiveTime) }) }));
       tr.append(h('td', { text: String(r.score) }), h('td', { text: r.isBot ? '—' : String(Math.round(r.ping)) }));
       body.append(tr);
     }
@@ -322,7 +323,7 @@ export class ScoreboardView {
 
   private render(rows: ScoreboardEntry[], mode: ModeId, teamScores: [number, number]): void {
     this.el.replaceChildren();
-    const head = h('div', { class: 'hud-sb__head' }, h('span', { t: `mode.${mode}.name` }), h('span', { t: 'hud.sb.players' }));
+    const head = h('div', { class: 'hud-sb__head' }, h('span', { t: `mode.${mode}.name` }), h('span', { t: 'hud.sb.count', params: { n: rows.length } }));
     this.el.append(head);
     const teams = mode === 'tdm' || mode === 'control';
     const cols = h('div', { class: `hud-sb__cols ${teams ? '' : 'is-single'}` });

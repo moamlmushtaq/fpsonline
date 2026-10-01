@@ -333,6 +333,58 @@ export class NavGraph {
     this.heapF = new Float32Array(1024);
   }
 
+  /**
+   * Per-node reachability relative to the main component (computed on demand,
+   * for map validation — bots never need it): `fromMain[i]` = a player in the
+   * main component can get to node i (walk / mantle / drop / jump links);
+   * `toMain[i]` = from node i a player can get back into the main component.
+   * A node with fromMain && !toMain is a trapped pocket (a pit you can fall
+   * into but not climb out of); !fromMain && !toMain is an unreachable perch.
+   */
+  reachability(): { fromMain: Uint8Array; toMain: Uint8Array } {
+    const n = this.count;
+    const fromMain = new Uint8Array(n);
+    const toMain = new Uint8Array(n);
+    const stack: number[] = [];
+    for (const k of this.mainNodes) {
+      fromMain[k] = 1;
+      stack.push(k);
+    }
+    while (stack.length) {
+      const u = stack.pop() as number;
+      for (let e = this.adjStart[u]; e < this.adjStart[u + 1]; e++) {
+        const v = this.adjTo[e];
+        if (!fromMain[v]) {
+          fromMain[v] = 1;
+          stack.push(v);
+        }
+      }
+    }
+    // Reverse CSR for the backward search.
+    const m = this.adjTo.length;
+    const rStart = new Int32Array(n + 1);
+    for (let e = 0; e < m; e++) rStart[this.adjTo[e] + 1]++;
+    for (let i = 0; i < n; i++) rStart[i + 1] += rStart[i];
+    const rFrom = new Int32Array(m);
+    const fill = rStart.slice(0, n);
+    for (let u = 0; u < n; u++) for (let e = this.adjStart[u]; e < this.adjStart[u + 1]; e++) rFrom[fill[this.adjTo[e]]++] = u;
+    for (const k of this.mainNodes) {
+      toMain[k] = 1;
+      stack.push(k);
+    }
+    while (stack.length) {
+      const v = stack.pop() as number;
+      for (let e = rStart[v]; e < rStart[v + 1]; e++) {
+        const u = rFrom[e];
+        if (!toMain[u]) {
+          toMain[u] = 1;
+          stack.push(u);
+        }
+      }
+    }
+    return { fromMain, toMain };
+  }
+
   /** Fine traversal check (0.2 m samples): every sub-step rises ≤ STEP_HEIGHT with clearance. */
   private fineWalkable(ax: number, ay: number, az: number, bx: number, by: number, bz: number): boolean {
     const w = this.world;

@@ -9,7 +9,7 @@ import { THROWABLES, WEAPONS, type WeaponDef } from '../../../shared/weapons';
 import type { PrimaryWeaponId, ThrowableId, WeaponId } from '../../../shared/types';
 import { PRIMARY_WEAPON_IDS } from '../../../shared/types';
 import { MAX_HEALTH } from '../../../shared/constants';
-import { card, h, screenHeader, sectionLabel, stagger, statBar } from '../components';
+import { card, h, screenHeader, sectionLabel, stagger, statBar, unitDir } from '../components';
 import { i18n } from '../i18n';
 import { icon, weaponIcon } from '../icons';
 import { BaseScreen } from './base';
@@ -107,7 +107,7 @@ export class LoadoutScreen extends BaseScreen {
     const w = WEAPONS[id];
     const s = weaponStats(w);
     const ttk = weaponTtk(w);
-    const fact = (k: string, v: string) => h('span', { class: 'wfact' }, h('b', { text: v }), h('span', { t: k }));
+    const fact = (k: string, v: string) => h('span', { class: 'wfact' }, unitDir(h('b', { text: v })), h('span', { t: k }));
     const left = h(
       'div',
       {},
@@ -118,7 +118,7 @@ export class LoadoutScreen extends BaseScreen {
       h(
         'div',
         { class: 'weapon-detail__facts' },
-        fact('loadout.fact.ttk', ttk.shots === 1 ? i18n.t('loadout.oneShot') : `${ttk.seconds.toFixed(2)}s`),
+        fact('loadout.fact.ttk', ttk.shots === 1 ? i18n.t('loadout.oneShot') : i18n.t('common.seconds', { n: ttk.seconds.toFixed(2) })),
         fact('loadout.fact.shots', String(ttk.shots)),
         fact('loadout.fact.mag', String(w.magSize)),
         fact('loadout.fact.head', `×${Number(w.headMult.toFixed(2))}`),

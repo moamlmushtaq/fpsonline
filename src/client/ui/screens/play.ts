@@ -220,7 +220,8 @@ export class PlayScreen extends BaseScreen {
         'div',
         { class: 'opt-block' },
         sectionLabel('play.mode'),
-        segmented({ options: PVP_MODES, value: this.roomMode, onChange: (v) => (this.roomMode = v) }).el,
+        // Re-render so the header facts (players · minutes) follow the chosen mode, as in Bot Match.
+        segmented({ options: PVP_MODES, value: this.roomMode, onChange: (v) => { this.roomMode = v; this.renderDetail(); } }).el,
       ),
     );
     d.append(h('div', { class: 'opt-block' }, sectionLabel('play.map'), this.mapPicker(this.roomMap, false, (m) => {

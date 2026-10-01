@@ -1,14 +1,14 @@
 // ميدان التدريب (العربية): لوحة الإحصاءات، المحطات، المعالم.
 export default {
   'range.title': 'إحصاءات الميدان',
-  'range.accuracy': 'الدقّة',
+  'range.accuracy': 'الدقة',
   'range.hits': 'الإصابات',
   'range.headshots': 'إصابات الرأس',
   'range.targets': 'أهداف مُسقَطة',
   'range.streak': 'أفضل سلسلة',
   'range.time': 'الجلسة',
-  'range.ttk': 'زمن الإسقاط',
-  'range.ttkEmpty': 'أسقِط هدفًا لترى زمنك.',
+  'range.ttk': 'زمن الإقصاء',
+  'range.ttkEmpty': 'أقصِ هدفًا لترى زمنك.',
   'range.weapons': 'حسب السلاح',
   'range.best': 'الأفضل',
   'range.reset': 'إعادة ضبط',

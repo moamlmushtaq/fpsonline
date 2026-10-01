@@ -11,7 +11,7 @@ import { MAX_LEVEL, levelFromXp, xpForLevel, type Unlock } from '../../../shared
 import { ARMOR_TINTS, WEAPON_SKINS } from '../../../shared/cosmetics';
 import { WEAPONS } from '../../../shared/weapons';
 import type { MatchApplication } from '../../state/profile';
-import { button, h, namecard, namecardBackground, sectionLabel, stagger } from '../components';
+import { button, h, namecard, namecardBackground, sectionLabel, stagger, unitDir } from '../components';
 import { i18n, setText } from '../i18n';
 import { icon, weaponIcon, type IconName } from '../icons';
 import { BaseScreen } from './base';
@@ -112,7 +112,8 @@ export class ResultsScreen extends BaseScreen {
     const dur = h(
       'div',
       { class: 'res-banner__sub' },
-      `${i18n.t(`mode.${r.mode}.name`)} · ${i18n.t(`map.${r.map}.name`)} · `,
+      // The range's mode and map share a name: say it once.
+      r.mode === 'range' ? `${i18n.t(`mode.${r.mode}.name`)} · ` : `${i18n.t(`mode.${r.mode}.name`)} · ${i18n.t(`map.${r.map}.name`)} · `,
       h('span', { class: 'mono', text: `${Math.floor(r.duration / 60)}:${String(Math.floor(r.duration % 60)).padStart(2, '0')}` }),
     );
     bannerText.append(dur);
@@ -131,7 +132,7 @@ export class ResultsScreen extends BaseScreen {
 
     // ── Personal stats
     const s = a.stats;
-    const stat = (k: string, v: string) => h('div', { class: 'stat' }, h('span', { class: 'stat__v', text: v }), h('span', { class: 'stat__k', t: k }));
+    const stat = (k: string, v: string) => h('div', { class: 'stat' }, unitDir(h('span', { class: 'stat__v', text: v })), h('span', { class: 'stat__k', t: k }));
     const acc = s.shots > 0 ? Math.round((s.hits / s.shots) * 100) : 0;
     const stats = h('div', { class: 'res-stats' });
     if (range) {
@@ -143,7 +144,7 @@ export class ResultsScreen extends BaseScreen {
         stat('results.stat.assists', String(s.assists)),
         stat('results.stat.accuracy', `${acc}%`),
         stat('results.stat.headshots', String(s.headshots)),
-        r.mode === 'control' ? stat('results.stat.objective', `${Math.round(s.objectiveTime)}s`) : stat('results.stat.damage', String(Math.round(s.damage))),
+        r.mode === 'control' ? stat('results.stat.objective', i18n.t('common.seconds', { n: Math.round(s.objectiveTime) })) : stat('results.stat.damage', String(Math.round(s.damage))),
         stat('results.stat.score', String(s.score)),
         stat('results.stat.streak', String(s.bestStreak)),
       );
@@ -194,13 +195,13 @@ export class ResultsScreen extends BaseScreen {
       tagEl.append(h('span', { t: 'results.mvp' }));
       if (isYou) tagEl.append(h('span', { class: 'mvp-card__you', t: 'common.you' }));
       mv.append(tagEl, namecard({ id: mvp.namecard, name: mvp.name, level: mvp.level, sub: teams ? `common.team.${mvp.team}` : undefined, cls: 'namecard--hero' }));
-      const mstat = (v: string, k: string) => h('span', { class: 'mvp-card__stat' }, h('b', { text: v }), h('span', { t: k }));
+      const mstat = (v: string, k: string) => h('span', { class: 'mvp-card__stat' }, unitDir(h('b', { text: v })), h('span', { t: k }));
       const stats = h(
         'div',
         { class: 'mvp-card__stats' },
         mstat(String(mvp.stats.kills), 'results.stat.elims'),
         mstat(mvp.stats.shots ? `${Math.round((mvp.stats.hits / mvp.stats.shots) * 100)}%` : '—', 'results.stat.accuracy'),
-        r.mode === 'control' ? mstat(`${Math.round(mvp.stats.objectiveTime)}s`, 'results.stat.objective') : mstat(String(mvp.stats.headshots), 'results.stat.headshots'),
+        r.mode === 'control' ? mstat(i18n.t('common.seconds', { n: Math.round(mvp.stats.objectiveTime) }), 'results.stat.objective') : mstat(String(mvp.stats.headshots), 'results.stat.headshots'),
         mstat(i18n.num(mvp.stats.score), 'results.stat.score'),
       );
       mv.append(stats);

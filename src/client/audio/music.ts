@@ -499,7 +499,7 @@ export class Music {
   scheduleUntil(until: number): void {
     if (this.state === 'off') return;
     let guard = 0;
-    while (this.nextTime < until && guard++ < 256) {
+    while (this.nextTime < until && guard++ < 4096) {
       this.schedule(this.nextTime);
       this.nextTime += 60 / this.def.bpm / 4;
       this.step++;

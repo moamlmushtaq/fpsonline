@@ -60,92 +60,92 @@ const TRAIL = 32;
 export class BotController {
   readonly id: number;
   readonly difficulty: BotDifficulty;
-  private readonly sim: GameSim;
-  private readonly prof: BotProfile;
-  private readonly rng: () => number;
-  private readonly dir: BotDirector;
-  private readonly aim: BotAim;
-  private seq = 0;
-  private readonly phase: number;
+  readonly sim: GameSim;
+  readonly prof: BotProfile;
+  readonly rng: () => number;
+  readonly dir: BotDirector;
+  readonly aim: BotAim;
+  seq = 0;
+  readonly phase: number;
 
   // Perception / target.
-  private target = -1;
-  private targetVisible = false;
-  private targetDist = 0;
-  private lastSeenTick = -100000;
-  private readonly lastKnown: Vec3 = { x: 0, y: 0, z: 0 };
-  private hasLastKnown = false;
-  private knownBySight = false;
-  private lastKnownTick = -100000;
-  private lastContactTick = -100000;
-  private lastHurtTick = -100000;
-  private lastNoiseTick = -1;
-  private reactionT = 0;
-  private engagedWith = -1;
-  private fireReadyT = 0;
-  private aimHead = false;
-  private mercyK = 0;
-  private hurtT = 0;
-  private hurtYaw = 0;
-  private hurtLookT = 0;
+  target = -1;
+  targetVisible = false;
+  targetDist = 0;
+  lastSeenTick = -100000;
+  readonly lastKnown: Vec3 = { x: 0, y: 0, z: 0 };
+  hasLastKnown = false;
+  knownBySight = false;
+  lastKnownTick = -100000;
+  lastContactTick = -100000;
+  lastHurtTick = -100000;
+  lastNoiseTick = -1;
+  reactionT = 0;
+  engagedWith = -1;
+  fireReadyT = 0;
+  aimHead = false;
+  mercyK = 0;
+  hurtT = 0;
+  hurtYaw = 0;
+  hurtLookT = 0;
   /** Other enemies visible this think (for grenade clusters): flat x,y,z. */
-  private readonly vis: number[] = [];
+  readonly vis: number[] = [];
 
   // Movement / goals.
-  private goalKind: GoalKind = 'none';
-  private readonly goal: Vec3 = { x: 0, y: 0, z: 0 };
-  private path: NavPath | null = null;
-  private pathIdx = 0;
-  private repathT = 0;
-  private goalT = 0;
-  private lane = 1;
-  private station = 0;
-  private adv = 1;
-  private holdYaw = 0;
-  private holdT = 0;
-  private holdStart = 0;
+  goalKind: GoalKind = 'none';
+  readonly goal: Vec3 = { x: 0, y: 0, z: 0 };
+  path: NavPath | null = null;
+  pathIdx = 0;
+  repathT = 0;
+  goalT = 0;
+  lane = 1;
+  station = 0;
+  adv = 1;
+  holdYaw = 0;
+  holdT = 0;
+  holdStart = 0;
   /** Tick after which a marksman may settle into another long-range watch. */
-  private watchReady = 0;
-  private readonly stillRef: Vec3 = { x: 0, y: 0, z: 0 };
+  watchReady = 0;
+  readonly stillRef: Vec3 = { x: 0, y: 0, z: 0 };
   /** Recent positions (ring of TRAIL samples, every 0.2 s) and how long we have been still. */
-  private readonly trail = new Float32Array(TRAIL * 3);
-  private trailHead = 0;
-  private trailLen = 0;
-  private trailTick = -1000;
-  private stillFor = 0;
-  private searchT = 0;
-  private coverT = 0;
-  private coverUntil = 0;
-  private reloadInCover = false;
-  private readonly peekPos: Vec3 = { x: 0, y: 0, z: 0 };
-  private hasPeek = false;
-  private strafeDir = 1;
-  private strafeT = 0;
-  private crouchT = 0;
-  private jumpCd = 0;
-  private readonly stuckRef: Vec3 = { x: 0, y: 0, z: 0 };
-  private stuckT = 0;
-  private stuckCount = 0;
-  private unstickT = 0;
-  private unstickDir = 1;
-  private dodgeT = 0;
-  private wedgeT = 0;
-  private shiftTick = -100000;
-  private moveX = 0;
-  private moveZ = 0;
-  private wantSprint = false;
-  private mantleJump = false;
-  private slideWish = false;
+  readonly trail = new Float32Array(TRAIL * 3);
+  trailHead = 0;
+  trailLen = 0;
+  trailTick = -1000;
+  stillFor = 0;
+  searchT = 0;
+  coverT = 0;
+  coverUntil = 0;
+  reloadInCover = false;
+  readonly peekPos: Vec3 = { x: 0, y: 0, z: 0 };
+  hasPeek = false;
+  strafeDir = 1;
+  strafeT = 0;
+  crouchT = 0;
+  jumpCd = 0;
+  readonly stuckRef: Vec3 = { x: 0, y: 0, z: 0 };
+  stuckT = 0;
+  stuckCount = 0;
+  unstickT = 0;
+  unstickDir = 1;
+  dodgeT = 0;
+  wedgeT = 0;
+  shiftTick = -100000;
+  moveX = 0;
+  moveZ = 0;
+  wantSprint = false;
+  mantleJump = false;
+  slideWish = false;
 
   // Trigger & throwables.
-  private burstT = 0;
-  private pauseT = 0;
-  private lastFire = false;
-  private lastButtons = 0;
-  private reloadPress = false;
-  private throwAt: Vec3 | null = null;
-  private throwT = 0;
-  private throwCd = 0;
+  burstT = 0;
+  pauseT = 0;
+  lastFire = false;
+  lastButtons = 0;
+  reloadPress = false;
+  throwAt: Vec3 | null = null;
+  throwT = 0;
+  throwCd = 0;
 
   constructor(sim: GameSim, playerId: number, difficulty: BotDifficulty) {
     this.sim = sim;
@@ -159,7 +159,7 @@ export class BotController {
     this.throwCd = this.rand(6, 14);
   }
 
-  private rand(lo: number, hi: number): number {
+  rand(lo: number, hi: number): number {
     return lo + (hi - lo) * this.rng();
   }
 
@@ -219,8 +219,8 @@ export class BotController {
     if ((sim.tick + this.phase) % THINK_EVERY === 0) this.deliberate(p);
     this.decayTimers();
 
-    const aimed = this.updateAim(p);
-    this.computeMove(p);
+    const aimed = updateAim(this, p);
+    computeMove(this, p);
     // Airborne but motionless = wedged under a low ceiling (e.g. a jump released
     // mid-air in a tunnel): crouching always frees the player.
     const mv = p.move.vel;
@@ -230,18 +230,18 @@ export class BotController {
     } else this.wedgeT = 0;
     let buttons = 0;
     const w = WEAPONS[activeWeapon(p.combat)];
-    if (this.shouldFire(p)) {
+    if (shouldFire(this, p)) {
       if (w.fireMode === 'semi') {
         if (!this.lastFire) buttons |= BTN_FIRE;
       } else buttons |= BTN_FIRE;
     }
     this.lastFire = (buttons & BTN_FIRE) !== 0;
-    if (this.wantAds(p)) buttons |= BTN_ADS;
+    if (wantAds(this, p)) buttons |= BTN_ADS;
     const settled = !this.path || this.pathIdx >= this.path.points.length;
     const hiding = this.goalKind === 'cover' && settled;
     if (this.crouchT > 0 || this.slideWish || hiding) buttons |= BTN_CROUCH;
     if (this.wantSprint && !(buttons & (BTN_FIRE | BTN_ADS))) buttons |= BTN_SPRINT;
-    if ((this.mantleJump || (this.unstickT > 0 && this.jumpCd <= 0)) && this.headroom(p)) {
+    if ((this.mantleJump || (this.unstickT > 0 && this.jumpCd <= 0)) && headroom(this, p)) {
       buttons |= BTN_JUMP;
       this.jumpCd = 0.5;
     }
@@ -273,7 +273,7 @@ export class BotController {
       yaw,
       pitch: this.aim.pitch,
       buttons,
-      slot: this.desiredSlot(p),
+      slot: desiredSlot(this, p),
       viewTick: sim.tick,
     };
   }
@@ -304,7 +304,7 @@ export class BotController {
 
   private deliberate(p: SimPlayer): void {
     const sim = this.sim;
-    this.perceive(p);
+    perceive(this, p);
     this.detectStuck(p);
     this.checkStill(p);
 
@@ -321,7 +321,7 @@ export class BotController {
     this.repathT -= DT_THINK;
     this.chooseGoal(p);
     if (this.goalKind !== 'none' && this.goalKind !== 'hold' && (this.path === null || this.repathT <= 0)) this.plan(p);
-    this.planThrow(p);
+    planThrow(this, p);
 
     // Combat stance changes.
     if (this.targetVisible) {
@@ -440,156 +440,6 @@ export class BotController {
   }
 
   // ── Perception ───────────────────────────────────────────────────────────
-
-  private perceive(p: SimPlayer): void {
-    const sim = this.sim;
-    const world = sim.world;
-    const tick = sim.tick;
-    const prof = this.prof;
-    const eye = sim.eyeOf(p, EYE);
-    const fwd = forwardFromAngles(this.aim.yaw, this.aim.pitch, FWD);
-    const cosFov = Math.cos(prof.fovHalf);
-    const cosTrack = Math.cos(Math.min(Math.PI * 0.85, prof.fovHalf * 1.7));
-    const hurtBy = tick - p.lastAttackerTick < SIM_HZ * 1.5 ? p.lastAttacker : -1;
-    let best: SimPlayer | null = null;
-    let bestScore = Infinity;
-    let bestDist = 0;
-    let bestCos = 1;
-    this.vis.length = 0;
-    for (const e of sim.players) {
-      if (!e.alive || !sim.isEnemy(p, e)) continue;
-      const ex = e.move.pos.x;
-      let ey = e.move.pos.y + playerHeight(e.move) * 0.62;
-      const ez = e.move.pos.z;
-      const dx = ex - eye.x;
-      const dz = ez - eye.z;
-      let dy = ey - eye.y;
-      const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
-      if (d > 95 || d < 1e-3) continue;
-      const cos = (dx * fwd.x + dy * fwd.y + dz * fwd.z) / d;
-      const tracking = e.ident.id === this.target && tick - this.lastSeenTick < SIM_HZ * 0.6;
-      if (!(cos >= cosFov || d < 2.5 || (tracking && cos >= cosTrack))) continue;
-      if (!world.segmentClear(eye.x, eye.y, eye.z, ex, ey, ez, 'sight')) {
-        // A head peeking over cover still counts.
-        ey = e.move.pos.y + eyeHeight(e.move) + 0.05;
-        dy = ey - eye.y;
-        if (!world.segmentClear(eye.x, eye.y, eye.z, ex, ey, ez, 'sight')) continue;
-      }
-      POS.x = ex;
-      POS.y = ey;
-      POS.z = ez;
-      if (sim.smokeBlocks(eye, POS)) continue;
-      if (this.vis.length < 12) this.vis.push(ex, e.move.pos.y, ez);
-      let score = d + (1 - cos) * 8 + e.health * 0.03;
-      if (e.ident.id === this.target) score -= 10;
-      if (e.ident.id === hurtBy) score -= 8;
-      if (e.protectedT > 0) score += 30;
-      if (!sim.ffa) {
-        const c = this.dir.claims(p.ident.team, e.ident.id, this.id);
-        score += c * (e.ident.isBot ? 3 : 8);
-      }
-      if (score < bestScore) {
-        bestScore = score;
-        best = e;
-        bestDist = d;
-        bestCos = cos;
-      }
-    }
-
-    if (best) {
-      const bid = best.ident.id;
-      const sameTarget = bid === this.target;
-      const lostFor = tick - this.lastSeenTick;
-      if (!sameTarget || !this.targetVisible) {
-        this.mercyK = prof.mercy && !best.ident.isBot ? this.dir.mercy(bid) : 0;
-        const mercy = 1 + 0.35 * this.mercyK;
-        if (sameTarget && lostFor <= SIM_HZ * 1.2) {
-          // Re-acquiring someone we just saw duck out (we expected them).
-          this.reactionT = prof.reaction * this.rand(0.3, 0.45) * mercy;
-        } else {
-          const periph = clamp(Math.acos(clamp(bestCos, -1, 1)) / prof.fovHalf, 0, 1.5);
-          const still = best.move.crouchT > 0.5 && Math.hypot(best.move.vel.x, best.move.vel.z) < 1 ? 0.12 : 0;
-          const switching = this.targetVisible ? 0.6 : 1;
-          this.reactionT = ((prof.reaction * this.rand(0.85, 1.2) + (prof.reactionFar * bestDist) / 50) * (1 + periph * 0.5) + still) * switching * mercy;
-          this.aimHead = this.rng() < prof.headChance * (1 - 0.6 * this.mercyK) * (bestDist < 45 ? 1 : 0.5);
-          if (p.move.sprint && bestDist < 16 && this.rng() < prof.slideChance) this.slideWish = true;
-        }
-        this.engagedWith = -1;
-      }
-      this.target = bid;
-      this.targetVisible = true;
-      this.targetDist = bestDist;
-      this.lastSeenTick = tick;
-      this.lastContactTick = tick;
-      this.hurtLookT = 0;
-      this.setLastKnown(best.move.pos, tick, true);
-      return;
-    }
-    this.targetVisible = false;
-
-    // Hit by someone we cannot see: we get a direction (like a damage indicator).
-    if (p.lastDamageTick > this.lastHurtTick) {
-      this.lastHurtTick = p.lastDamageTick;
-      if (hurtBy >= 0) {
-        const f = p.lastDamageFrom;
-        this.lastContactTick = tick;
-        this.hurtYaw = yawFromDir(f.x - eye.x, f.z - eye.z);
-        if (this.hurtLookT <= 0) this.hurtT = prof.reaction * this.rand(0.8, 1.15);
-        this.hurtLookT = this.hurtT + 1.6;
-        const dd = Math.hypot(f.x - eye.x, f.z - eye.z);
-        const err = dd * 0.12;
-        this.setLastKnown({ x: f.x + (this.rng() - 0.5) * err, y: f.y - EYE_HEIGHT, z: f.z + (this.rng() - 0.5) * err }, tick, false);
-      }
-    }
-    // Hearing: gunshots / explosions (whole past ticks only).
-    const noises = sim.noises;
-    const upTo = tick - 1;
-    for (let i = noises.length - 1; i >= 0; i--) {
-      const n = noises[i];
-      if (n.tick > upTo) continue;
-      if (n.tick <= this.lastNoiseTick) break;
-      if (n.id === this.id) continue;
-      if (!sim.ffa && n.team === p.ident.team && n.team !== TEAM_NONE) continue;
-      const r = Math.min(prof.hearing, n.radius);
-      const dx = n.x - p.move.pos.x;
-      const dz = n.z - p.move.pos.z;
-      const d2 = dx * dx + dz * dz;
-      if (d2 <= r * r && n.tick > this.lastKnownTick) {
-        const err = Math.sqrt(d2) * 0.15;
-        this.setLastKnown({ x: n.x + (this.rng() - 0.5) * err, y: n.y - EYE_HEIGHT, z: n.z + (this.rng() - 0.5) * err }, n.tick, false);
-        this.lastContactTick = tick;
-        break;
-      }
-    }
-    this.lastNoiseTick = upTo;
-    // Footsteps of moving enemies close by (crouch-walking is silent).
-    if (tick - this.lastKnownTick > SIM_HZ) {
-      for (const e of sim.players) {
-        if (!e.alive || !sim.isEnemy(p, e) || !e.move.onGround || e.move.crouchT > 0.5) continue;
-        const sp = Math.hypot(e.move.vel.x, e.move.vel.z);
-        const loud = sp > 6.5 ? 1 : sp > 3.5 ? 0.5 : 0;
-        if (loud === 0) continue;
-        const dx = e.move.pos.x - p.move.pos.x;
-        const dz = e.move.pos.z - p.move.pos.z;
-        const r = prof.footsteps * loud;
-        const d2 = dx * dx + dz * dz;
-        if (d2 < r * r && Math.abs(e.move.pos.y - p.move.pos.y) < 4) {
-          const err = Math.sqrt(d2) * 0.2;
-          this.setLastKnown({ x: e.move.pos.x + (this.rng() - 0.5) * err, y: e.move.pos.y, z: e.move.pos.z + (this.rng() - 0.5) * err }, tick, false);
-          break;
-        }
-      }
-    }
-  }
-
-  private setLastKnown(pos: Vec3, tick: number, sight: boolean): void {
-    this.lastKnown.x = pos.x;
-    this.lastKnown.y = pos.y;
-    this.lastKnown.z = pos.z;
-    this.hasLastKnown = true;
-    this.lastKnownTick = tick;
-    this.knownBySight = sight;
-  }
 
   // ── Goals ────────────────────────────────────────────────────────────────
 
@@ -725,7 +575,7 @@ export class BotController {
     this.chooseLaneGoal(p);
   }
 
-  private assignedZone() {
+  assignedZone() {
     if (this.sim.config.mode !== 'control') return null;
     const zones = this.sim.zoneStates();
     const i = this.dir.zoneFor(this.id);
@@ -938,393 +788,10 @@ export class BotController {
 
   // ── Throwables ───────────────────────────────────────────────────────────
 
-  private planThrow(p: SimPlayer): void {
-    const sim = this.sim;
-    if (this.throwAt || this.throwCd > 0 || p.combat.throwables <= 0 || sim.currentPhase !== 'live') return;
-    const pos = p.move.pos;
-    const eye = sim.eyeOf(p, EYE);
-    const prof = this.prof;
-    const tick = sim.tick;
-    if (p.ident.loadout.throwable === 'grenade') {
-      // Two or more enemies bunched up in view.
-      const v = this.vis;
-      for (let i = 0; i + 3 < v.length && !this.throwAt; i += 3) {
-        for (let j = i + 3; j < v.length; j += 3) {
-          if (Math.hypot(v[i] - v[j], v[i + 2] - v[j + 2]) > 5.5 || Math.abs(v[i + 1] - v[j + 1]) > 2) continue;
-          const c = { x: (v[i] + v[j]) / 2, y: (v[i + 1] + v[j + 1]) / 2, z: (v[i + 2] + v[j + 2]) / 2 };
-          const d = Math.hypot(c.x - pos.x, c.z - pos.z);
-          if (d < 8 || d > 26 || this.teammateNear(p, c, 6) || !throwLaneClear(sim.world, eye, c)) continue;
-          if (this.rng() < 0.55 * prof.grenadeSkill) this.queueThrow(c, 0.15);
-          break;
-        }
-      }
-      // Flush someone who ducked behind cover.
-      const age = (tick - this.lastKnownTick) * SIM_DT;
-      if (!this.throwAt && !this.targetVisible && this.hasLastKnown && this.knownBySight && age > 0.4 && age < 3) {
-        const d = Math.hypot(this.lastKnown.x - pos.x, this.lastKnown.z - pos.z);
-        if (d > 8 && d < 24 && !this.teammateNear(p, this.lastKnown, 5) && throwLaneClear(sim.world, eye, this.lastKnown) && this.rng() < 0.05 * prof.grenadeSkill) {
-          this.queueThrow(this.lastKnown, 0.25);
-        }
-      }
-      return;
-    }
-    // Smoke: cover a retreat…
-    if (this.goalKind === 'cover' && this.path && this.pathIdx < this.path.points.length && this.targetVisible) {
-      const t = sim.player(this.target);
-      if (t && this.rng() < 0.3 * prof.smokeSkill) {
-        this.queueThrow({ x: (pos.x * 2 + t.move.pos.x) / 3, y: pos.y, z: (pos.z * 2 + t.move.pos.z) / 3 }, 0.1);
-        return;
-      }
-    }
-    // …revive a stalled push onto an objective the enemy holds…
-    const zone = this.assignedZone();
-    if (zone && zone.owner !== p.ident.team && !this.targetVisible) {
-      const c = zone.def.center;
-      const d = Math.hypot(c.x - pos.x, c.z - pos.z);
-      const enemyThere = this.hasLastKnown && Math.hypot(this.lastKnown.x - c.x, this.lastKnown.z - c.z) < zone.def.radius + 8 && (tick - this.lastKnownTick) * SIM_DT < 6;
-      if (d > 12 && d < 28 && (zone.contested || enemyThere) && this.rng() < 0.08 * prof.smokeSkill) {
-        const k = (d - 6) / d;
-        const at = { x: pos.x + (c.x - pos.x) * k, y: c.y, z: pos.z + (c.z - pos.z) * k };
-        if (throwLaneClear(sim.world, eye, at)) this.queueThrow(at, 0.2);
-        return;
-      }
-    }
-    // …or cross open ground under a watching long gun.
-    const moving = this.goalKind === 'lane' || this.goalKind === 'rotate' || this.goalKind === 'objective' || this.goalKind === 'pickup';
-    if (moving && !this.targetVisible && this.hasLastKnown && this.knownBySight && (tick - this.lastKnownTick) * SIM_DT < 4) {
-      const d = Math.hypot(this.lastKnown.x - pos.x, this.lastKnown.z - pos.z);
-      if (d > 24 && this.rng() < 0.06 * prof.smokeSkill) {
-        const k = Math.min(10, d * 0.35) / d;
-        const at = { x: pos.x + (this.lastKnown.x - pos.x) * k, y: pos.y, z: pos.z + (this.lastKnown.z - pos.z) * k };
-        if (throwLaneClear(sim.world, eye, at)) this.queueThrow(at, 0.15);
-      }
-    }
-  }
-
-  private queueThrow(at: Vec3, delay: number): void {
-    this.throwAt = { x: at.x, y: at.y, z: at.z };
-    this.throwT = delay;
-    this.throwCd = 1.5; // give up if the aim never lines up
-  }
-
-  private teammateNear(p: SimPlayer, at: Vec3, r: number): boolean {
-    for (const q of this.sim.players) {
-      if (!q.alive || (q !== p && this.sim.isEnemy(p, q))) continue;
-      if (Math.hypot(q.move.pos.x - at.x, q.move.pos.z - at.z) < r) return true;
-    }
-    return false;
-  }
-
   // ── Movement ─────────────────────────────────────────────────────────────
-
-  private computeMove(p: SimPlayer): void {
-    const pos = p.move.pos;
-    let dx = 0;
-    let dz = 0;
-    this.wantSprint = false;
-    if (this.path && this.pathIdx < this.path.points.length) {
-      let wp = this.path.points[this.pathIdx];
-      let hx = wp.x - pos.x;
-      let hz = wp.z - pos.z;
-      let hd = Math.hypot(hx, hz);
-      const last = this.pathIdx === this.path.points.length - 1;
-      if (hd < (last ? 0.5 : 0.45) && Math.abs(wp.y - pos.y) < 1.6) {
-        this.pathIdx++;
-        if (this.pathIdx < this.path.points.length) {
-          wp = this.path.points[this.pathIdx];
-          hx = wp.x - pos.x;
-          hz = wp.z - pos.z;
-          hd = Math.hypot(hx, hz);
-        } else hd = 0;
-      }
-      if (hd <= 0.3 && this.pathIdx < this.path.points.length && wp.y < pos.y - 1) {
-        // Standing on the lip right above a drop waypoint: step off toward what follows.
-        const nx = this.path.points[this.pathIdx + 1] ?? wp;
-        const px = this.pathIdx > 0 ? this.path.points[this.pathIdx - 1] : pos;
-        let ex = nx.x - px.x;
-        let ez = nx.z - px.z;
-        if (Math.hypot(ex, ez) < 0.1) {
-          ex = wp.x - px.x + 0.01;
-          ez = wp.z - px.z;
-        }
-        hx = ex;
-        hz = ez;
-        hd = Math.hypot(ex, ez);
-      }
-      if (hd > 0.05 && this.pathIdx < this.path.points.length) {
-        dx = hx / hd;
-        dz = hz / hd;
-        const kind = this.path.kinds[this.pathIdx];
-        if (kind === LINK_MANTLE && hd < 1.4 && wp.y > pos.y + 0.3 && p.move.onGround && this.jumpCd <= 0) this.mantleJump = true;
-        const calm = this.goalKind !== 'peek' && (this.goalKind !== 'objective' || hd > 6);
-        if (calm && !this.targetVisible && hd > 2.5 && kind !== LINK_MANTLE) this.wantSprint = true;
-        if (this.goalKind === 'peek') {
-          dx *= 0.6;
-          dz *= 0.6;
-        }
-      }
-    }
-    // Combat footwork: strafe + keep the weapon's range (not while retreating).
-    const wid = activeWeapon(p.combat);
-    const repositioning = this.goalKind === 'shift' && dx * dx + dz * dz > 0;
-    if (this.targetVisible && this.goalKind !== 'cover' && this.reactionT <= this.prof.reaction * 0.5) {
-      const t = this.sim.player(this.target);
-      if (t) {
-        const tx = t.move.pos.x - pos.x;
-        const tz = t.move.pos.z - pos.z;
-        const td = Math.hypot(tx, tz) || 1;
-        const ux = tx / td;
-        const uz = tz / td;
-        const pref = PREFERRED_RANGE[wid];
-        // Only a path that leads to them helps close the distance.
-        const hasPath = (dx !== 0 || dz !== 0) && (this.goalKind === 'chase' || this.goalKind === 'objective' || repositioning);
-        let bx = 0;
-        let bz = 0;
-        if (repositioning || (this.goalKind === 'objective' && hasPath && td > pref * 0.55)) {
-          // Moving to a new spot / onto the objective while trading shots.
-          const k = repositioning ? 1 : 0.75;
-          bx = dx * k;
-          bz = dz * k;
-        } else if (td > pref * 1.5) {
-          // Close the distance along the path when we have one (it routes around cover).
-          const push = wid === 'breaker' || wid === 'swift' ? 1 : 0.8;
-          bx = (hasPath ? dx : ux) * push;
-          bz = (hasPath ? dz : uz) * push;
-          if (wid === 'breaker' && td > 14 && this.burstT <= 0) this.wantSprint = true;
-        } else if (td < pref * 0.55) {
-          bx = -ux * 0.6;
-          bz = -uz * 0.6;
-        }
-        // Close range: dance. Mid/long range with rifles: plant the feet while a burst is out.
-        const planted = td > 16 && wid !== 'swift' && wid !== 'breaker';
-        const steady = planted ? (this.burstT > 0 ? 0.15 : 0.6) : this.burstT > 0 ? 0.7 : 1;
-        const strafe = this.dodgeT > 0 ? this.strafeDir : this.strafeDir * this.prof.strafe * steady * (repositioning ? 0.4 : 1);
-        dx = bx - uz * strafe;
-        dz = bz + ux * strafe;
-        if (!(wid === 'breaker' && this.wantSprint)) this.wantSprint = false;
-      }
-    }
-    if (this.unstickT > 0) {
-      const l = Math.hypot(dx, dz) || 1;
-      const sx = -dz / l;
-      const sz = dx / l;
-      dx = dx * 0.4 + sx * this.unstickDir;
-      dz = dz * 0.4 + sz * this.unstickDir;
-    }
-    // Avoid walking off big drops / out of the map.
-    const l = Math.hypot(dx, dz);
-    if (l > 1e-3) {
-      const k = Math.min(1, l) / l;
-      dx *= k;
-      dz *= k;
-      if (!this.safeAhead(p, dx / Math.min(1, l), dz / Math.min(1, l))) {
-        if (this.targetVisible) {
-          this.strafeDir = -this.strafeDir;
-          dx = -dx;
-          dz = -dz;
-          if (!this.safeAhead(p, dx, dz)) {
-            dx = 0;
-            dz = 0;
-          }
-        } else if (!(this.path && this.path.kinds[this.pathIdx] !== undefined && this.path.kinds[this.pathIdx] !== 0)) {
-          dx = 0;
-          dz = 0;
-        }
-      }
-    }
-    this.moveX = dx;
-    this.moveZ = dz;
-  }
-
-  /** Room to jump without hitting a ceiling (standing box raised by a jump's height). */
-  private headroom(p: SimPlayer): boolean {
-    const m = p.move;
-    return !this.sim.world.boxOverlaps(m.pos.x, m.pos.y + 1.1, m.pos.z, 0.34, 1.8);
-  }
-
-  /**
-   * True if walking ~1 m in (dx,dz) keeps us over ground not far below, and any
-   * drop lands somewhere we can walk out of (never into a dead-end pit).
-   */
-  private safeAhead(p: SimPlayer, dx: number, dz: number): boolean {
-    const x = p.move.pos.x + dx * 1.1;
-    const z = p.move.pos.z + dz * 1.1;
-    const g = this.sim.world.supportHeight(x, z, 0.2, p.move.pos.y + 0.5, 6);
-    if (Number.isNaN(g) || g <= this.sim.map.killY + 1) return false;
-    if (g < p.move.pos.y - 1.2) {
-      POS.x = x;
-      POS.y = g;
-      POS.z = z;
-      const nav = this.sim.nav;
-      const k = nav.nearestNode(POS, 1.5);
-      if (k < 0 || nav.comp[k] !== nav.mainComp) return false;
-    }
-    return true;
-  }
 
   // ── Aim & trigger ────────────────────────────────────────────────────────
 
-  /** Updates view angles; returns true when the aim is on the intended throw point. */
-  private updateAim(p: SimPlayer): boolean {
-    const sim = this.sim;
-    const aim = this.aim;
-    const eye = sim.eyeOf(p, EYE);
-    const dt = SIM_DT;
-    const t = this.target >= 0 ? sim.player(this.target) : undefined;
-    if (this.throwAt) {
-      const dx = this.throwAt.x - eye.x;
-      const dz = this.throwAt.z - eye.z;
-      const ty = yawFromDir(dx, dz);
-      const tp = ballisticPitch(Math.hypot(dx, dz), this.throwAt.y + 0.3 - eye.y);
-      aim.look(ty, tp, dt, this.prof.smooth * 1.5);
-      return Math.abs(angleDiff(aim.yaw, ty)) < 0.05 && Math.abs(tp - aim.pitch) < 0.05;
-    }
-    if (t && t.alive && this.targetVisible && this.reactionT <= 0) {
-      // Delayed perception of the target, with partial velocity prediction.
-      const prof = this.prof;
-      const lagTicks = Math.round(prof.trackLag * SIM_HZ);
-      if (!sim.sampleHistory(t.ident.id, sim.tick - 1 - lagTicks, TMP)) {
-        TMP.pos.x = t.move.pos.x;
-        TMP.pos.y = t.move.pos.y;
-        TMP.pos.z = t.move.pos.z;
-        TMP.crouchT = t.move.crouchT;
-      }
-      const lead = prof.trackLag * prof.predict;
-      const ax = TMP.pos.x + t.move.vel.x * lead;
-      const az = TMP.pos.z + t.move.vel.z * lead;
-      const eyeT = 1.62 - 0.57 * TMP.crouchT;
-      const ay = TMP.pos.y + (this.aimHead ? eyeT + 0.05 : eyeT * 0.72);
-      const dx = ax - eye.x;
-      const dz = az - eye.z;
-      const hd = Math.hypot(dx, dz);
-      const ty = yawFromDir(dx, dz);
-      const tp = Math.atan2(ay - eye.y, hd);
-      if (this.engagedWith !== this.target || !aim.engaged) {
-        aim.flickTo(ty, tp, Math.atan2(0.5, hd) * 2, 1 + 0.5 * this.mercyK);
-        this.engagedWith = this.target;
-        this.fireReadyT = prof.fireDelay * this.rand(0.8, 1.3) * (1 + this.mercyK);
-      }
-      aim.track(ty, tp, p.combat.recoilYaw, p.combat.recoilPitch, dt, 1 + 0.6 * this.mercyK);
-      return true;
-    }
-    if (!(t && t.alive && this.targetVisible)) this.engagedWith = -1;
-    if (t && t.alive && this.targetVisible) {
-      // Still reacting: the eyes have it, the hands have not moved yet.
-      aim.look(aim.yaw, aim.pitch, dt);
-      return true;
-    }
-    let ty = aim.yaw;
-    let tp = 0;
-    let rate = this.prof.smooth;
-    const age = (sim.tick - this.lastKnownTick) * SIM_DT;
-    const moving = Math.hypot(this.moveX, this.moveZ) > 0.1;
-    if (this.hurtLookT > 0 && this.hurtT <= 0) {
-      // Turn toward where the shots came from.
-      ty = this.hurtYaw;
-      rate *= 1.6;
-    } else if (this.hurtLookT > 0) {
-      ty = aim.yaw;
-      tp = aim.pitch;
-    } else if (this.searchT > 0) {
-      ty = wrapAngle(aim.yaw + Math.sin(sim.tick * 0.07 + this.id) * 0.9);
-    } else if (this.hasLastKnown && age < 4 && (this.prof.tactics >= 0.5 || !moving)) {
-      // Pre-aim where they were (chest height).
-      const dx = this.lastKnown.x - eye.x;
-      const dz = this.lastKnown.z - eye.z;
-      const d = Math.hypot(dx, dz);
-      if (d > 1.5) {
-        ty = yawFromDir(dx, dz);
-        tp = Math.atan2(this.lastKnown.y + 1.25 - eye.y, d) * (this.knownBySight ? 1 : 0.5);
-      }
-    } else if (this.goalKind === 'hold') {
-      const sweep = this.prof.tactics >= 0.5 ? 0.3 : 0.6;
-      ty = wrapAngle(this.holdYaw + Math.sin(sim.tick * 0.018 + this.id * 1.7) * sweep);
-      rate *= 0.6;
-    } else if (moving) {
-      ty = yawFromDir(this.moveX, this.moveZ);
-      // Veterans glance down the lane toward the enemy side while advancing.
-      if (this.prof.tactics >= 0.5 && this.goalKind === 'lane' && Math.abs(angleDiff(ty, this.holdYaw)) < 1.2) ty = wrapAngle(ty + angleDiff(ty, this.holdYaw) * 0.5);
-      if (this.path && this.pathIdx < this.path.points.length) {
-        const wp = this.path.points[this.pathIdx];
-        const hd = Math.hypot(wp.x - eye.x, wp.z - eye.z);
-        if (hd > 1) tp = clamp(Math.atan2(wp.y + 1.5 - eye.y, hd), -0.5, 0.5) * 0.6;
-      }
-    }
-    aim.look(ty, tp, dt, rate);
-    return true;
-  }
-
-  private shouldFire(p: SimPlayer): boolean {
-    const sim = this.sim;
-    if (!this.targetVisible || this.reactionT > 0 || this.throwAt || !this.aim.engaged) return false;
-    if (sim.currentPhase !== 'live') return false;
-    const t = sim.player(this.target);
-    if (!t || !t.alive || t.protectedT > 0) return false;
-    const c = p.combat;
-    const slot = activeSlot(c);
-    const w = WEAPONS[slot.id];
-    if (c.swapT > 0) return false;
-    const eye = sim.eyeOf(p, EYE);
-    const dx = t.move.pos.x - eye.x;
-    const dy = t.move.pos.y + playerHeight(t.move) * (this.aimHead ? 0.92 : 0.6) - eye.y;
-    const dz = t.move.pos.z - eye.z;
-    const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
-    if (d > w.range * 0.95) return false;
-    // Shotguns wait until the pellets will count (recruits are less patient).
-    if (w.id === 'breaker' && d > (this.prof.tactics >= 0.5 ? 15 : 22)) return false;
-    // Angular error between where the gun points and the target.
-    AIM_CMD.yaw = this.aim.yaw;
-    AIM_CMD.pitch = this.aim.pitch;
-    const a = aimAngles(AIM_CMD, c, AIM);
-    const f = forwardFromAngles(a.yaw, a.pitch, FWD);
-    const err = Math.acos(clamp((f.x * dx + f.y * dy + f.z * dz) / d, -1, 1));
-    const tol = Math.atan2(0.42, d) * this.prof.fireTol + currentSpread(c, p.move) * 0.4;
-    if (this.fireReadyT > 0) {
-      // First shot of an engagement: confirm the sight picture first.
-      if (err < tol) this.fireReadyT -= SIM_DT;
-      return false;
-    }
-    if (w.fireMode === 'charge') return err < tol * 2.2;
-    if (w.fireMode === 'bolt' && c.adsT < 0.9) return false;
-    if (err > tol) return false;
-    if (w.fireMode === 'auto') {
-      // Burst discipline: long sprays up close, controlled bursts at range.
-      if (this.pauseT > 0) return false;
-      if (this.burstT <= 0) {
-        const k = d < 12 ? 2.2 : d < 30 ? 1.5 : 0.8;
-        this.burstT = this.rand(this.prof.burst[0], this.prof.burst[1]) * k;
-      }
-    }
-    return true;
-  }
-
-  private wantAds(p: SimPlayer): boolean {
-    if (!this.targetVisible || this.reactionT > this.prof.reaction * 0.4) {
-      // Marksmen hold their angle scoped in.
-      return this.goalKind === 'hold' && activeWeapon(p.combat) === 'longline' && this.prof.tactics >= 0.5;
-    }
-    const id = activeWeapon(p.combat);
-    if (id === 'longline') return true;
-    if (id === 'breaker') return this.targetDist > 9;
-    if (id === 'swift') return this.targetDist > 12;
-    return this.targetDist > 7;
-  }
-
-  private desiredSlot(p: SimPlayer): number {
-    const c = p.combat;
-    const pickup = c.slots[2];
-    if (pickup && pickup.mag > 0) return 2;
-    const primary = c.slots[0];
-    if (primary.mag === 0 && primary.reserve === 0) return 1;
-    // Quick-draw the sidearm when the primary runs dry mid-fight at close range.
-    if (this.targetVisible && c.active === 0 && primary.mag === 0 && this.targetDist < 12 && c.reloadT > 0.6) return 1;
-    // Marksmen swap to the sidearm when someone gets in their face.
-    if (this.targetVisible && primary.id === 'longline' && this.targetDist < 8 && this.prof.tactics >= 0.5) return 1;
-    if (c.active === 1 && primary.id === 'longline' && this.targetVisible && this.targetDist < 12) return 1;
-    // Back to the primary once the fight is over.
-    if (c.active === 1 && !this.targetVisible) return 0;
-    return c.active === 2 ? 0 : c.active;
-  }
 }
 
 export { BOT_PROFILES, ballisticPitch };

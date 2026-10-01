@@ -454,7 +454,7 @@ function interior(kit: DecorKit, signs: { board: SignBatch; lit: SignBatch }, rn
       const x = 12.6 * s;
       kit.tube('chrome', new THREE.Vector3(x, 6.55, z), new THREE.Vector3(x, GAL + 2.75, z), 0.012, COL.dark, 3);
       kit.cyl('paint', x, GAL + 2.25, z, 0.42, 0.3, 0.42, mix(COL.terraF, COL.bone, 0.3), 12);
-      kit.ball('foliage', x, GAL + 2.72, z, 0.55, 0.32, 0.55, mix(COL.sage, rgb(ENV.pastelYellow), 0.2), 1, { drift: 0.2 });
+      kit.mound(x, GAL + 2.72, z, 0.6, 0.36, 0.6, mix(COL.sage, rgb(ENV.pastelYellow), 0.2));
       hangingVine(kit, new THREE.Vector3(x + 0.3, GAL + 2.3, z + 0.15), 0.5 + rng() * 0.5, rng, 1.4);
       hangingVine(kit, new THREE.Vector3(x - 0.3, GAL + 2.3, z - 0.1), 0.4 + rng() * 0.5, rng, 1.4);
     }
@@ -636,7 +636,11 @@ function fountain(kit: DecorKit, rng: () => number): void {
 
 // ── Interior dressing (overgrowth, mannequins, blade signs, motes) ──────────
 
-/** Shop-window mannequin (bone fibreglass, a faded dress on some). */
+/**
+ * Shop mannequins. Standing ones are headless dress forms on a tripod (a bone
+ * humanoid standing in a dim arcade would read as a Halcyon player — never
+ * that); the full fibreglass figures only lie toppled in the flood.
+ */
 function mannequin(kit: DecorKit, x: number, y: number, z: number, ry: number, tilt: number, dress: RGB | null): void {
   const M = new THREE.Matrix4().makeTranslation(x, y, z).multiply(new THREE.Matrix4().makeRotationY(ry)).multiply(new THREE.Matrix4().makeRotationX(tilt));
   const P = (a: number, b: number, c: number): THREE.Vector3 => new THREE.Vector3(a, b, c).applyMatrix4(M);
@@ -645,6 +649,19 @@ function mannequin(kit: DecorKit, x: number, y: number, z: number, ry: number, t
     kit.geo('paint', kit.sphereGeo(kit.low ? 0 : 1), m, col, { drift: 0.04 });
   };
   const skin = mix(COL.bone, COL.pink, 0.15);
+  const standing = Math.abs(tilt) < 0.3;
+  if (standing) {
+    // Dress form: torso + cap, chrome pole, tripod feet.
+    blob(0, 1.3, 0, 0.19, 0.27, 0.13, dress ?? mix(COL.boneShade, COL.terraF, 0.25));
+    blob(0, 1.03, 0, 0.17, 0.1, 0.12, dress ?? mix(COL.boneShade, COL.terraF, 0.25));
+    kit.cyl('chrome', x, y + 1.55, z, 0.05, 0.05, 0.08, COL.chrome, 8);
+    kit.tube('chrome', P(0, 0.12, 0), P(0, 1.0, 0), 0.018, COL.chrome, 5);
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2;
+      kit.tube('chrome', P(0, 0.14, 0), P(Math.cos(a) * 0.3, 0.0, Math.sin(a) * 0.3), 0.014, COL.chrome, 4);
+    }
+    return;
+  }
   blob(0, 1.72, 0, 0.1, 0.13, 0.11, skin); // head
   kit.tube('paint', P(0, 1.5, 0), P(0, 1.62, 0), 0.045, skin, 6);
   blob(0, 1.3, 0, 0.19, 0.27, 0.12, skin); // torso
@@ -658,11 +675,6 @@ function mannequin(kit: DecorKit, x: number, y: number, z: number, ry: number, t
     const g = kit.cylGeo(0.16, 0.34, kit.low ? 8 : 12);
     kit.geo('fabric', g, M.clone().multiply(new THREE.Matrix4().makeTranslation(0, 0.98, 0)).multiply(new THREE.Matrix4().makeScale(1, 0.62, 0.8)), dress, { drift: 0.08 });
     blob(0, 1.33, 0, 0.2, 0.22, 0.13, dress);
-  }
-  // Stand: chrome rod into a round base (standing ones only).
-  if (Math.abs(tilt) < 0.3) {
-    kit.tube('chrome', P(0, 0.05, -0.12), P(0, 0.98, -0.08), 0.015, COL.chrome, 4);
-    kit.cyl('chrome', x, y, z, 0.24, 0.26, 0.03, COL.chrome, 12);
   }
 }
 

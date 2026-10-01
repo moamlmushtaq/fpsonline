@@ -263,7 +263,7 @@ export function buildCurtains(kit: DecorKit, lib: MaterialLibrary, specs: Curtai
       if (rng() < 0.25) continue;
       const r = 0.3 + rng() * rng() * 0.55;
       const col = mix(mix(LEAF_LIGHT, SUNLIT, 0.25 + rng() * 0.3), LEAF, rng() * 0.25);
-      kit.ball('foliage', x + n.x * (rng() - 0.5) * 0.5, c.y1 + 0.3 + rng() * 0.15, z + n.z * (rng() - 0.5) * 0.5, r * 1.15, r * 0.85, r, col, 1, {
+      kit.mound(x + n.x * (rng() - 0.5) * 0.5, c.y1 + 0.3 + rng() * 0.15, z + n.z * (rng() - 0.5) * 0.5, r * 1.25, r * 0.9, r * 1.1, col, {
         drift: 0.25,
         shade: (_x, _y, _z, _nx, ny) => (ny > 0.2 ? 1.12 : ny < -0.3 ? 0.9 : 1),
       });

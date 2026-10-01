@@ -64,11 +64,7 @@ export function handwheel(kit: DecorKit, x: number, y: number, z: number, nx: nu
  * conduit up to the roof line, a fire-hose reel box, a small plate.
  */
 export function wallCabinet(kit: DecorKit, x: number, z: number, nx: number, nz: number, roofY: number, col = '#9fa98c'): void {
-  const t = nx !== 0 ? 0.24 : 0.62;
-  const u = nx !== 0 ? 0.62 : 0.24;
   kit.add('paint', rbox(x - (nx !== 0 ? 0 : 0.31) + Math.min(0, nx) * 0.24, 0.9, z - (nz !== 0 ? 0 : 0.31) + Math.min(0, nz) * 0.24, x + (nx !== 0 ? 0 : 0.31) + Math.max(0, nx) * 0.24, 1.85, z + (nz !== 0 ? 0 : 0.31) + Math.max(0, nz) * 0.24, 0.03), col, {});
-  void t;
-  void u;
   kit.add('metal', boxC(x + nx * 0.245, 1.38, z + nz * 0.245, nx !== 0 ? 0.01 : 0.5, 0.012, nx !== 0 ? 0.5 : 0.01), STEEL_DARK, { flat: true });
   kit.add('metal', boxC(x + nx * 0.25 + nz * 0.22, 1.25, z + nz * 0.25 + nx * 0.22, 0.03, 0.12, 0.03), STEEL, { flat: true });
   // Conduit to the roof and a drop into the ground.

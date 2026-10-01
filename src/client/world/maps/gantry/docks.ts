@@ -96,8 +96,8 @@ void main() {
   float grain = smoothstep(0.42, 0.8, n2(vec2(vW.z * 3.4 + cell * 3.1, vUv.y * 8.0 - t * 5.0)));
   // A sheet seen edge-on (from the pier, along the wall) fades out instead of
   // smearing into one big blob.
-  float face = smoothstep(0.12, 0.45, abs(normalize(vW - cameraPosition).x));
-  float a = shape * life * grain * face;
+  float face = smoothstep(0.2, 0.6, abs(normalize(vW - cameraPosition).x));
+  float a = shape * life * grain * face * 0.8;
   if (a < 0.02) discard;
   vec3 col = mix(uColor, fogColor, 1.0 - exp(-fogDensity * fogDensity * vFogD * vFogD));
   gl_FragColor = vec4(col, a * 0.9);

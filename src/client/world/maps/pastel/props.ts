@@ -464,7 +464,7 @@ function pylon(kit: DecorKit, signs: Signs, sz: number, rng: () => number): void
   climbingVine(kit, new THREE.Vector3(0.82, 0, zc - 1.6), 5.5, new THREE.Vector3(1, 0, 0), rng, 1.3);
   climbingVine(kit, new THREE.Vector3(0.82, 0, zc + 1.9), 3.2, new THREE.Vector3(1, 0, 0), rng, 1.1);
   for (let i = 0; i < 5; i++) hangingVine(kit, new THREE.Vector3(0.9, H - 0.4, z0 + 0.6 + i * 1.2), 0.8 + rng() * 2.4, rng, 1.2);
-  for (const s of [-1, 1]) for (let i = 0; i < 3; i++) kit.ball('foliage', s * (0.95 + rng() * 0.2), 0.25, z0 + 0.8 + i * 2.1, 0.45, 0.3, 0.55, mix(K.sage, K.olive, rng() * 0.4), 1, { drift: 0.2 });
+  for (const s of [-1, 1]) for (let i = 0; i < 3; i++) kit.mound(s * (0.98 + rng() * 0.2), 0.28, z0 + 0.8 + i * 2.1, 0.5, 0.32, 0.6, mix(K.sage, K.olive, rng() * 0.4));
 }
 
 // ── Assembly ────────────────────────────────────────────────────────────────

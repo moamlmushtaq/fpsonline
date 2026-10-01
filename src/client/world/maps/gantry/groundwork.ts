@@ -137,6 +137,7 @@ export function buildGroundDetail(kit: DecorKit, rnd: () => number, decor: numbe
 
   // ── Blast scorch: trench mouth fan, launch mount, trench floor ────────────
   floorDecal(kit, 'scorch', 17.4, 0.001, 0, 8, 12, Math.PI / 2, '#ffffff');
+  floorDecal(kit, 'scorch', 17.2, 0.0012, 0, 5, 9, Math.PI / 2 + 0.2, '#ffffff');
   floorDecal(kit, 'soot', 16.8, 0.0015, 0, 2.6, 8.5, Math.PI / 2);
   floorDecal(kit, 'scorch', GANTRY_ROCKET.x, D + 0.004, 0, 16, 16, 0.3);
   floorDecal(kit, 'scorch', 3, 0.012, 0, 9, 6.6, 0);

@@ -242,7 +242,7 @@ export function twoStorey(kit: DecorKit, signs: { board: SignBatch; lit: SignBat
   // Balcony: planters + wind chimes + hanging vines.
   for (const z of [17.2, 25.8]) {
     bx('concrete', -31.5, UP, z - 0.5, -30.9, UP + 0.45, z + 0.5, K.terraF, 0.05, UP);
-    kit.ball('foliage', X(-31.2), UP + 0.65, Z(z), 0.45, 0.35, 0.55, K.sage, 1);
+    kit.mound(X(-31.2), UP + 0.62, Z(z), 0.5, 0.38, 0.6, K.sage);
     hangingVine(kit, new THREE.Vector3(X(-31.55), UP - 0.1, Z(z - 0.3)), 1.4 + rng(), rng, 1.2);
   }
   chimes(kit, new THREE.Vector3(X(-31.2), UP + 1.9, Z(21.5)));

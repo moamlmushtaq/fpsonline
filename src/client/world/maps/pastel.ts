@@ -32,6 +32,7 @@ import { buildGround } from './pastel/ground';
 import { bungalow, chapel, cornerHouse, dinerAndGas, garageRow, houseLightPools, poolHouse, screenWall, spawnWall, twoStorey } from './pastel/houses';
 import { CardBatch } from './pastel/cards';
 import { DecalBatch } from './pastel/decals';
+import { crown } from './pastel/flora';
 import { DecorKit, mix, rgb } from './pastel/kit';
 import { GAL, atriumMotes, buildMall, mallDressing } from './pastel/mall';
 import { buildProps, TREES } from './pastel/props';
@@ -44,6 +45,7 @@ import { createWaterSurface } from './pastel/water';
 export const backdrop: BackdropOptions = { kind: 'terrain', tag: 'grass', color: '#aab194', water: false };
 
 const build: DecorBuilder = (ctx: DecorContext): MapDecor => {
+  const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
   const def = ctx.def;
   const rng = ctx.rng;
   const kit = new DecorKit(ctx);
@@ -51,6 +53,9 @@ const build: DecorBuilder = (ctx: DecorContext): MapDecor => {
   const signs = { board: new SignBatch(), lit: new SignBatch() };
   const cards = new CardBatch();
   const decals = new DecalBatch();
+  // Every leafy mound in the older builders (planters, pergola crowns) uses
+  // the painted leaf-card crowns too.
+  kit.leafy = (x, y, z, rx, ry, rz, tint) => crown(kit, cards, new THREE.Vector3(x, y, z), rx, ry, rz, rng, { tint, density: 7.5, sway: 0.15, bias: 0.45 });
 
   // ── Static decor ──
   buildGround(kit, rng);
@@ -195,7 +200,7 @@ const build: DecorBuilder = (ctx: DecorContext): MapDecor => {
       const inst = (m as THREE.InstancedMesh).isInstancedMesh ? (m as THREE.InstancedMesh).count : 1;
       tris[m.name || 'unnamed'] = (tris[m.name || 'unnamed'] ?? 0) + Math.round(n * inst);
     });
-    (window as unknown as { __pastelDecor?: unknown }).__pastelDecor = { staticCalls, meshes, shafts: mall.shafts.length, tris, total: Object.values(tris).reduce((a, b) => a + b, 0) };
+    (window as unknown as { __pastelDecor?: unknown }).__pastelDecor = { staticCalls, meshes, shafts: mall.shafts.length, tris, total: Object.values(tris).reduce((a, b) => a + b, 0), buildMs: Math.round(performance.now() - t0) };
   }
 
   // Outro frames the launch over the town: aim ~52 m (× scale) up the rocket so

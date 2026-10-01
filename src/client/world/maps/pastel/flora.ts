@@ -77,7 +77,9 @@ export interface CrownOpts {
 export function crown(kit: DecorKit, cards: CardBatch, center: THREE.Vector3, rx: number, ry: number, rz: number, rng: () => number, o: CrownOpts, lightCenter = center): void {
   const r = (rx + ry + rz) / 3;
   // Core: well inside the crown (mass + depth between the cards), darker and cooler.
-  kit.ball('foliage', center.x, center.y, center.z, rx * 0.56, ry * 0.54, rz * 0.56, mix(scale(o.tint, 0.8), LEAF.coolBelly, 0.2), 1, {
+  // (Mostly hidden by the cards: a 20-tri icosahedron unless it is a big crown
+  // on high.)
+  kit.ball('foliage', center.x, center.y, center.z, rx * 0.56, ry * 0.54, rz * 0.56, mix(scale(o.tint, 0.8), LEAF.coolBelly, 0.2), kit.detail >= 1 && r > 1.2 ? 1 : 0, {
     drift: 0.2,
     shade: (_x, _y, _z, _nx, ny) => (ny > 0.35 ? 1.15 : ny < -0.3 ? 0.8 : 0.97),
   });

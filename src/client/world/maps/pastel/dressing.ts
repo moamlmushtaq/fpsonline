@@ -239,6 +239,28 @@ export function groundStory(d: Dress): PuddleSet {
     }
   }
 
+  // Main street: heaved asphalt along the wheel ruts, weeds at the gutters,
+  // leaves banked against the curbs.
+  for (const sz of [1, -1]) {
+    for (let i = 0; i < Math.round(22 * det); i++) {
+      const gutter = rng() < 0.45;
+      const x = gutter ? (rng() < 0.5 ? 31.5 + rng() * 0.8 : 41.7 + rng() * 0.8) : 32.5 + rng() * 9;
+      const z = (13.5 + rng() * 38) * sz;
+      const ang = rng() * Math.PI;
+      if (gutter) {
+        decals.ground(rng() < 0.6 ? DECAL.leaves : DECAL.sand, x, z, 0.031 + DY, 1.2 + rng(), 2 + rng() * 1.5, Math.PI / 2 + (rng() - 0.5) * 0.4, [1, 1, 1, 0.95]);
+        for (let k = 0; k < 2; k++) tuft(kit, x + (rng() - 0.5) * 0.5, z + (rng() - 0.5) * 1.5, 0.2 + rng() * 0.3, mix(rgb(ENV.sage), rgb(ENV.olive), rng() * 0.5), rng, 0.031);
+      } else {
+        const len = 1.6 + rng() * 2.8;
+        decals.ground(rng() < 0.5 ? DECAL.crackA : DECAL.crackB, x, z, 0.031 + DY, len, len * 0.6, ang, tint(rng, 0.7, 0.95));
+        if (rng() < 0.6) {
+          decals.ground(DECAL.weeds, x, z, 0.031 + DY + 0.001, len * 0.5, len * 0.5, rng() * 6, [1, 1, 1, 0.95]);
+          tuft(kit, x, z, 0.2 + rng() * 0.25, mix(rgb(ENV.sage), rgb(ENV.glowChartreuse), 0.15), rng, 0.031);
+        }
+      }
+    }
+  }
+
   // Worn parking paint (replaces crisp slabs): stall lines, skipped / broken.
   const line = (x: number, z0: number, z1: number, w = 0.14): void => {
     if (rng() < 0.1) return; // long gone
@@ -786,7 +808,10 @@ export function overgrowth(d: Dress): void {
         ivy(cards, V(xx, 0, 17.2 * sz), ne, 1.4, 3.6 + rng() * 1.2, rng);
         ivy(cards, V(xx, 0, 25.8 * sz), ne, 1.4, 3.2 + rng() * 1.6, rng);
       }
-      edgeRun(d, V(30.3 * sx, 5.1, 16 * sz), V(30.3 * sx, 5.1, 27 * sz), sx > 0 ? N.px : N.nx, 1.5, 0.7);
+      // Outer roof edge over the balcony: short fringes only (bottom ≥ 4.4 m,
+      // above a standing player's eye on the balcony), none over the door slot.
+      edgeRun(d, V(30.3 * sx, 5.1, 16 * sz), V(30.3 * sx, 5.1, 19.6 * sz), sx > 0 ? N.px : N.nx, 0.45, 0.8, false);
+      edgeRun(d, V(30.3 * sx, 5.1, 23.4 * sz), V(30.3 * sx, 5.1, 27 * sz), sx > 0 ? N.px : N.nx, 0.45, 0.8, false);
       roofMat(d, Math.min(17 * sx, 30 * sx), Math.min(16 * sz, 27 * sz), Math.max(17 * sx, 30 * sx), Math.max(16 * sz, 27 * sz), 5.1, 0.9);
     }
   }
@@ -801,8 +826,8 @@ export function overgrowth(d: Dress): void {
       const front = sz > 0 ? N.nz : N.pz;
       ivy(cards, V(46.4 * sx, 0, 14.98 * sz), front, 1.8, 2.7, rng);
       ivy(cards, V(53.2 * sx, 0, 14.98 * sz), front, 1.4, 2.9, rng);
-      edgeRun(d, V(45 * sx, 2.95, 15 * sz), V(54 * sx, 2.95, 15 * sz), front, 1.1, 0.75);
-      edgeRun(d, V(44.98 * sx, 2.95, 15.2 * sz), V(44.98 * sx, 2.95, 20.4 * sz), yard, 0.8, 0.5, false);
+      edgeRun(d, V(45 * sx, 2.95, 15 * sz), V(54 * sx, 2.95, 15 * sz), front, 0.75, 0.75);
+      edgeRun(d, V(44.98 * sx, 2.95, 15.2 * sz), V(44.98 * sx, 2.95, 20.4 * sz), yard, 0.6, 0.5, false);
       roofMat(d, Math.min(45 * sx, 54 * sx), Math.min(15 * sz, 25 * sz), Math.max(45 * sx, 54 * sx), Math.max(15 * sz, 25 * sz), 2.95, 1.6);
       // Carport roof (2.55) creeper + glowing ground cover underneath (shade).
       roofMat(d, Math.min(46 * sx, 54 * sx), Math.min(25 * sz, 31 * sz), Math.max(46 * sx, 54 * sx), Math.max(25 * sz, 31 * sz), 2.56, 1.4);

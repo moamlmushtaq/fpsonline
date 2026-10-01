@@ -158,6 +158,11 @@ export class DecorKit {
   readonly meshes = new Map<Kind, THREE.Mesh>();
   /** Objects added outside batches (signs, water, animated parts) — disposed by dispose(). */
   private readonly extras: THREE.Object3D[] = [];
+  /**
+   * Leafy-mound hook: pastel.ts wires it to the painted leaf-card crowns
+   * (flora.ts); unset, mound() falls back to a plain foliage ball.
+   */
+  leafy: ((x: number, y: number, z: number, rx: number, ry: number, rz: number, tint: RGB) => void) | null = null;
 
   constructor(ctx: DecorContext) {
     this.q = ctx.quality;
@@ -325,6 +330,12 @@ export class DecorKit {
     // Low preset: one tessellation level less (bulbs become octahedra).
     const d = this.low ? (detail === 0 && Math.max(rx, ry, rz) < 0.25 ? -1 : Math.max(0, detail - 1)) : detail;
     this.geo(kind, this.sphereGeo(d), m, color, opts);
+  }
+
+  /** A leafy mound / shrub crown (leaf cards when wired, else a foliage ball). */
+  mound(x: number, y: number, z: number, rx: number, ry: number, rz: number, tint: RGB, opts: AddOpts = {}): void {
+    if (this.leafy) this.leafy(x, y, z, rx, ry, rz, tint);
+    else this.ball('foliage', x, y, z, rx, ry, rz, tint, 1, { drift: 0.2, ...opts });
   }
 
   /** Flat quad from 4 corners (counter-clockwise seen from the front). */

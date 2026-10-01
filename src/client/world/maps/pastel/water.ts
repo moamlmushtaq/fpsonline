@@ -83,6 +83,11 @@ void main() {
   float sp = smoothstep(0.985, 1.0, sin(p.x * 3.1 + t * 1.7) * sin(p.y * 2.7 - t * 1.3));
   col += uSun * sp * 0.25;
   float a = clamp(uOpacity * (0.55 + fres * 0.6) + spec * 0.4, 0.0, 0.96);
+  // Flood inside the mall: denser, and the ripples catch the light in soft
+  // bright / dark bands so the floor reads as water, not wet tiles.
+  float band = dot(g, normalize(vec2(0.6, 0.45))) * 9.0;
+  col *= 1.0 + band * inMall;
+  a = mix(a, clamp(a * 1.28 + abs(band) * 0.15, 0.0, 0.94), inMall);
   // Street puddles feather into the asphalt (aEdge 1 inside → 0 at the rim)
   // and read darker (wet asphalt under a thin film): mostly sky reflection.
   a *= smoothstep(0.0, 0.85, vEdge);

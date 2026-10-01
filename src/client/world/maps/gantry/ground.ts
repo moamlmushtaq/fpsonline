@@ -102,15 +102,14 @@ export function buildGround(kit: DecorKit, rnd: () => number, decor: number): vo
     }
   }
   // Gravel patches and salt-crusted puddles.
+  // (Soft decals since art pass 2: the old hard-edged discs read as pancakes.)
   for (let i = 0; i < Math.round(24 * decor); i++) {
     const x = -62 + rnd() * 26;
     const z = (rnd() - 0.5) * 110;
-    const g = new THREE.CircleGeometry(0.8 + rnd() * 1.8, 9);
-    g.scale(1, 0.6 + rnd() * 0.4, 1);
-    g.rotateX(-Math.PI / 2);
-    g.rotateY(rnd() * Math.PI);
-    g.translate(x, 0.009, z);
-    kit.add('sand', g, rnd() < 0.5 ? ENV.sandLight : '#c4b08e', { flat: true });
+    const r = 0.8 + rnd() * 1.8;
+    const sq = 0.6 + rnd() * 0.4;
+    const rot = rnd() * Math.PI;
+    floorDecal(kit, 'sandRipple', x, 0.002, z, r * 2.6, r * 2.6 * sq, rot, rnd() < 0.5 ? '#ffffff' : '#e2cfa8');
   }
   for (const [x, z, r] of [
     [53, -36, 1.6],

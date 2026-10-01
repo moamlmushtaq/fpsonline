@@ -15,11 +15,10 @@
 //    north faces — the sunset comes from the sea).
 // ─────────────────────────────────────────────────────────────────────────────
 
-import * as THREE from 'three';
 import { GANTRY_PROPS } from '../../../../shared/maps/gantry';
 import { ENV } from '../../../engine/palette';
 import { moss } from './pad';
-import { beam, box, cyl, cylAB, DecorKit, GREENS, rbox, sphere } from './kit';
+import { box, cyl, cylAB, DecorKit } from './kit';
 import {
   barrel,
   barrelGroup,
@@ -85,7 +84,7 @@ export function buildIndustry(kit: DecorKit, rnd: () => number, decor: number): 
     toolCart(kit, 32.75, s * 9.3, -Math.PI / 2, bloom ? '#a3ad8f' : '#9fb4be');
     // Stacked drums and pallets against the yard fence.
     for (const x of [24.5, 52]) {
-      barrelGroup(kit, rnd, x, s * 59.2, 0, 4);
+      barrelGroup(kit, rnd, x, s * 59.2, 0, kit.low ? 2 : 4);
       if (decor > 0.5) {
         pallet3(kit, x, s * 59.2, 0, 1.25, 1.25, 1.02);
         for (const dx of [-0.31, 0.31]) barrel(kit, x + dx, 1.16, s * 59.2 - s * 0.3, BARRELS[Math.floor(rnd() * BARRELS.length)], rnd() * 6, false, rnd());
@@ -221,11 +220,6 @@ export function buildIndustry(kit: DecorKit, rnd: () => number, decor: number): 
   // A couple of drums knocked over in the yards (story: the evacuation).
   barrel(kit, -40.5, 0, -46.2, ENV.terracottaFaded, 0.7, true, 0.7);
   barrel(kit, 37.5, 0, 49.6, ENV.sage, 2.2, true, 0.5);
-  void beam;
-  void rbox;
-  void sphere;
-  void GREENS;
-  void THREE;
 }
 
 const BARRELS = [ENV.terracottaFaded, ENV.sage, ENV.pastelBlue, ENV.bone, '#8e9aa0'];

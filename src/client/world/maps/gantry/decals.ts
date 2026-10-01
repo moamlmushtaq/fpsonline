@@ -198,11 +198,11 @@ function drawScorch(c: C2D, r: Region): void {
     const len = r.w * (0.18 + rnd() * 0.3);
     for (let k = 0; k < 6; k++) {
       const d = (k / 6) * len;
-      dab(c, cx + Math.cos(a) * d, cy + Math.sin(a) * d, 10 + (1 - k / 6) * 10, '#2b2420', 0.16 * (1 - k / 7), 0.45, a);
+      dab(c, cx + Math.cos(a) * d, cy + Math.sin(a) * d, 10 + (1 - k / 6) * 10, '#2b2420', 0.3 * (1 - k / 7), 0.45, a);
     }
   }
-  blob(c, r, '#231e1b', 0.65, 40, 32, 0.12, 0.2);
-  blob(c, r, '#3a312b', 0.35, 60, 33, 0.3, 0.14);
+  blob(c, r, '#231e1b', 0.9, 46, 32, 0.14, 0.22);
+  blob(c, r, '#3a312b', 0.5, 60, 33, 0.3, 0.14);
   // Heat-bleached halo ring with soft rust.
   c.strokeStyle = 'rgba(150,104,76,0.18)';
   c.lineWidth = 9;
@@ -299,8 +299,8 @@ function drawDamp(c: C2D, r: Region): void {
 function drawDrift(c: C2D, r: Region): void {
   clip(c, r);
   const rnd = rng(61);
-  blob(c, r, ENV.sand, 0.5, 70, 62, 0.3, 0.12);
-  blob(c, r, ENV.sandLight, 0.3, 30, 63, 0.24, 0.09);
+  blob(c, r, ENV.sand, 0.36, 70, 62, 0.3, 0.12);
+  blob(c, r, '#cdb48e', 0.22, 30, 63, 0.24, 0.09);
   // Wind ripples: soft darker arcs.
   c.lineCap = 'round';
   for (let i = 0; i < 22; i++) {

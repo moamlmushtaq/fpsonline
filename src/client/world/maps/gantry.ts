@@ -10,9 +10,19 @@
 // and the storytelling props (posters, the frozen countdown, lunch boxes, the
 // radio, the mural of the first launch, the beached rowboat, gulls, windsock).
 //
-// Static dressing is merged per material kind (see gantry/kit.ts) → ~16 draw
-// calls; animated pieces (rocket, arms, dish, flag, windsock, boat, waves,
-// gulls, beacons) are a handful more. Detail scales with quality.decor.
+// Art pass 2 (finished-game density): ground detail (gantry/groundwork.ts:
+// slab patchwork, cracks, scorch, faded floor paint, oil, puddles, sand
+// drifts, cable trays, tyre tracks, debris, wall-foot AO from the engine's
+// contact-shadow blobs), industrial storytelling (gantry/industry.ts +
+// props.ts: vehicles, pipe racks with valves and gauges, hoses, scaffolding,
+// 1970s safety plates, lockers, break benches, glowing fungi), the tunnels
+// (gantry/tunnels.ts) and the shoreline + sea glitter (gantry/coast.ts), with
+// a second decal/plate atlas (gantry/decals.ts).
+//
+// Static dressing is merged per material kind (see gantry/kit.ts) → ~20 draw
+// calls; animated pieces (rocket, arms, dish, flag, windsock, boat, buoy,
+// waves, glitter, gulls, beacons) are a handful more. Detail scales with
+// quality.decor (and a few Low-only simplifications in props.ts).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as THREE from 'three';
@@ -79,7 +89,7 @@ const buildGantry: DecorBuilder = (ctx: DecorContext): MapDecor => {
 
   if (import.meta.env.DEV && typeof location !== 'undefined' && new URLSearchParams(location.search).has('decorStats')) {
     console.info('[gantry] decor tris', kit.meshes.map((m) => `${m.name}:${(m.geometry.attributes.position.count / 3) | 0}`).join(' '));
-    console.info('[gantry] by section', [...kit.sectionTris.entries()].sort((a, b) => b[1] - a[1]).slice(0, 60).map(([k, v]) => `${k}:${v | 0}`).join(' '));
+    console.info('[gantry] by section', [...kit.sectionTris.entries()].sort((a, b) => b[1] - a[1]).slice(0, 16).map(([k, v]) => `${k}:${v | 0}`).join(' '));
   }
 
   // ── The hero rocket ──

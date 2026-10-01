@@ -100,9 +100,9 @@ export class Renderer implements RenderEngine {
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = this.grading.exposure;
-    // PCF (17 hardware-filtered taps) with a per-preset kernel radius
-    // (atmosphere sets sun.shadow.radius): soft, stable painterly penumbrae.
-    // PCFSoft ignores the radius and reads harder at golden-hour lengths.
+    // PCF with a per-preset kernel radius (atmosphere sets sun.shadow.radius);
+    // atmosphere.ts patches its kernel to 5 bilinear taps → soft, stair-free,
+    // stable painterly penumbrae. PCFSoft ignores the radius (harder edges).
     renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.info.autoReset = false;
     renderer.setClearColor(0x000000, 1);

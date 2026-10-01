@@ -29,6 +29,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { MusicState } from '../contracts';
+import type { DrumKey, SampleBank } from './bank';
 import type { AudioCore } from './core';
 import { makeImpulse } from './reverb';
 import { mtof, rand } from './synth';
@@ -229,6 +230,7 @@ export class Music {
   private readonly out: GainNode;
   private readonly layers: Record<Layer, GainNode>;
   private readonly padFilter: BiquadFilterNode;
+  private readonly carve: BiquadFilterNode;
   private readonly wobble: GainNode;
   private readonly chorusWet: GainNode[] = [];
   private readonly hall: ConvolverNode;
@@ -250,6 +252,8 @@ export class Music {
   private lite = false;
   private stopAt = 0;
   private running = false;
+  /** Pre-rendered drum kit (set once the bank is built); null = live synthesis. */
+  bank: SampleBank | null = null;
 
   constructor(core: AudioCore) {
     this.core = core;
@@ -268,7 +272,13 @@ export class Music {
     roll.type = 'lowpass';
     roll.frequency.value = 11000;
     roll.Q.value = 0.5;
-    this.out.connect(tape).connect(roll).connect(core.buses.music);
+    // In matches the score steps out of the 2–6 kHz band where footsteps and
+    // reloads live (−5 dB shelf); menus keep the full sparkle.
+    this.carve = ctx.createBiquadFilter();
+    this.carve.type = 'highshelf';
+    this.carve.frequency.value = 1800;
+    this.carve.gain.value = 0;
+    this.out.connect(tape).connect(roll).connect(this.carve).connect(core.buses.music);
 
     // Hall reverb + ping-pong delay (music never uses the map acoustics).
     this.hall = ctx.createConvolver();
@@ -457,9 +467,14 @@ export class Music {
       start = t + this.stinger(s === 'victory', t + 0.05);
     }
     this.out.gain.setTargetAtTime(STATE_TRIM[s], t, fromOff || prev === 'off' ? 1.2 : 0.5);
+    this.applyCarve(s, t);
     this.nextTime = start;
     if (this.delayNodes.length === 2) this.setDelayTime(this.delayNodes[0], this.delayNodes[1]);
     this.ensureRunning();
+  }
+
+  private applyCarve(s: MusicState, t: number): void {
+    this.carve.gain.setTargetAtTime(s === 'match' || s === 'final' ? -5 : 0, t, 0.8);
   }
 
   private silenceLayers(t: number, tc: number): void {
@@ -567,6 +582,7 @@ export class Music {
     this.sectionIdx = 0;
     this.barInSection = 0;
     this.out.gain.setTargetAtTime(STATE_TRIM[s], t, 0.8);
+    this.applyCarve(s, t);
     if (this.delayNodes.length === 2) this.setDelayTime(this.delayNodes[0], this.delayNodes[1]);
     if (s === 'final') this.crash(t, 1);
     this.sectionStart(t);
@@ -701,20 +717,27 @@ export class Music {
 
   // ── Instruments ─────────────────────────────────────────────────────────
 
-  private osc(type: OscillatorType, f: number, t: number, end: number, dest: AudioNode, detune = 0): OscillatorNode {
+  /**
+   * One oscillator voice. `wobble` routes the tape wobble into its detune —
+   * an audio-rate modulation that is costly per oscillator, so it is used on
+   * sustained voices (pads, lead, stabs) and skipped on short plucks/bass/bells.
+   */
+  private osc(type: OscillatorType, f: number, t: number, end: number, dest: AudioNode, detune = 0, wobble = true): OscillatorNode {
     const o = this.core.ctx.createOscillator();
     o.type = type;
     o.frequency.value = f;
     if (detune) o.detune.value = detune;
-    this.wobble.connect(o.detune);
+    if (wobble) this.wobble.connect(o.detune);
     o.connect(dest);
     o.start(t);
     o.stop(end);
     o.onended = () => {
-      try {
-        this.wobble.disconnect(o.detune);
-      } catch {
-        /* ignore */
+      if (wobble) {
+        try {
+          this.wobble.disconnect(o.detune);
+        } catch {
+          /* ignore */
+        }
       }
       o.disconnect();
     };
@@ -727,7 +750,8 @@ export class Music {
     const bar = (60 / d.bpm) * 4;
     const attack = Math.min(d.padAttack, bar * 0.6);
     const hold = bar;
-    const end = t + hold + d.padRelease;
+    // Stop well after the release has decayed (≈ −50 dB): no click at the end.
+    const end = t + hold + d.padRelease * 1.5;
     const per = 0.24 / Math.sqrt(ch.notes.length);
     const detunes = this.lite ? [0] : [-7, 6];
     for (const n of ch.notes) {
@@ -752,11 +776,11 @@ export class Music {
     g.gain.setTargetAtTime(0, t + dur, 0.25);
     g.connect(this.layers.bass);
     const end = t + dur + 1.3;
-    this.osc('sine', mtof(m - 12), t, end, g);
+    this.osc('sine', mtof(m - 12), t, end, g, 0, false);
     const tri = ctx.createGain();
     tri.gain.value = 0.22;
     tri.connect(g);
-    const o = this.osc('triangle', mtof(m), t, end, tri);
+    const o = this.osc('triangle', mtof(m), t, end, tri, 0, false);
     o.addEventListener('ended', () => {
       tri.disconnect();
       g.disconnect();
@@ -775,9 +799,9 @@ export class Music {
     g.gain.linearRampToValueAtTime(0.5 * acc, t + 0.006);
     g.gain.setTargetAtTime(0, t + dur * 0.6, dur * 0.25);
     lp.connect(g).connect(this.layers.bass);
-    const end = t + dur * 1.8 + 0.05;
-    this.osc('sawtooth', mtof(m), t, end, lp, -4);
-    const o = this.osc('sine', mtof(m - 12), t, end, g);
+    const end = t + dur * 2.1 + 0.05;
+    this.osc('sawtooth', mtof(m), t, end, lp, -4, false);
+    const o = this.osc('sine', mtof(m - 12), t, end, g, 0, false);
     o.addEventListener('ended', () => {
       lp.disconnect();
       g.disconnect();
@@ -797,11 +821,11 @@ export class Music {
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     lp.connect(g).connect(this.layers.arp);
     const end = t + dur + 0.03;
-    this.osc('triangle', mtof(m), t, end, lp);
+    this.osc('triangle', mtof(m), t, end, lp, 0, false);
     const sg = ctx.createGain();
     sg.gain.value = 0.25;
     sg.connect(lp);
-    const o = this.osc('sawtooth', mtof(m), t, end, sg, 5);
+    const o = this.osc('sawtooth', mtof(m), t, end, sg, 5, false);
     o.addEventListener('ended', () => {
       sg.disconnect();
       lp.disconnect();
@@ -823,7 +847,7 @@ export class Music {
     g.gain.setValueAtTime(0, t);
     g.gain.linearRampToValueAtTime(0.4, t + 0.03);
     g.gain.setTargetAtTime(0.3, t + 0.05, 0.2);
-    g.gain.setTargetAtTime(0, t + dur * 0.95, rel / 3);
+    g.gain.setTargetAtTime(0, t + dur * 0.95, rel / 4);
     lp.connect(g).connect(this.layers.lead);
     const end = t + dur + rel + 0.1;
     // Gentle glide up from the previous note's neighbourhood.
@@ -870,7 +894,7 @@ export class Music {
       g.gain.linearRampToValueAtTime(lvl, t + 0.01);
       g.gain.exponentialRampToValueAtTime(0.0001, t + dec);
       g.connect(this.layers.bell);
-      const o = this.osc('sine', mtof(m) * mult, t, t + dec + 0.05, g);
+      const o = this.osc('sine', mtof(m) * mult, t, t + dec + 0.05, g, 0, false);
       o.addEventListener('ended', () => g.disconnect());
     }
   }
@@ -899,7 +923,16 @@ export class Music {
     };
   }
 
+  /** Plays a pre-rendered drum if the bank is ready. */
+  private sample(k: DrumKey, t: number, gain: number, rate = 1): boolean {
+    const buf = this.bank?.drum(k);
+    if (!buf || !this.bank) return false;
+    this.bank.play(buf, k === 'shaker' ? this.layers.perc : this.layers.drums, t, gain, rate);
+    return true;
+  }
+
   private kick(t: number, acc: number): void {
+    if (this.sample('kick', t, acc)) return;
     const ctx = this.core.ctx;
     const o = ctx.createOscillator();
     o.frequency.setValueAtTime(140, t);
@@ -916,6 +949,7 @@ export class Music {
   }
 
   private snare(t: number, acc: number): void {
+    if (this.sample('snare', t, acc, 1 + (Math.random() - 0.5) * 0.04)) return;
     this.noiseHit(this.layers.drums, t, 'bandpass', 1900, 0.7, 0.32 * acc, 0.17);
     this.noiseHit(this.layers.drums, t, 'highpass', 5000, 0.7, 0.1 * acc, 0.09);
     const ctx = this.core.ctx;
@@ -933,18 +967,22 @@ export class Music {
   }
 
   private hat(t: number, lvl: number, open = false): void {
+    if (this.sample(open ? 'hatOpen' : 'hat', t, lvl, 1 + (Math.random() - 0.5) * 0.06)) return;
     this.noiseHit(this.layers.drums, t, 'highpass', 7500, 0.7, 0.13 * lvl, open ? 0.22 : 0.04);
   }
 
   private rim(t: number): void {
+    if (this.sample('rim', t, 1)) return;
     this.noiseHit(this.layers.drums, t, 'bandpass', 2600, 4, 0.22, 0.03);
   }
 
   private shaker(t: number, lvl: number): void {
+    if (this.sample('shaker', t, lvl, 1 + (Math.random() - 0.5) * 0.08)) return;
     this.noiseHit(this.layers.perc, t, 'bandpass', 6200, 1.2, 0.16 * lvl, 0.05, 'white', undefined, 0.012);
   }
 
   private tom(t: number, acc: number): void {
+    if (this.sample('tom', t, 1, acc)) return;
     const ctx = this.core.ctx;
     const o = ctx.createOscillator();
     const f = 180 * acc;
@@ -961,6 +999,7 @@ export class Music {
   }
 
   private crash(t: number, lvl: number): void {
+    if (this.sample('crash', t, lvl)) return;
     this.noiseHit(this.layers.drums, t, 'highpass', 4500, 0.5, 0.12 * lvl, 1.6, 'white', 3000, 0.002);
   }
 

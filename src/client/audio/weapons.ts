@@ -27,8 +27,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { Vec3, WeaponId } from '../../shared/types';
-import type { Spatializer } from './spatial';
+import type { SampleBank, ShotKind } from './bank';
+import type { Route, RouteOpts } from './spatial';
 import { jit, rand, type Synth } from './synth';
+
+/** What the weapon voices need from the spatializer (the bank renders through a dry router). */
+export interface Router {
+  route(pos: Vec3 | undefined, dur: number, opts?: RouteOpts): Route | null;
+}
 
 interface WeaponVoice {
   vol: number;
@@ -64,7 +70,7 @@ const V: Record<WeaponId, WeaponVoice> = {
     casing: 0.5,
   },
   swift: {
-    vol: 0.82,
+    vol: 0.75,
     crack: { f: 4600, q: 0.9, g: 0.7, d: 0.016 },
     body: { f0: 270, f1: 140, drop: 0.03, g: 0.6, d: 0.06, wave: 'triangle', h2: 0 },
     blast: { f0: 3500, f1: 1200, g: 1.2, d: 0.08 },
@@ -80,12 +86,12 @@ const V: Record<WeaponId, WeaponVoice> = {
   },
   longline: {
     vol: 1,
-    crack: { f: 1900, q: 0.6, g: 1.0, d: 0.03 },
-    snap: { f0: 2600, f1: 800, g: 1.1, d: 0.07 },
-    body: { f0: 120, f1: 36, drop: 0.12, g: 0.85, d: 0.32, wave: 'sine', h2: 0.25 },
-    blast: { f0: 1800, f1: 250, g: 1.1, d: 0.25 },
-    formant: { f: 650, q: 0.9, g: 1.5, d: 0.22 },
-    tail: { f0: 1300, f1: 300, g: 0.5, d: 1.3 },
+    crack: { f: 2400, q: 0.6, g: 1.3, d: 0.022 },
+    snap: { f0: 3200, f1: 1200, g: 1.4, d: 0.07 },
+    body: { f0: 140, f1: 45, drop: 0.08, g: 0.7, d: 0.26, wave: 'sine', h2: 0.2 },
+    blast: { f0: 2200, f1: 300, g: 1.0, d: 0.18 },
+    formant: { f: 1400, q: 1.2, g: 1.6, d: 0.16 },
+    tail: { f0: 1400, f1: 300, g: 0.5, d: 1.6 },
     sub: 0.75,
     rev: 0.4,
     echo: 1,
@@ -94,11 +100,11 @@ const V: Record<WeaponId, WeaponVoice> = {
   },
   breaker: {
     vol: 1,
-    crack: { f: 1700, q: 0.6, g: 0.55, d: 0.025 },
-    body: { f0: 95, f1: 30, drop: 0.15, g: 0.95, d: 0.36, wave: 'sine', h2: 0.45 },
+    crack: { f: 1700, q: 0.6, g: 0.35, d: 0.025 },
+    body: { f0: 95, f1: 30, drop: 0.15, g: 0.95, d: 0.36, wave: 'sine', h2: 0.6 },
     blast: { f0: 3000, f1: 400, g: 1.4, d: 0.3 },
-    formant: { f: 480, q: 0.7, g: 1.8, d: 0.24 },
-    tail: { f0: 900, f1: 250, g: 0.45, d: 0.8 },
+    formant: { f: 420, q: 0.8, g: 2.6, d: 0.26 },
+    tail: { f0: 900, f1: 250, g: 0.45, d: 0.65 },
     sub: 0.95,
     rev: 0.3,
     echo: 0.75,
@@ -106,7 +112,7 @@ const V: Record<WeaponId, WeaponVoice> = {
     casing: 0,
   },
   pulse: {
-    vol: 1.15,
+    vol: 0.95,
     crack: { f: 3800, q: 1, g: 0.6, d: 0.012 },
     body: { f0: 260, f1: 120, drop: 0.04, g: 0.45, d: 0.07, wave: 'triangle', h2: 0 },
     blast: { f0: 2600, f1: 900, g: 0.8, d: 0.05 },
@@ -121,9 +127,9 @@ const V: Record<WeaponId, WeaponVoice> = {
   sunspear: {
     vol: 0.85,
     crack: { f: 5200, q: 0.7, g: 0.48, d: 0.04 },
-    body: { f0: 72, f1: 38, drop: 0.2, g: 0.95, d: 0.55, wave: 'sine', h2: 0.3 },
+    body: { f0: 72, f1: 38, drop: 0.2, g: 0.8, d: 0.55, wave: 'sine', h2: 0.3 },
     blast: { f0: 4000, f1: 500, g: 0.5, d: 0.9 },
-    formant: { f: 3000, q: 1.1, g: 0.8, d: 0.35 },
+    formant: { f: 3000, q: 1.1, g: 1.1, d: 0.35 },
     tail: { f0: 2600, f1: 600, g: 0.38, d: 1.2 },
     sub: 0.85,
     rev: 0.45,
@@ -149,10 +155,14 @@ export type ReloadStage = 'start' | 'mag_out' | 'mag_in' | 'chamber' | 'shell';
 
 export class WeaponSfx {
   private readonly s: Synth;
-  private readonly spatial: Spatializer;
+  private readonly spatial: Router;
   private lastShot = new Map<string, number>();
+  /** Pre-rendered takes (set once the bank is built); null = live synthesis. */
+  bank: SampleBank | null = null;
+  /** Audio time of the local player's last shot (hitmarker de-masking). */
+  lastLocalShot = -1;
 
-  constructor(synth: Synth, spatial: Spatializer) {
+  constructor(synth: Synth, spatial: Router) {
     this.s = synth;
     this.spatial = spatial;
   }
@@ -165,7 +175,15 @@ export class WeaponSfx {
   shot(weapon: WeaponId, pos?: Vec3): void {
     const R = V[weapon] ?? V.meridian;
     const local = !pos;
-    const tailLen = R.tail.d * 1.8 + 0.3;
+    // Rapid fire: shorter tails so they don't smear into mush (and fewer live voices).
+    const now = this.s.now;
+    const key = local ? 'local' : `${Math.round(pos.x)}:${Math.round(pos.z)}`;
+    const prev = this.lastShot.get(key) ?? -1;
+    this.lastShot.set(key, now);
+    if (this.lastShot.size > 64) this.lastShot.clear();
+    const rapid = now - prev < 0.14 ? 0.7 : 1;
+    if (local) this.lastLocalShot = now;
+    const tailLen = (R.tail.d * 1.8 + 0.3) * (rapid < 1 ? 0.6 : 1);
     const r = this.spatial.route(pos, tailLen, {
       maxDist: R.maxDist,
       reverb: R.rev,
@@ -174,17 +192,15 @@ export class WeaponSfx {
       prio: local ? 3 : 2,
       ref: 3,
       rolloff: 0.9,
+      // Remote shots are positioned at the shooter's eye (the shot origin).
+      occY: 0,
+      occPull: 0.3,
     });
     if (!r) return;
     const s = this.s;
     const d = r.input;
-    const t = s.now + r.delay + 0.001;
-    // Rapid fire: shorten tails a little so they don't smear into mush.
-    const key = local ? 'local' : `${Math.round(pos.x)}:${Math.round(pos.z)}`;
-    const prev = this.lastShot.get(key) ?? -1;
-    this.lastShot.set(key, t);
-    if (this.lastShot.size > 64) this.lastShot.clear();
-    const rapid = t - prev < 0.14 ? 0.7 : 1;
+    const t = now + r.delay + 0.001;
+    if (this.bank?.ready && this.playTakes(weapon, r, t, local, rapid < 1)) return;
     const fd = local ? 0 : Math.max(0, Math.min(1, (r.dist - 30) / 90));
     const close = local ? 1 : Math.max(0, 1 - r.dist / 14);
     const p = jit(0.035);
@@ -219,6 +235,36 @@ export class WeaponSfx {
     }
   }
 
+  /**
+   * Bank playback: one pre-rendered take (two, crossfaded, between 25 and
+   * 70 m: the close recipe hands over to the distant one), with pitch and
+   * level jitter. Returns false if no take is available.
+   */
+  private playTakes(w: WeaponId, r: Route, t: number, local: boolean, rapid: boolean): boolean {
+    const bank = this.bank;
+    if (!bank) return false;
+    const rate = jit(0.035);
+    const lvl = jit(0.1);
+    const fadeAt = rapid ? t + 0.16 : 0;
+    const one = (kind: ShotKind, g: number): boolean => {
+      const buf = bank.shot(w, kind);
+      if (!buf) return false;
+      const { src, g: gn } = bank.play(buf, r.input, t, g * lvl, rate);
+      if (fadeAt) {
+        gn.gain.setValueAtTime(g * lvl, fadeAt);
+        gn.gain.setTargetAtTime(0, fadeAt, 0.09);
+        src.stop(fadeAt + 0.6);
+      }
+      return true;
+    };
+    if (local) return one('local', 1);
+    const wNear = r.dist <= 25 ? 1 : r.dist >= 70 ? 0 : 1 - (r.dist - 25) / 45;
+    let ok = false;
+    if (wNear > 0.02) ok = one('near', Math.sqrt(wNear)) || ok;
+    if (wNear < 0.98) ok = one('far', Math.sqrt(1 - wNear)) || ok;
+    return ok;
+  }
+
   /** Weapon-specific extra layers. */
   private voiceLayer(w: WeaponId, d: AudioNode, t: number, close: number, fd: number, p: number): void {
     const s = this.s;
@@ -234,7 +280,7 @@ export class WeaponSfx {
       s.tone(d, t, { wave: 'sawtooth', freq: 180 * p, freqEnd: 1500, glide: 0.12, gain: 0.14, decay: 0.2, filter: { type: 'bandpass', freq: 1800, q: 0.9 } });
       s.tone(d, t, { freq: 2600 * p, freqEnd: 3700, glide: 0.3, gain: 0.06, decay: 0.55, vib: [7, 25] });
       s.tone(d, t, { wave: 'sawtooth', freq: 55, gain: 0.2, decay: 0.8, attack: 0.02, filter: { type: 'lowpass', freq: 380 } });
-      s.noise(d, t, { filter: 'highpass', freq: 6000, gain: 0.2 * (1 - 0.6 * fd), decay: 0.4, attack: 0.004 });
+      s.noise(d, t, { filter: 'highpass', freq: 6000, gain: 0.3 * (1 - 0.6 * fd), decay: 0.4, attack: 0.004 });
     } else if (w === 'longline' && close > 0.05) {
       // Long barrel ring-out.
       s.tone(d, t + 0.004, { freq: 1480 * p, gain: 0.025 * close, decay: 0.45 });

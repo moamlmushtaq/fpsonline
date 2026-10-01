@@ -3,8 +3,11 @@
 //
 // Two particle pools (additive + alpha, one draw call each) carry sparks,
 // tracers, dust, petals, shards, embers, smoke puffs… plus a few pooled
-// meshes: crossed-card starburst muzzle flashes, camera-facing Sunspear beam
-// ribbons with afterglow, and throwable projectiles with blinking lights.
+// meshes: crossed-card starburst muzzle flashes (one silhouette per weapon),
+// camera-facing Sunspear beam ribbons with afterglow, and throwable
+// projectiles with blinking lights. The LOCAL player's flash is drawn in the
+// viewmodel overlay (attachOverlay) so the gun never hides it. Every flash and
+// particle is guaranteed at least one rendered frame, even when dt > life.
 // Budgets scale with quality.particles; a single pooled point light adds
 // muzzle/explosion light on the high preset only.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -69,7 +72,8 @@ const TRACER_OF: Record<WeaponId, 'bullet' | 'heavy' | 'pellet'> = {
   sunspear: 'heavy',
 };
 
-const _tc = new THREE.Color();
+const ORIGAMI = [ENV.bone, ENV.pastelPink, ENV.pastelBlue, ENV.pastelYellow];
+const PRISM_HUES = [0.0, 0.14, 0.33, 0.55, 0.75];
 
 /** Parsed palette colors, cached (read-only!): effect events must not allocate. */
 const PAL = new Map<string, THREE.Color>();
@@ -300,6 +304,13 @@ export class EffectsSystem implements Effects {
       this.light = new THREE.PointLight('#ffcf94', 0, 9, 2);
       this.light.name = 'fx.light';
       this.scene.add(this.light);
+    } else if (q.preset !== 'high' && this.light) {
+      // Auto stepped down: an idle point light still costs every lit fragment a
+      // light-loop iteration. (Programs rebuild on this switch anyway: the
+      // shadow settings change with the preset.)
+      this.light.removeFromParent();
+      this.light.dispose();
+      this.light = null;
     }
   }
 
@@ -394,10 +405,12 @@ export class EffectsSystem implements Effects {
     f.mesh.rotation.set(0, 0, rnd() * Math.PI * 2);
     const s = spec.size * scale * rr(0.88, 1.12);
     f.mesh.scale.set(s, s, spec.len * lenScale * rr(0.82, 1.18));
-    f.mat.color.set(spec.color).multiplyScalar(weapon === 'sunspear' ? 4.5 : 3.6);
+    // First person (f.glow set): a little less HDR so the starburst's rays stay
+    // readable through bloom instead of merging into one white ball.
+    f.mat.color.copy(pal(spec.color)).multiplyScalar((weapon === 'sunspear' ? 4.5 : 3.6) * (f.glow ? 0.72 : 1));
     if (f.glow) {
-      f.glow.scale.setScalar(s * 1.25);
-      (f.glow.material as THREE.SpriteMaterial).color.set(spec.color).multiplyScalar(0.55);
+      f.glow.scale.setScalar(s * 0.95);
+      (f.glow.material as THREE.SpriteMaterial).color.copy(pal(spec.color)).multiplyScalar(0.34);
     }
     f.group.visible = true;
     f.t = spec.life;
@@ -418,7 +431,10 @@ export class EffectsSystem implements Effects {
         fp.idx = (fp.idx + 1) % fp.flashes.length;
         // Nudge forward so the starburst blooms just past the muzzle crown.
         _v2.addScaledVector(this.tmp2.normalize(), 0.02);
-        this.showFlash(f, _v2, this.tmp2, weapon, spec, 0.9 * k, 0.6 * k);
+        // The muzzle sits ~0.5–0.8 m from the eye: at third-person scale the
+        // card (+ glow) covered ~40% of the screen height as a white blob.
+        // ~0.6× keeps a crisp, readable starburst that never hides the target.
+        this.showFlash(f, _v2, this.tmp2, weapon, spec, 0.6 * k, 0.5 * k);
         fpDone = true;
       }
     }
@@ -452,7 +468,7 @@ export class EffectsSystem implements Effects {
     if (dist < 0.5) return;
     d.divideScalar(dist);
     // Warm-white core with just a hint of the team color.
-    const tc = _tc.set(teamColors(team).primary);
+    const tc = pal(teamColors(team).primary);
     const r = (1 * 0.9 + tc.r * 0.1) * t.k;
     const g = (0.9 * 0.9 + tc.g * 0.1) * t.k;
     const b = (0.72 * 0.9 + tc.b * 0.1) * t.k;
@@ -521,11 +537,13 @@ export class EffectsSystem implements Effects {
     const hex = SURFACE_DUST[surface] ?? ENV.concrete;
     const c = pal(hex);
     const snow = surface === 'snow';
+    // A tiny warm pop at the hit point so every impact registers, even on soft ground.
+    this.add.spawn({ x: p.x + n.x * 0.03, y: p.y + n.y * 0.03, z: p.z + n.z * 0.03, life: 0.05, size: 0.1, size1: 0.16, r: 1.6, g: 1.35, b: 1, a: 0.8, sprite: SPRITE.glow });
     for (let i = 0; i < this.n(snow ? 7 : 5); i++) {
       const v = cone(rr(0.8, 2.6), 0.5);
       this.alpha.spawn({
         x: p.x + n.x * 0.05, y: p.y + n.y * 0.05, z: p.z + n.z * 0.05, vx: v[0], vy: v[1] + 0.3, vz: v[2],
-        life: rr(0.5, 0.9), size: rr(0.08, 0.14), size1: rr(0.35, 0.6), r: c.r * 1.05, g: c.g * 1.05, b: c.b * 1.05, a: snow ? 0.85 : 0.6, drag: 3.5, sprite: SPRITE.dust, rot: rnd() * 6, spin: rr(-1, 1),
+        life: rr(0.5, 0.9), size: rr(0.12, 0.2), size1: rr(0.38, 0.62), r: c.r * 1.05, g: c.g * 1.05, b: c.b * 1.05, a: snow ? 0.85 : 0.68, drag: 3.5, sprite: SPRITE.dust, rot: rnd() * 6, spin: rr(-1, 1),
       });
     }
     for (let i = 0; i < this.n(4); i++) {
@@ -594,7 +612,7 @@ export class EffectsSystem implements Effects {
           const dx = x - pos.x, dz = z - pos.z;
           const k = rr(2, 2.6);
           this.add.spawn({
-            x, y, z, vx: dx * 0.9 + rr(-0.35, 0.35), vy: rr(0.35, 1.3), vz: dz * 0.9 + rr(-0.35, 0.35), life: rr(1.3, 2.1), size: rr(0.1, 0.19), size1: 0.03,
+            x, y, z, vx: dx * 0.9 + rr(-0.35, 0.35), vy: rr(0.35, 1.3), vz: dz * 0.9 + rr(-0.35, 0.35), life: rr(1.3, 2.1), size: rr(0.13, 0.22), size1: 0.05,
             r: c.r * k, g: c.g * k, b: c.b * k, a: 1, a1: 0, fadeIn: 0.1, drag: 0.9, swirl: 1.8, sprite: SPRITE.petal, rot: rnd() * 6, spin: rr(-2.5, 2.5), flip: rr(2.5, 6),
           });
         }
@@ -619,7 +637,7 @@ export class EffectsSystem implements Effects {
           const sp = rr(1.4, 3.8);
           const w = rr(0.9, 1.02);
           this.alpha.spawn({
-            x, y, z, vx: (dx / l) * sp + rr(-0.4, 0.4), vy: rr(0.6, 3), vz: (dz / l) * sp + rr(-0.4, 0.4), life: rr(1.1, 1.8), size: rr(0.06, 0.14),
+            x, y, z, vx: (dx / l) * sp + rr(-0.4, 0.4), vy: rr(0.6, 3), vz: (dz / l) * sp + rr(-0.4, 0.4), life: rr(1.1, 1.8), size: rr(0.07, 0.15),
             r: w, g: w * 0.98, b: w * 0.95, a: 1, a1: 0, gravity: 6, drag: 1.1, sprite: SPRITE.shard, rot: rnd() * 6, spin: rr(-9, 9), flip: rr(6, 14),
           });
         }
@@ -647,10 +665,10 @@ export class EffectsSystem implements Effects {
         break;
       }
       case 'origami': {
-        const cols = [ENV.bone, ENV.pastelPink, ENV.pastelBlue, ENV.pastelYellow].map((x) => new THREE.Color(x));
+        const cols = ORIGAMI;
         for (let i = 0; i < Math.round(count * 0.6); i++) {
           const [x, y, z] = body();
-          const c = cols[i % cols.length];
+          const c = pal(cols[i % cols.length]);
           this.alpha.spawn({ x, y, z, vx: rr(-1.5, 1.5), vy: rr(0.5, 2), vz: rr(-1.5, 1.5), life: rr(1.2, 1.7), size: rr(0.08, 0.14), r: c.r, g: c.g, b: c.b, a: 1, a1: 0, gravity: 1.5, drag: 1.8, swirl: 2.5, sprite: SPRITE.paper, rot: rnd() * 6, spin: rr(-2, 2), flip: rr(4, 9) });
         }
         break;
@@ -660,14 +678,14 @@ export class EffectsSystem implements Effects {
           const x = pos.x + rr(-0.6, 0.6), z = pos.z + rr(-0.6, 0.6), y = pos.y + h + rr(0.5, 2.5);
           this.add.spawn({ x, y, z, vx: rr(-0.3, 0.3), vy: rr(-5, -2.5), vz: rr(-0.3, 0.3), life: rr(0.5, 1.1), size: rr(0.05, 0.1), r: 3, g: 2.7, b: 1.9, a: 1, sprite: SPRITE.star, rot: rnd() * 3, spin: rr(-4, 4) });
         }
-        this.add.spawn({ x: pos.x, y: pos.y + 0.05, z: pos.z, life: 0.9, size: 0.4, size1: 2.4, r: 2.2, g: 2, b: 1.4, a: 0.8, sprite: SPRITE.ring });
+        this.add.spawn({ x: pos.x, y: pos.y + h * 0.55, z: pos.z, life: 0.9, size: 0.4, size1: 2.2, r: 2.2, g: 2, b: 1.4, a: 0.8, sprite: SPRITE.ring });
         break;
       }
       case 'prism': {
-        const hues = [0.0, 0.14, 0.33, 0.55, 0.75];
+        const hues = PRISM_HUES;
         for (let i = 0; i < Math.round(count * 0.7); i++) {
           const [x, y, z] = body();
-          const c = new THREE.Color().setHSL(hues[i % hues.length], 0.55, 0.72);
+          const c = _c1.setHSL(hues[i % hues.length], 0.55, 0.72);
           this.add.spawn({ x, y, z, vx: rr(-1.8, 1.8), vy: rr(0.2, 1.6), vz: rr(-1.8, 1.8), life: rr(0.9, 1.5), size: rr(0.06, 0.12), r: c.r * 2, g: c.g * 2, b: c.b * 2, a: 1, drag: 2, sprite: SPRITE.prism, rot: rnd() * 6, spin: rr(-5, 5), flip: rr(4, 10) });
         }
         break;
@@ -679,7 +697,16 @@ export class EffectsSystem implements Effects {
     const p = pos;
     this.add.spawn({ x: p.x, y: p.y + 0.3, z: p.z, life: 0.18, size: 2.5, size1: 5.5, r: 3.2, g: 2.4, b: 1.5, sprite: SPRITE.glow });
     this.add.spawn({ x: p.x, y: p.y + 0.3, z: p.z, life: 0.12, size: 1.8, size1: 3, r: 3, g: 2.6, b: 2, sprite: SPRITE.starburst, rot: rnd() * 3 });
-    this.add.spawn({ x: p.x, y: p.y + 0.15, z: p.z, life: 0.45, size: 1, size1: 10, r: 2, g: 1.7, b: 1.2, a: 0.8, sprite: SPRITE.ring });
+    // (No billboard shock ring here: a camera-facing ring cut by the ground read
+    // as a glowing arch. The ground-hugging dust ring below carries the shape.)
+    for (let i = 0; i < this.n(14); i++) {
+      const a = (i / 14) * Math.PI * 2 + rr(-0.15, 0.15);
+      const sp = rr(5, 8);
+      this.alpha.spawn({
+        x: p.x + Math.cos(a) * 0.5, y: p.y + 0.12, z: p.z + Math.sin(a) * 0.5, vx: Math.cos(a) * sp, vy: rr(0.1, 0.5), vz: Math.sin(a) * sp,
+        life: rr(0.7, 1.1), size: rr(0.35, 0.5), size1: rr(1.1, 1.6), r: 0.84, g: 0.76, b: 0.66, a: 0.5, drag: 3.2, sprite: SPRITE.dust, rot: rnd() * 6,
+      });
+    }
     for (let i = 0; i < this.n(22); i++) {
       const a = rnd() * Math.PI * 2;
       const e = rr(0.1, 1);
@@ -706,16 +733,20 @@ export class EffectsSystem implements Effects {
   smokeStart(id: number, pos: THREE.Vector3): void {
     if (this.smokes.has(id)) return;
     const v: SmokeVolume = { id, puffs: [], center: pos.clone(), radius: 0.8, remaining: 99, age: 0, ending: -1 };
-    const peach = new THREE.Color(ENV.pastelPink);
-    const amber = new THREE.Color('#f2c894');
-    const n = this.n(22);
+    const peach = pal(ENV.pastelPink);
+    const amber = pal('#f2c894');
+    const cream = pal('#f6e3c4');
+    const n = this.n(28);
     for (let i = 0; i < n; i++) {
-      const c = peach.clone().lerp(amber, rnd());
       const u = rnd() * Math.PI * 2;
       const r = Math.sqrt(rnd());
-      const slot = this.alpha.spawn({ x: pos.x, y: pos.y, z: pos.z, life: 1, size: 1, r: c.r, g: c.g, b: c.b, a: 0, a1: 0, sprite: SPRITE.smoke, rot: rnd() * 6 }, true);
+      const oy = rr(0.05, 0.95);
+      // Painted volume: sunlit cream crowns over warm peach/amber bellies.
+      const c = _c1.copy(peach).lerp(amber, rnd() * 0.7).lerp(cream, oy * 0.6);
+      const k = 0.86 + oy * 0.2;
+      const slot = this.alpha.spawn({ x: pos.x, y: pos.y, z: pos.z, life: 1, size: 1, r: c.r * k, g: c.g * k, b: c.b * k, a: 0, a1: 0, sprite: SPRITE.smoke, rot: rnd() * 6 }, true);
       if (slot < 0) break;
-      v.puffs.push({ slot, ox: Math.cos(u) * r, oy: rr(0.05, 0.9), oz: Math.sin(u) * r, ph: rnd() * 6, s: rr(0.8, 1.25) });
+      v.puffs.push({ slot, ox: Math.cos(u) * r, oy, oz: Math.sin(u) * r, ph: rnd() * 6, s: rr(0.8, 1.25) });
     }
     this.smokes.set(id, v);
     // Pop + ring.
@@ -744,7 +775,7 @@ export class EffectsSystem implements Effects {
       if (v.ending >= 0) v.ending -= dt;
       const fadeIn = Math.min(1, v.age / 0.8);
       const fadeOut = v.ending >= 0 ? Math.max(0, v.ending / 1.2) : Math.min(1, v.remaining / 2.5);
-      const a = 0.55 * fadeIn * fadeOut;
+      const a = 0.7 * fadeIn * fadeOut;
       for (const p of v.puffs) {
         const ang = v.age * 0.12 + p.ph;
         const cs = Math.cos(ang * 0.3), sn = Math.sin(ang * 0.3);
@@ -820,7 +851,7 @@ export class EffectsSystem implements Effects {
 
   spawnFlash(pos: Vec3, team: Team): void {
     const c = pal(teamColors(team).primary);
-    this.add.spawn({ x: pos.x, y: pos.y + 0.05, z: pos.z, life: 0.6, size: 0.4, size1: 2.2, r: c.r * 1.6, g: c.g * 1.6, b: c.b * 1.6, a: 0.8, sprite: SPRITE.ring });
+    this.add.spawn({ x: pos.x, y: pos.y + 1, z: pos.z, life: 0.6, size: 0.5, size1: 2.6, r: c.r * 1.6, g: c.g * 1.6, b: c.b * 1.6, a: 0.7, sprite: SPRITE.ring });
     this.add.spawn({ x: pos.x, y: pos.y + 1, z: pos.z, life: 0.5, size: 1.6, size1: 2.2, r: c.r * 0.9, g: c.g * 0.9, b: c.b * 0.9, a: 0.5, sprite: SPRITE.glow });
     for (let i = 0; i < this.n(18); i++) {
       const a = rnd() * Math.PI * 2;

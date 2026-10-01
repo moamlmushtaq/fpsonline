@@ -439,14 +439,26 @@ export class UI implements UIManager {
       this.sfx('hover');
       return true;
     }
-    const a = active.getBoundingClientRect();
+    const vertical = dir === 'up' || dir === 'down';
+    // Settings-style rows: moving up/down treats a control as its whole row, so the
+    // cursor walks row by row instead of jumping to whatever sits under the label.
+    // The menu's tutorial nudge counts as a row too (its button sits at the far end, where
+    // start-edge alignment never picked it, so pads couldn't reach "Start tutorial").
+    const ROWS = '.row, .nudge';
+    const rect = (el: HTMLElement) => ((vertical ? el.closest(ROWS) : null) ?? el).getBoundingClientRect();
+    const a = rect(active);
+    const activeRow = vertical ? active.closest(ROWS) : null;
     const ax = a.left + a.width / 2;
     const ay = a.top + a.height / 2;
+    const rtl = i18n.dir === 'rtl';
+    const own = active.getBoundingClientRect();
+    const ownX = own.left + own.width / 2;
     let best: HTMLElement | null = null;
     let bestScore = Infinity;
     for (const el of items) {
       if (el === active) continue;
-      const r = el.getBoundingClientRect();
+      if (activeRow && el.closest(ROWS) === activeRow) continue;
+      const r = rect(el);
       const cx = r.left + r.width / 2;
       const cy = r.top + r.height / 2;
       let primary: number;
@@ -456,28 +468,35 @@ export class UI implements UIManager {
         case 'right':
           primary = r.left - a.right;
           if (cx <= ax + 1) continue;
-          ortho = Math.abs(cy - ay);
+          ortho = Math.min(Math.abs(cy - ay), Math.abs(r.top - a.top));
           overlap = r.bottom > a.top && r.top < a.bottom;
           break;
         case 'left':
           primary = a.left - r.right;
           if (cx >= ax - 1) continue;
-          ortho = Math.abs(cy - ay);
+          ortho = Math.min(Math.abs(cy - ay), Math.abs(r.top - a.top));
           overlap = r.bottom > a.top && r.top < a.bottom;
           break;
         case 'down':
           primary = r.top - a.bottom;
           if (cy <= ay + 1) continue;
-          ortho = Math.abs(cx - ax);
+          // From a wide element (PLAY, a row) prefer the item aligned with its start edge.
+          ortho = Math.min(Math.abs(cx - ax), rtl ? Math.abs(r.right - a.right) : Math.abs(r.left - a.left));
           overlap = r.right > a.left && r.left < a.right;
           break;
         default:
           primary = a.top - r.bottom;
           if (cy >= ay - 1) continue;
-          ortho = Math.abs(cx - ax);
+          ortho = Math.min(Math.abs(cx - ax), rtl ? Math.abs(r.right - a.right) : Math.abs(r.left - a.left));
           overlap = r.right > a.left && r.left < a.right;
       }
-      const score = Math.max(0, primary) + ortho * (overlap ? 0.3 : 2.2);
+      let score = Math.max(0, primary) + ortho * (overlap ? 0.3 : 2.2);
+      // Row-to-row moves tie on the row rect: keep the column (a key binding's second
+      // slot goes to the next row's second slot, not back to the first).
+      if (vertical && activeRow) {
+        const o = el.getBoundingClientRect();
+        score += Math.abs(o.left + o.width / 2 - ownX) * 0.01;
+      }
       if (score < bestScore) {
         bestScore = score;
         best = el;

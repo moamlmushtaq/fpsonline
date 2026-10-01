@@ -9,7 +9,9 @@
 //    stick never "runs out".
 //  • Right side: drag anywhere free to aim (the hub shapes it with an
 //    acceleration curve + adaptive smoothing). FIRE also aims while held and
-//    dragged. With several aim fingers down, the newest one owns the view.
+//    dragged. With several aim fingers down, the one that moved most recently
+//    owns the view: a claw-grip index finger resting on FIRE never freezes
+//    the aiming thumb, and a fresh drag takes over at once.
 //  • Buttons (positions from settings.touchLayout, see touch-layout.ts):
 //      FIRE (hold) · AIM (tap = toggle, hold = momentary) · JUMP
 //      CROUCH (tap = toggle, hold = momentary, tap while sprinting = slide)
@@ -22,7 +24,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { Action, Settings } from '../contracts';
-import { t } from '../ui/i18n';
+import { i18n, t } from '../ui/i18n';
 import { shapeStick, TOUCH_STICK, type Shaped } from './curves';
 import {
   buttonMarkup,
@@ -53,6 +55,8 @@ const SPRINT_ZONE = 1.12;
 const FOLLOW = 1.6;
 /** Directions within this angle of straight ahead snap to it (running straight is easy). */
 const SNAP_FWD = (9 * Math.PI) / 180;
+/** A resting aim finger must travel this far (px) to take the view from the current owner. */
+const TAKEOVER_PX = 6;
 /** Share of the screen width (left) that spawns the joystick. */
 const STICK_ZONE = 0.42;
 
@@ -105,6 +109,7 @@ export class TouchControls {
   private visible = false;
   private enabled = false;
   private layoutKey: unknown = null;
+  private layoutRtl = false;
   private w = 1;
   private h = 1;
   private ox = 0;
@@ -123,8 +128,8 @@ export class TouchControls {
   private lastLeftTap = 0;
   private readonly shaped: Shaped = { x: 0, y: 0, m: 0 };
   private stickCls = '';
-  // Aim fingers (id → last position); `lookId` owns the view.
-  private readonly aims = new Map<number, { x: number; y: number }>();
+  // Aim fingers (id → last position + takeover anchor); `lookId` owns the view.
+  private readonly aims = new Map<number, { x: number; y: number; ax: number; ay: number }>();
   private lookId: number | null = null;
   private readonly presses = new Map<number, Press>();
   private slideHold = 0;
@@ -245,10 +250,12 @@ export class TouchControls {
 
   private applyLayout(force = false): void {
     const s = this.sink.settings();
-    if (!force && s.touchLayout === this.layoutKey) return;
+    const rtl = i18n.dir === 'rtl';
+    if (!force && s.touchLayout === this.layoutKey && rtl === this.layoutRtl) return;
     this.layoutKey = s.touchLayout;
+    this.layoutRtl = rtl;
     this.root.style.opacity = String(Math.max(0.15, Math.min(1, s.touchOpacity)));
-    const placed = resolveLayout(s.touchLayout, this.w, this.h, this.safe);
+    const placed = resolveLayout(s.touchLayout, this.w, this.h, this.safe, rtl);
     for (const b of this.buttons) {
       const p = placed.get(b.def.id);
       if (!p) continue;
@@ -287,11 +294,17 @@ export class TouchControls {
   }
 
   private paintStickState(idle: boolean): void {
-    const cls = idle ? 'stick idle' : `stick live${this.sprinting ? ' sprint' : ''}${this.sprintLock ? ' locked' : ''}`;
-    if (cls !== this.stickCls) {
-      this.stickCls = cls;
-      this.stick.className = cls;
-    }
+    const sprint = !idle && this.sprinting;
+    const locked = !idle && this.sprintLock;
+    const key = `${idle ? 1 : 0}${sprint ? 1 : 0}${locked ? 1 : 0}`;
+    if (key === this.stickCls) return;
+    this.stickCls = key;
+    // classList (not className): other systems (the tutorial pulse) add their own classes.
+    const cl = this.stick.classList;
+    cl.toggle('idle', idle);
+    cl.toggle('live', !idle);
+    cl.toggle('sprint', sprint);
+    cl.toggle('locked', locked);
   }
 
   // ── State exposed to the hub ─────────────────────────────────────────────
@@ -485,7 +498,7 @@ export class TouchControls {
     const dist = b.r + 46;
     const side = Math.cos(base) < 0 ? -1 : 1;
     for (let i = 0; i < 3; i++) {
-      const a = base + (i - 1) * 0.85 - up * side;
+      const a = base + (i - 1) * 0.85 + up * side;
       const px = Math.max(this.safe.l + 34, Math.min(this.w - this.safe.r - 34, b.x + Math.cos(a) * dist));
       const py = Math.max(this.safe.t + 34, Math.min(this.h - this.safe.b - 34, b.y + Math.sin(a) * dist));
       this.petalPos[i * 2] = px;
@@ -559,10 +572,8 @@ export class TouchControls {
       const b = this.hit(x, y);
       if (b) {
         this.press(b, id);
-        if (b.def.id === 'fire') {
-          this.aims.set(id, { x, y });
-          this.lookId = id;
-        }
+        // FIRE aims while held, but a claw-grip press must not freeze the thumb that is aiming.
+        if (b.def.id === 'fire') this.addAim(id, x, y, this.lookId === null);
         continue;
       }
       if (x < this.w * STICK_ZONE && this.stickId === null) {
@@ -577,12 +588,25 @@ export class TouchControls {
         this.updateStick(x, y);
         continue;
       }
-      if (x >= this.w * 0.28) {
-        this.aims.set(id, { x, y });
-        this.lookId = id;
-      }
+      if (x >= this.w * 0.28) this.addAim(id, x, y);
     }
   };
+
+  /** A new aim finger; a fresh drag on free space owns the view straight away (it is intent). */
+  private addAim(id: number, x: number, y: number, own = true): void {
+    this.aims.set(id, { x, y, ax: x, ay: y });
+    if (own) this.setLookOwner(id);
+  }
+
+  /** Hands the view to `id`; the others must move TAKEOVER_PX from here to take it back. */
+  private setLookOwner(id: number | null): void {
+    this.lookId = id;
+    for (const [k, a] of this.aims) {
+      if (k === id) continue;
+      a.ax = a.x;
+      a.ay = a.y;
+    }
+  }
 
   private updateStick(x: number, y: number): void {
     const r = this.stickHome.r;
@@ -637,6 +661,9 @@ export class TouchControls {
       }
       const a = this.aims.get(id);
       if (a) {
+        // A resting finger (claw-grip FIRE) never steals the view from the moving
+        // thumb; once it really moves, it takes over (the most recent mover aims).
+        if (id !== this.lookId && Math.abs(x - a.ax) + Math.abs(y - a.ay) > TAKEOVER_PX) this.setLookOwner(id);
         if (id === this.lookId) this.sink.touchLookPx(x - a.x, y - a.y);
         a.x = x;
         a.y = y;
@@ -666,7 +693,7 @@ export class TouchControls {
       // Hand the view to the most recent remaining aim finger (positions are current: no jump).
       let next: number | null = null;
       for (const k of this.aims.keys()) next = k;
-      this.lookId = next;
+      this.setLookOwner(next);
     }
   }
 

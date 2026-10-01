@@ -201,3 +201,55 @@ describe('rebinding', () => {
     expect(s.value.bindings.fire.keys).toEqual([]);
   });
 });
+
+describe('default touch layout', () => {
+  // touch-layout.ts uses DOM types (safe-area probe), which the node tsconfig that type-checks
+  // tests/ doesn't include: import it through a non-literal path and type just what is used.
+  type Placed = { id: string; x: number; y: number; r: number };
+  type LayoutMod = {
+    NO_INSETS: { l: number; r: number; t: number; b: number };
+    resolveLayout(c: Record<string, never>, w: number, h: number, safe: LayoutMod['NO_INSETS'], rtl?: boolean): Map<string, Placed>;
+  };
+  const LAYOUT_PATH = '../../src/client/input/touch-layout';
+  const load = (): Promise<LayoutMod> => import(/* @vite-ignore */ LAYOUT_PATH) as Promise<LayoutMod>;
+  const VPS: [number, number][] = [
+    [667, 375],
+    [844, 390],
+    [932, 430],
+    [1024, 768],
+    [1180, 820],
+  ];
+  it('no two controls overlap and all are ≥ 48 px on phones and tablets (LTR + RTL)', async () => {
+    const { resolveLayout, NO_INSETS } = await load();
+    for (const [w, h] of VPS) {
+      for (const rtl of [false, true]) {
+        const placed = [...resolveLayout({}, w, h, NO_INSETS, rtl).values()];
+        for (const a of placed) {
+          expect(a.r * 2).toBeGreaterThanOrEqual(48);
+          for (const b of placed) {
+            if (a === b) continue;
+            expect(Math.hypot(a.x - b.x, a.y - b.y), `${w}x${h} ${a.id}/${b.id}`).toBeGreaterThan(a.r + b.r - 2);
+          }
+        }
+      }
+    }
+  });
+  it('INTERACT sits clear of the centred HUD pickup prompt (62 % height)', async () => {
+    const { resolveLayout, NO_INSETS } = await load();
+    for (const [w, h] of VPS) {
+      const it = resolveLayout({}, w, h, NO_INSETS).get('interact')!;
+      // Prompt pill: ~180 px wide, ~26 px tall, centred at (50 %, 62 %).
+      const box = { l: w / 2 - 90, r: w / 2 + 90, t: h * 0.62 - 2, b: h * 0.62 + 26 };
+      const cx = Math.max(box.l, Math.min(it.x, box.r));
+      const cy = Math.max(box.t, Math.min(it.y, box.b));
+      expect(Math.hypot(it.x - cx, it.y - cy), `${w}x${h}`).toBeGreaterThan(it.r);
+    }
+  });
+  it('PAUSE / SCOREBOARD follow the HUD vitals to the right in RTL', async () => {
+    const { resolveLayout, NO_INSETS } = await load();
+    const ltr = resolveLayout({}, 844, 390, NO_INSETS, false).get('pause')!;
+    const rtl = resolveLayout({}, 844, 390, NO_INSETS, true).get('pause')!;
+    expect(ltr.x).toBeLessThan(844 / 2);
+    expect(rtl.x).toBeGreaterThan(844 / 2);
+  });
+});

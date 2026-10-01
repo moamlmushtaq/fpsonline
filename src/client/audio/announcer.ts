@@ -10,8 +10,8 @@
 // Queue rules:
 //   priority  victory/defeat/draw > final minute > training/launch/match start
 //             > zones > lead changes > streaks / first elimination
-//   interrupt a line of priority ≥ 70 cuts off a lower (< 50) line mid-sentence
-//   ending    victory/defeat/draw flush everything else
+//   interrupt a line of priority ≥ 70 cuts off a routine (≤ 50) line mid-sentence
+//   ending    victory/defeat/draw flush everything else and cut off any line
 //   staleness low-priority lines expire after ~2.5 s in the queue
 //   cooldowns per key (e.g. "Zone contested" at most every 10 s) and a small
 //             global gap, so callouts never chatter.
@@ -169,7 +169,10 @@ export class VoiceAnnouncer implements Announcer {
       // The match is over: nothing else matters.
       this.queue = [];
     }
-    if (this.speaking && prio >= 70 && this.speaking.prio < 50) {
+    // Interrupt: the match result cuts off anything; final minute / match
+    // start cut off routine callouts (zones, streaks).
+    const cur = this.speaking;
+    if (cur && ((prio >= 100 && cur.prio < 100) || (prio >= 70 && cur.prio <= 50))) {
       this.queue.unshift(item);
       this.interrupt();
       return;

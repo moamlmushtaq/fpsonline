@@ -49,6 +49,8 @@ export class ResultsScreen extends BaseScreen {
     totalEl: HTMLElement;
     amounts: number[];
     sum: number;
+    metaInto: number;
+    metaLevel: number;
   } | null = null;
   /** Wall clock for the reveal: the sequence keeps its pace even when frames are slow. */
   private lastNow = 0;
@@ -82,7 +84,8 @@ export class ResultsScreen extends BaseScreen {
       else {
         titleKey = a.won ? 'results.victory' : 'results.defeat';
         color = teamColors(r.winner === 2 ? myTeam : r.winner).primary;
-        subKey = 'results.teamWins';
+        // Control: the winners hold the launch towers; TDM is a straight firefight.
+        subKey = r.mode === 'control' ? 'results.teamWins' : 'results.teamWins.tdm';
         subParams = { team: i18n.t(`common.team.${r.winner}`) };
       }
     } else {
@@ -147,8 +150,9 @@ export class ResultsScreen extends BaseScreen {
     }
 
     // ── XP panel: lines tick in, then the bar fills; a level-up swaps in a reveal with the unlocks.
-    const totalEl = h('b', { class: 'xp-head__total', text: '+0 XP' });
-    const xpHead = h('div', { class: 'xp-head' }, sectionLabel('results.xp'), totalEl);
+    // Number in mono (LTR-isolated) + the localized unit, so Arabic reads "+3,002 خبرة".
+    const totalEl = h('span', { class: 'mono', text: '+0' });
+    const xpHead = h('div', { class: 'xp-head' }, sectionLabel('results.xp'), h('b', { class: 'xp-head__total' }, totalEl, ' ', h('span', { class: 'xp-unit', t: 'common.xp' })));
     const xpPanel = h('div', { class: 'xp-panel panel ticks' }, xpHead);
     const lines: HTMLElement[] = [];
     const linesWrap = h('div', { class: 'xp-lines' });
@@ -243,6 +247,8 @@ export class ResultsScreen extends BaseScreen {
       totalEl,
       amounts: a.xp.lines.map((l) => l.amount),
       sum: 0,
+      metaInto: -1,
+      metaLevel: a.before.level,
     };
     this.lastNow = performance.now();
     this.app.audio?.setMusic(range ? 'menu' : a.won ? 'victory' : r.draw ? 'menu' : 'defeat');
@@ -254,7 +260,7 @@ export class ResultsScreen extends BaseScreen {
     table.append(h('thead', {}, head));
     const tbody = h('tbody');
     const row = (p: PlayerResult) => {
-      const name = h('td', { text: p.name });
+      const name = h('td', {}, h('bdi', { text: p.name }));
       if (p.isBot) name.append(h('span', { class: 'sb-bot', t: 'common.bot' }));
       if (p.id === r.mvp) name.insertAdjacentHTML('afterbegin', `<span style="color:var(--c-headshot);margin-inline-end:.3rem">${icon('crown')}</span>`);
       return h('tr', { class: p.id === you ? 'is-you' : '' }, name, h('td', { text: String(p.stats.kills) }), h('td', { text: String(p.stats.deaths) }), h('td', { text: String(p.stats.assists) }), h('td', { text: String(p.stats.score) }));
@@ -284,10 +290,11 @@ export class ResultsScreen extends BaseScreen {
         while (A.lineIdx < A.lines.length && A.t >= A.lineIdx * 0.26) {
           A.lines[A.lineIdx].classList.add('is-in');
           A.sum += A.amounts[A.lineIdx] ?? 0;
-          A.totalEl.textContent = `+${i18n.num(Math.max(0, A.sum))} XP`;
-          A.totalEl.classList.remove('is-bump');
-          void A.totalEl.offsetWidth; // restart the bump (a handful of times per results screen)
-          A.totalEl.classList.add('is-bump');
+          A.totalEl.textContent = `+${i18n.num(Math.max(0, A.sum))}`;
+          const total = A.totalEl.parentElement;
+          total?.classList.remove('is-bump');
+          void total?.offsetWidth; // restart the bump (a handful of times per results screen)
+          total?.classList.add('is-bump');
           this.app.audio?.ui('xpTick');
           A.lineIdx++;
         }
@@ -326,6 +333,13 @@ export class ResultsScreen extends BaseScreen {
       const needed = info.needed || xpForLevel(info.level);
       const frac = info.needed > 0 ? info.into / needed : 1;
       A.fill.style.transform = `scaleX(${frac})`;
+      // The readout counts with the bar (badge, "into / needed" and next level stay in sync).
+      const into = Math.floor(info.into);
+      if (into !== A.metaInto || info.level !== A.metaLevel) {
+        A.metaInto = into;
+        A.metaLevel = info.level;
+        A.meta.replaceChildren(...xpMeta(info));
+      }
       A.tickAt -= dt;
       if (A.tickAt <= 0 && A.xpNow < A.xpTo) {
         A.tickAt = 0.07;
@@ -341,7 +355,11 @@ export class ResultsScreen extends BaseScreen {
     if (A.phase === 'unlocks') {
       if (A.t >= 0.4 * A.unlockIdx + 0.3 && A.unlockIdx < Math.min(A.unlocks.length, 8)) {
         const u = A.unlocks[A.unlockIdx++];
-        A.unlockEl.append(unlockCard(u));
+        const card = unlockCard(u);
+        A.unlockEl.append(card);
+        // The reveal lands below the fold of the stats column at 720p: bring each card into view.
+        const col = A.unlockEl.closest('.res-col') as HTMLElement | null;
+        requestAnimationFrame(() => col?.scrollTo?.({ top: col.scrollHeight, behavior: 'smooth' }));
         this.app.audio?.ui('unlock');
       }
       if (A.unlockIdx >= Math.min(A.unlocks.length, 8)) A.phase = 'done';
@@ -356,8 +374,11 @@ export class ResultsScreen extends BaseScreen {
 
 /** "into / needed" + next level (or the max-level note). */
 function xpMeta(info: { level: number; into: number; needed: number }): HTMLElement[] {
-  if (info.needed <= 0 || info.level >= MAX_LEVEL) return [h('span', { class: 'mono', t: 'common.maxLevel' }), h('span', { t: 'common.levelN', params: { n: info.level } })];
-  return [h('span', { class: 'mono', text: `${i18n.num(info.into)} / ${i18n.num(info.needed)} XP` }), h('span', { t: 'common.levelN', params: { n: info.level + 1 } })];
+  if (info.needed <= 0 || info.level >= MAX_LEVEL) return [h('span', { t: 'common.maxLevel' }), h('span', { t: 'common.levelN', params: { n: info.level } })];
+  return [
+    h('span', {}, h('span', { class: 'mono', text: `${i18n.num(Math.floor(info.into))} / ${i18n.num(info.needed)}` }), ' ', h('span', { t: 'common.xp' })),
+    h('span', { t: 'common.levelN', params: { n: info.level + 1 } }),
+  ];
 }
 
 const UNLOCK_KIND_ICON: Record<Unlock['kind'], IconName> = { armor: 'customize', visor: 'visor', namecard: 'card', elimFx: 'sparkle', skin: 'palette' };

@@ -74,7 +74,7 @@ export class ProfileScreen extends BaseScreen {
     });
     const dice = iconButton({ icon: 'dice', label: 'profile.randomName', onClick: () => this.app.profile.randomizeName() });
     const tier = h('span', { class: 'tier', html: icon('star') });
-    tier.append(h('span', { t: `profile.tier.${ratingTier(p.rating)}` }), h('span', { class: 'mono faint', text: `· ${Math.round(p.rating)}` }));
+    tier.append(h('span', { t: `profile.tier.${ratingTier(p.rating)}` }), h('span', { class: 'faint', text: '·' }), h('span', { class: 'mono faint', text: String(Math.round(p.rating)) }));
     const xpText = h('div', { class: 'profile-hero__xp' });
     if (info.needed > 0) setText(xpText, 'profile.xpToNext', { n: info.needed - info.into, level: info.level + 1 });
     else setText(xpText, 'profile.maxLevel');

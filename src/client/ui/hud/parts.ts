@@ -159,6 +159,7 @@ interface ObjSlot {
   prog: number;
   d: number;
   visible: boolean;
+  near: boolean;
 }
 
 const RING_R = 15;
@@ -199,6 +200,7 @@ export class ObjectiveMarkers {
       prog: -1,
       d: -1,
       visible: false,
+      near: false,
     };
     this.slots.push(s);
     return s;
@@ -223,7 +225,10 @@ export class ObjectiveMarkers {
       const key = `${o.kind}|${o.label}|${o.color}|${o.offscreen ? 1 : 0}|${o.pulse ? 1 : 0}`;
       if (key !== s.key) {
         s.key = key;
-        s.el.className = `obj ${o.offscreen ? 'is-off' : ''} ${o.pulse ? 'is-pulse' : ''}`;
+        // Friendlies are small chevrons without a distance readout (four teammates' "58m" labels
+        // crowding the crosshair read as objectives); zones / pickups keep their distance.
+        s.el.className = `obj obj--${o.kind} ${o.offscreen ? 'is-off' : ''} ${o.pulse ? 'is-pulse' : ''}`;
+        s.near = false;
         s.el.style.setProperty('--oc', o.color);
         s.letter.textContent = o.kind === 'zone' ? o.label.slice(0, 1) : o.kind === 'pickup' ? '◆' : '';
         const pts = o.kind === 'pickup' ? '0,-13 13,0 0,13 -13,0' : o.kind === 'friendly' ? '0,-9 9,6 -9,6' : '0,-13 11.3,-6.5 11.3,6.5 0,13 -11.3,6.5 -11.3,-6.5';
@@ -244,6 +249,12 @@ export class ObjectiveMarkers {
             s.arrow.style.transform = `rotate(${deg}deg) translateX(1.35em)`;
           }
         }
+      }
+      // Markers drifting over the crosshair fade so they never hide a target.
+      const near = !o.offscreen && Math.hypot(x - vw / 2, y - vh / 2) < Math.min(vw, vh) * 0.11;
+      if (near !== s.near) {
+        s.near = near;
+        s.el.classList.toggle('is-near', near);
       }
       const p = Math.round(Math.max(0, Math.min(1, o.progress)) * 100) / 100;
       if (p !== s.prog) {
@@ -297,7 +308,8 @@ export class ScoreboardView {
     table.append(h('thead', {}, h('tr', {}, ...cols.map((c) => h('th', { t: c })))));
     const body = h('tbody');
     for (const r of [...rows].sort((a, b) => b.score - a.score || b.kills - a.kills)) {
-      const name = h('td', {}, h('span', { class: 'mono faint', style: 'margin-inline-end:.4em', text: String(r.level) }), r.name);
+      // Level + name + bot tag as isolated runs so Latin names never fuse with the level in RTL.
+      const name = h('td', {}, h('span', { class: 'sb-lvl', text: String(r.level) }), h('bdi', { text: r.name }));
       if (r.isBot) name.append(h('span', { class: 'sb-bot', t: 'common.bot' }));
       const tr = h('tr', { class: `${r.local ? 'is-you' : ''} ${r.alive ? '' : 'is-dead'}` }, name, h('td', { text: String(r.kills) }), h('td', { text: String(r.deaths) }), h('td', { text: String(r.assists) }));
       if (mode === 'control') tr.append(h('td', { text: `${Math.round(r.objectiveTime)}s` }));

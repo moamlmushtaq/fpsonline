@@ -63,7 +63,8 @@ export interface SafeInsets {
 
 export const NO_INSETS: SafeInsets = { l: 0, r: 0, t: 0, b: 0 };
 
-type Anchor = { h: 'l' | 'r'; v: 't' | 'b'; x: number; y: number };
+/** h: 'l' / 'r' screen sides, or 's' = the HUD's inline-start side (left in LTR, right in RTL). */
+type Anchor = { h: 'l' | 'r' | 's'; v: 't' | 'b'; x: number; y: number };
 
 /**
  * Default placement in base units (px at base scale 1), measured from the
@@ -76,11 +77,15 @@ const ANCHORS: Record<string, Anchor> = {
   ads: { h: 'r', v: 'b', x: 40, y: 156 },
   reload: { h: 'r', v: 'b', x: 226, y: 62 },
   throw: { h: 'r', v: 'b', x: 232, y: 146 },
-  swap: { h: 'r', v: 'b', x: 150, y: 204 },
-  interact: { h: 'r', v: 'b', x: 320, y: 124 },
-  // Below the vitals (the touch HUD puts health top-left), above the joystick zone.
-  pause: { h: 'l', v: 't', x: 36, y: 116 },
-  scoreboard: { h: 'l', v: 't', x: 94, y: 116 },
+  // A touch lower than the kill feed's fifth row on a 667×375 phone.
+  swap: { h: 'r', v: 'b', x: 150, y: 198 },
+  // Directly above THROW: in the thumb's reach, and clear of the HUD's centred
+  // pickup prompt (at 62 % height) that it answers — it used to sit on top of it.
+  interact: { h: 'r', v: 'b', x: 232, y: 224 },
+  // Below the vitals (the touch HUD puts health at the top inline-start corner, so
+  // these follow it to the right in RTL, clear of the mirrored ammo + kill feed).
+  pause: { h: 's', v: 't', x: 36, y: 116 },
+  scoreboard: { h: 's', v: 't', x: 94, y: 116 },
   stick: { h: 'l', v: 'b', x: 150, y: 120 },
 };
 
@@ -90,14 +95,15 @@ export function baseScale(w: number, h: number): number {
 }
 
 /** The default layout for a viewport, normalised to its safe area. */
-export function defaultLayoutFor(w: number, h: number, safe: SafeInsets = NO_INSETS): Record<string, { x: number; y: number; s: number }> {
+export function defaultLayoutFor(w: number, h: number, safe: SafeInsets = NO_INSETS, rtl = false): Record<string, { x: number; y: number; s: number }> {
   const base = baseScale(w, h);
   const sw = Math.max(1, w - safe.l - safe.r);
   const sh = Math.max(1, h - safe.t - safe.b);
   const out: Record<string, { x: number; y: number; s: number }> = {};
   for (const id of LAYOUT_IDS) {
     const a = ANCHORS[id];
-    const px = a.h === 'l' ? a.x * base : sw - a.x * base;
+    const left = a.h === 'l' || (a.h === 's' && !rtl);
+    const px = left ? a.x * base : sw - a.x * base;
     const py = a.v === 't' ? a.y * base : sh - a.y * base;
     out[id] = { x: Math.max(0, Math.min(1, px / sw)), y: Math.max(0, Math.min(1, py / sh)), s: 1 };
   }
@@ -138,9 +144,9 @@ export function clampToSafe(x: number, y: number, r: number, w: number, h: numbe
 }
 
 /** Resolves every control's pixel placement from the (partial) custom layout. */
-export function resolveLayout(custom: Settings_TouchLayout, w: number, h: number, safe: SafeInsets): Map<string, PlacedControl> {
+export function resolveLayout(custom: Settings_TouchLayout, w: number, h: number, safe: SafeInsets, rtl = false): Map<string, PlacedControl> {
   const base = baseScale(w, h);
-  const def = defaultLayoutFor(w, h, safe);
+  const def = defaultLayoutFor(w, h, safe, rtl);
   const sw = Math.max(1, w - safe.l - safe.r);
   const sh = Math.max(1, h - safe.t - safe.b);
   const out = new Map<string, PlacedControl>();

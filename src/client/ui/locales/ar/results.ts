@@ -8,6 +8,7 @@ export default {
   'results.ffaWinner': '{name} يحسم المباراة',
   'results.trainingDone': 'اكتملت جلسة التدريب',
   'results.teamWins': '{team} يسيطر على أبراج الإطلاق',
+  'results.teamWins.tdm': '{team} يحسم المعركة',
   'results.mvp': 'أفضل لاعب',
   'results.yourStats': 'أداؤك',
   'results.stat.elims': 'الإقصاءات',

@@ -6,7 +6,9 @@
 //   feedback (hitmarkers, heartbeat, hurt) ─────────────────────────────┤
 //                                                   sfx (volume) ◄──────┘
 //   sfx ─► sfxDuck ─────────────────────────────────┐
-//   music ─► musicDuck (pause/voice) ─► sidechain (heartbeat) ─┼─► master
+//   music ─► musicDuck (pause/voice) ─► sidechain (heartbeat) ─► focus ─┼─► master
+//   (focus: dips the score while enemies are audible nearby — footsteps and
+//    reloads must never be masked by the music)
 //   voice (announcer chime) ───────────────────────────────────┤
 //   ui ────────────────────────────────────────────────────────┘
 //   master ─► glue compressor ─► brickwall limiter ─► safety soft-clip ─► out
@@ -64,6 +66,8 @@ export interface AudioCore {
   readonly sfxDuck: GainNode;
   /** Heartbeat sidechain on the music. */
   readonly musicSidechain: GainNode;
+  /** Gameplay focus duck on the music (enemy footsteps / reloads / shots nearby). */
+  readonly musicFocus: GainNode;
   readonly noise: { white: AudioBuffer; pink: AudioBuffer; brown: AudioBuffer };
   hrtf: boolean;
   lite: boolean;
@@ -171,8 +175,9 @@ export function createCore(ctx: BaseAudioContext, opts: CoreOptions = {}): Audio
   const ambience = g(0.9);
   const musicDuck = g();
   const musicSidechain = g();
+  const musicFocus = g();
   const sfxDuck = g();
-  music.connect(musicDuck).connect(musicSidechain).connect(master);
+  music.connect(musicDuck).connect(musicSidechain).connect(musicFocus).connect(master);
   sfx.connect(sfxDuck).connect(master);
   const worldFilter = ctx.createBiquadFilter();
   worldFilter.type = 'lowpass';
@@ -266,6 +271,7 @@ export function createCore(ctx: BaseAudioContext, opts: CoreOptions = {}): Audio
     musicDuck,
     sfxDuck,
     musicSidechain,
+    musicFocus,
     noise: { white: makeNoise(ctx, 'white', 2), pink: makeNoise(ctx, 'pink', 3), brown: makeNoise(ctx, 'brown', 3) },
     hrtf: false,
     lite: !!opts.lite,

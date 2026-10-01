@@ -1,9 +1,11 @@
 // أدوات التحكم (العربية): محرر تخطيط اللمس، تنبيه تدوير الجهاز، قائمة خانات السلاح، ملاحظات إعادة التعيين.
 export default {
+  'controls.cm360': '≈ {cm} سم لدورة كاملة 360° عند \u2066800 DPI\u2069',
   'controls.editor.eyebrow': 'التحكم باللمس',
   'controls.editor.title': 'تخصيص التخطيط',
   'controls.editor.hint': 'اسحب أي زر لتحريكه. قرّب إصبعيك أو باعد بينهما، أو استخدم − و+، لتغيير الحجم.',
   'controls.editor.hintDesktop': 'اسحب أي زر لتحريكه. استخدم − و+ أو عجلة الفأرة لتغيير الحجم.',
+  'controls.editor.hintPad': 'اختر زرًا بأزرار الاتجاه، وحرّكه بالعصا اليسرى، وغيّر حجمه بـ LT / RT. ‏A للتأكيد و‏B للإلغاء.',
   'controls.editor.reset': 'استعادة الافتراضي',
   'controls.editor.cancel': 'إلغاء',
   'controls.editor.save': 'حفظ التخطيط',

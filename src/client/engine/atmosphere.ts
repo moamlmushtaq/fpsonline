@@ -8,8 +8,13 @@
 // fog color (so geometry dissolves seamlessly into the sky), and hash stars
 // that twinkle in with `starAmount`.
 //
-// Sun shadows: an orthographic ~70 m box that follows the view, snapped to
-// shadow-map texels in light space so edges never shimmer while moving.
+// Aerial perspective: exponential fog whose color leans toward the sun glow
+// when looking toward the sun (global fog-chunk patch, see installSunFog).
+//
+// Sun shadows: an orthographic 68–80 m box that follows the view, snapped to
+// shadow-map texels in light space so edges never shimmer while moving; PCF
+// with a per-preset kernel radius (soft, long golden-hour penumbrae) and a
+// fade toward the box edge so the shadow range never ends in a hard line.
 //
 // Weather: ONE Points draw call; particles live in a box that wraps around the
 // camera entirely in the vertex shader (zero CPU work per frame).
@@ -24,10 +29,21 @@ import { ENV } from './palette';
 /** Half-size (m) of the sun's shadow box; texel = 2·half / mapSize. */
 const SHADOW_HALF: Record<QualitySettings['shadows'], number> = { off: 35, low: 34, high: 40 };
 /** PCF kernel radius in texels → soft, painterly penumbrae (sharper on medium's coarser map). */
-const SHADOW_RADIUS: Record<QualitySettings['shadows'], number> = { off: 1, low: 1.4, high: 2.2 };
+const SHADOW_RADIUS: Record<QualitySettings['shadows'], number> = { off: 1, low: 1.8, high: 2.2 };
 /** Renderer-side light calibration (map data stays in artist units). */
 const SUN_BOOST = 1.4;
 const HEMI_BOOST = 1.3;
+/**
+ * Extra sky/bounce fill while the sun casts shadows (medium/high). Without
+ * shadows (low) every surface is sunlit; with them, cast-shadow areas receive
+ * ONLY the hemisphere light, which at the map's 5:1 sun:sky ratio left them
+ * near black after ACES' toe — the grading then had to lift them to a flat
+ * blue-grey ("milky"). Luminous, local-color shadows come from light, not from
+ * a lift: the sky fill is raised to at least this fraction of the sun (≈2× on
+ * Gantry/Pastel, a touch on Observatory, which is already sky-lit), putting
+ * shaded sand at ~⅓ of its sunlit value (painterly golden hour). Free.
+ */
+const SHADOW_FILL_RATIO = 0.36;
 
 // ── Sky shader ──────────────────────────────────────────────────────────────
 
@@ -264,10 +280,11 @@ const FOG_SUN_DIR = new Float32Array(4);
 const FOG_SUN_COLOR = new Float32Array(3);
 let sunFogInstalled = false;
 
-function patchChunk(name: string, find: string, replace: string): boolean {
+function patchChunk(name: string, find: string | RegExp, replace: string): boolean {
   const chunks = THREE.ShaderChunk as unknown as Record<string, string>;
   const src = chunks[name];
-  if (typeof src !== 'string' || !src.includes(find)) {
+  const found = typeof src === 'string' && (typeof find === 'string' ? src.includes(find) : find.test(src));
+  if (!found) {
     console.warn(`[atmosphere] shader chunk '${name}' not patched (three.js changed?)`);
     return false;
   }
@@ -303,20 +320,38 @@ export function installSunFog(): void {
       if (un && 'fogColor' in un) Object.assign(un, u);
     }
   }
+  // Smooth PCF: three's PCF takes 17 POINT samples spread over ±radius texels,
+  // which leaves visible stair-steps along every shadow edge (worst on medium's
+  // 1024 map and on surfaces at grazing angles). Five BILINEAR taps on a
+  // rotated grid (20 fetches, ≈ the same cost) give a smooth, stair-free,
+  // radius-controlled painterly penumbra. (One-line macro: no continuations.)
   patchChunk(
     'shadowmap_pars_fragment',
-    `		}
-
-		return mix( 1.0, shadow, shadowIntensity );
-
-	}`,
-    `		}
-
+    /#if defined\( SHADOWMAP_TYPE_PCF \)\s*vec2 texelSize = vec2\( 1\.0 \) \/ shadowMapSize;[\s\S]*?\* \( 1\.0 \/ 17\.0 \);/,
+    `#if defined( SHADOWMAP_TYPE_PCF )
+			vec2 texelSize = vec2( 1.0 ) / shadowMapSize;
+			#define HF_BILIN( P ) { vec2 hfUv = ( P ); vec2 hfF = fract( hfUv * shadowMapSize + 0.5 ); hfUv -= hfF * texelSize; shadow += mix( mix( texture2DCompare( shadowMap, hfUv, shadowCoord.z ), texture2DCompare( shadowMap, hfUv + vec2( texelSize.x, 0.0 ), shadowCoord.z ), hfF.x ), mix( texture2DCompare( shadowMap, hfUv + vec2( 0.0, texelSize.y ), shadowCoord.z ), texture2DCompare( shadowMap, hfUv + texelSize, shadowCoord.z ), hfF.x ), hfF.y ); }
+			vec2 hfR = texelSize * shadowRadius;
+			shadow = 0.0;
+			HF_BILIN( shadowCoord.xy )
+			HF_BILIN( shadowCoord.xy + vec2( -0.5, -0.9 ) * hfR )
+			HF_BILIN( shadowCoord.xy + vec2( 0.9, -0.5 ) * hfR )
+			HF_BILIN( shadowCoord.xy + vec2( 0.5, 0.9 ) * hfR )
+			HF_BILIN( shadowCoord.xy + vec2( -0.9, 0.5 ) * hfR )
+			shadow *= 0.2;
+			#undef HF_BILIN`,
+  );
+  // Whitespace-agnostic: the published build strips the blank lines that the
+  // chunk sources contain (an exact-string find silently failed there). The
+  // first match is getShadow() (directional/spot), not getPointShadow().
+  patchChunk(
+    'shadowmap_pars_fragment',
+    /\}\s*return mix\( 1\.0, shadow, shadowIntensity \);\s*\}/,
+    `}
 		// Halcyon: fade toward the shadow frustum edge (no hard cut-off line).
 		vec2 hfEdge = abs( shadowCoord.xy * 2.0 - 1.0 );
 		shadow = mix( shadow, 1.0, smoothstep( 0.8, 0.97, max( hfEdge.x, hfEdge.y ) ) );
 		return mix( 1.0, shadow, shadowIntensity );
-
 	}`,
   );
 }
@@ -353,6 +388,7 @@ class AtmosphereImpl implements Atmosphere {
   readonly fog: THREE.FogExp2;
   private weather: THREE.Points | null = null;
   private weatherPreset: WeatherPreset | null = null;
+  private weatherCount = 0;
   private readonly skyMat: THREE.ShaderMaterial;
   private readonly sunDir = new THREE.Vector3();
   private readonly lx = new THREE.Vector3();
@@ -362,6 +398,8 @@ class AtmosphereImpl implements Atmosphere {
   private time = 0;
   private quality: QualitySettings;
   private shadowHalf = 35;
+  /** Hemisphere intensity without the shadow fill (see SHADOW_FILL_RATIO). */
+  private hemiBase = 1;
   /** Fog color looking toward the sun (aerial perspective): the sun glow scattered in the haze. */
   private readonly fogSunColor: THREE.Color;
 
@@ -407,6 +445,7 @@ class AtmosphereImpl implements Atmosphere {
     skyFill.setHSL(hsl.h, Math.min(1, hsl.s * 1.35), hsl.l);
     this.hemi = new THREE.HemisphereLight(skyFill, new THREE.Color(l.hemiGround), l.hemiIntensity * HEMI_BOOST);
     scene.add(this.hemi);
+    this.hemiBase = this.hemi.intensity;
 
     this.fill = new THREE.DirectionalLight(new THREE.Color(l.hemiGround).lerp(new THREE.Color(l.sunColor), 0.35), l.sunIntensity * 0.16);
     this.fill.position.set(-l.sunDir.x, 0.35, -l.sunDir.z).normalize().multiplyScalar(100);
@@ -448,6 +487,7 @@ class AtmosphereImpl implements Atmosphere {
     this.quality = q;
     const cast = q.shadows !== 'off';
     this.sun.castShadow = cast;
+    this.hemi.intensity = cast ? Math.max(this.hemiBase * 1.12, this.sun.intensity * SHADOW_FILL_RATIO) : this.hemiBase;
     this.shadowHalf = SHADOW_HALF[q.shadows];
     const sc = this.sun.shadow.camera;
     if (sc.right !== this.shadowHalf) {
@@ -472,6 +512,10 @@ class AtmosphereImpl implements Atmosphere {
   }
 
   private buildWeather(): void {
+    // setQuality also runs for Auto's render-scale-only steps: keep the
+    // existing Points (and its compiled program) when nothing it uses changed.
+    const kind0 = this.lighting.weather;
+    if (this.weather && kind0 !== 'none' && this.weatherCount === Math.max(16, Math.round(WEATHER[kind0].count * this.quality.particles))) return;
     if (this.weather) {
       this.scene.remove(this.weather);
       this.weather.geometry.dispose();
@@ -483,6 +527,7 @@ class AtmosphereImpl implements Atmosphere {
     const p = WEATHER[kind];
     this.weatherPreset = p;
     const count = Math.max(16, Math.round(p.count * this.quality.particles));
+    this.weatherCount = count;
     const pos = new Float32Array(count * 3);
     const seed = new Float32Array(count);
     let s = 1234567;

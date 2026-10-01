@@ -76,7 +76,7 @@ const FRAMING: Record<string, Framing> = {
   // Hero shot: camera slightly below the chest, looking up past the character into the sunset.
   menu: { tx: 0, ty: 1.2, tz: 0, radius: 5.9, height: 1.05, fov: 33, angle: -0.3, swing: 0.3, screenX: 0.66 },
   sub: { tx: 0, ty: 1.15, tz: 0, radius: 6.6, height: 1.35, fov: 34, angle: -0.2, swing: 0.18, screenX: 0.79 },
-  loadout: { tx: 0, ty: 1.15, tz: 0, radius: 5.8, height: 1.3, fov: 33, angle: -0.3, swing: 0.1, screenX: 0.88 },
+  loadout: { tx: 0, ty: 1.15, tz: 0, radius: 5.8, height: 1.3, fov: 33, angle: -0.3, swing: 0.1, screenX: 0.9 },
   skins: { tx: 0, ty: 1.15, tz: 0, radius: 5.6, height: 1.25, fov: 33, angle: -0.2, swing: 0.3, screenX: 0.89 },
   customize: { tx: 0, ty: 1.2, tz: 0, radius: 4.6, height: 1.15, fov: 34, angle: -0.15, swing: 0.5, screenX: 0.77 },
   profile: { tx: 0, ty: 1.15, tz: 0, radius: 5.8, height: 1.3, fov: 34, angle: 0.25, swing: 0.18, screenX: 0.78 },
@@ -128,6 +128,8 @@ export class MenuScene {
   private time = 0;
   private focus: ScreenId | null = 'menu';
   private cur: Framing = { ...FRAMING.menu };
+  /** Body turn away from the camera (rad): a 3/4 hero stance, near-frontal in Customize so visor and chest read. */
+  private stance = 0.55;
   private charKey = '';
   private weaponKey = '';
   private rebuildTimer = 0;
@@ -290,7 +292,8 @@ export class MenuScene {
     const metal = mats ? mats.painted(ENV.metalDark, { roughness: 0.55, metalness: 0.3 }) : this.own(new THREE.MeshStandardMaterial({ color: ENV.metalDark }));
     const glowGold = mats ? mats.glow(ENV.glowGold, 3) : this.own(new THREE.MeshBasicMaterial({ color: ENV.glowGold }));
     const sand = mats ? mats.surface('sand') : this.own(new THREE.MeshStandardMaterial({ color: ENV.sand }));
-    const water = this.own(new THREE.MeshStandardMaterial({ color: new THREE.Color('#9aa6bf'), roughness: 0.22, metalness: 0 }));
+    // Satin sea: a soft sun path rather than a mirror glare (bloom turns a sharp highlight into a white-out).
+    const water = this.own(new THREE.MeshStandardMaterial({ color: new THREE.Color('#8a93b0'), roughness: 0.4, metalness: 0 }));
 
     // Platform: lathe profile with chamfers + a darker inset ring.
     const r = 2.3;
@@ -594,9 +597,11 @@ export class MenuScene {
     const key = JSON.stringify([faction, cosmetics.armor, cosmetics.visor, cosmetics.elimFx, this.app.engine?.quality.preset]);
     if (force || key !== this.charKey) {
       this.charKey = key;
-      this.character?.dispose();
-      if (this.character) this.scene.remove(this.character.root);
+      const prev = this.character;
+      prev?.dispose();
+      if (prev) this.scene.remove(prev.root);
       this.character = null;
+      const rebuild = !!prev;
       try {
         const q = this.app.engine.quality;
         const view: CharacterView = this.app.characters.create({
@@ -611,6 +616,9 @@ export class MenuScene {
         view.root.traverse((o: THREE.Object3D) => {
           if ((o as THREE.Mesh).isMesh) o.castShadow = true;
         });
+        // A look change (customize preview) only replays the tail of the
+        // materialize sweep: a quick shimmer as feedback, never a floating gun.
+        if (rebuild) for (let i = 0; i < 6; i++) view.update(0.075, this.anim);
         this.scene.add(view.root);
         this.character = view;
         this.weaponKey = '';
@@ -725,7 +733,8 @@ export class MenuScene {
     // Character idle (faces the camera's average position).
     // Three-quarter stance: the weapon points past the camera toward the
     // middle of the screen (mirrored with the layout in RTL), never at the viewer.
-    this.anim.yaw = Math.PI + c.angle * 0.6 + (i18n.dir === 'rtl' ? 0.55 : -0.55);
+    this.stance += ((this.focus === 'customize' && !this.weaponShowcase ? 0.2 : 0.55) - this.stance) * k;
+    this.anim.yaw = Math.PI + c.angle * 0.6 + (i18n.dir === 'rtl' ? this.stance : -this.stance);
     try {
       this.character?.update(dt, this.anim);
     } catch {
@@ -741,11 +750,16 @@ export class MenuScene {
     if (showWeapon) {
       const rtl = i18n.dir === 'rtl';
       const narrow = (size?.aspect ?? 1.7) < 1.2;
-      const sxL = narrow ? 0.5 : this.focus === 'loadout' ? 0.72 : 0.74;
+      const sxL = narrow ? 0.5 : this.focus === 'loadout' ? 0.705 : 0.74;
       const sx = rtl ? 1 - sxL : sxL;
       cam.updateMatrixWorld();
       this.camBack.set(sx * 2 - 1, -(0.57 * 2 - 1), 0.5).unproject(cam).sub(cam.position).normalize();
       const dist = Math.max(2, c.radius - 1.4);
+      // Keep the gun inside the free strip on every aspect: the vertical FOV is fixed, so on
+      // narrower screens (4:3 tablets) it is scaled down to hold the same share of the width
+      // instead of tucking the muzzle under the panel and the stock into the hero.
+      const aspect = size?.aspect ?? 1.78;
+      this.weaponPivot.scale.setScalar(narrow ? 1 : 0.9 / Math.max(1, 1.78 / aspect));
       this.weaponPivot.position.copy(cam.position).addScaledVector(this.camBack, dist);
       this.weaponPivot.position.y += Math.sin(this.time * 1.1) * 0.025;
       // Azimuth from the weapon back to the camera → muzzle points screen-side toward the UI.

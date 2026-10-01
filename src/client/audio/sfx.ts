@@ -79,6 +79,9 @@ export class Sfx {
   private hurtUntil = 0;
   private lastUi = new Map<UiSound, number>();
   private lastHit = 0;
+  private focusAt = -1;
+  private focusUntil = 0;
+  private focusLevel = 1;
 
   constructor(core: AudioCore, spatial: Spatializer) {
     this.core = core;
@@ -100,10 +103,37 @@ export class Sfx {
     return this.spatial.route(pos, dur, opts);
   }
 
+  /**
+   * Gameplay focus: dips the music to `level` (gain) while enemies are heard
+   * nearby, then lets it back after `hold` s. Measured on Gantry with the
+   * match score: an enemy walking on concrete 15 m away sat ≈ 14 dB under the
+   * music in the 1–6 kHz band (masked); the −9 dB dip (+ the score's match
+   * high-shelf and the gentler enemy-step roll-off) gains ≈ 10–13 dB there.
+   */
+  focus(level: number, hold = 1.8): void {
+    const t = this.now;
+    const active = t < this.focusUntil;
+    // Re-arm at most 4×/s unless this asks for a deeper dip.
+    if (active && t - this.focusAt < 0.25 && level >= this.focusLevel) return;
+    this.focusLevel = active ? Math.min(level, this.focusLevel) : level;
+    this.focusAt = t;
+    this.focusUntil = t + hold;
+    const g = this.core.musicFocus.gain;
+    g.cancelScheduledValues(t);
+    g.setTargetAtTime(this.focusLevel, t, 0.09);
+    g.setTargetAtTime(1, t + hold, 0.9);
+  }
+
+  /** Enemy (positional) sound within `range` m → focus the mix on it. */
+  private focusOn(pos: Vec3 | undefined, range: number, level: number): void {
+    if (pos && this.spatial.distance(pos) < range) this.focus(level);
+  }
+
   // ── Weapons (delegated) ─────────────────────────────────────────────────
 
   shot(weapon: WeaponId, pos?: Vec3): void {
     this.weapons.shot(weapon, pos);
+    this.focusOn(pos, 45, 0.6);
   }
 
   dryFire(weapon: WeaponId = 'meridian'): void {
@@ -112,14 +142,17 @@ export class Sfx {
 
   reload(weapon: WeaponId, stage: ReloadStage, pos?: Vec3): void {
     this.weapons.reload(weapon, stage, pos);
+    this.focusOn(pos, 28, 0.4);
   }
 
   pump(weapon: WeaponId, pos?: Vec3): void {
     this.weapons.pump(weapon, pos);
+    this.focusOn(pos, 40, 0.5);
   }
 
   charge(pos?: Vec3): void {
     this.weapons.charge(pos);
+    this.focusOn(pos, 60, 0.5);
   }
 
   swap(weapon: WeaponId): void {
@@ -166,11 +199,15 @@ export class Sfx {
           gain: friendly ? 0.72 : 1.4,
           prio: friendly ? 1 : 2,
           ref: 1.5,
-          rolloff: 0.85,
+          // Enemy steps fall off more gently (+3–4 dB at 15–25 m): still clearly
+          // nearer/farther, but readable at engagement range.
+          rolloff: friendly ? 0.85 : 0.65,
         }
       : { reverb: 0.03, gain: 0.5, prio: 1 };
     const r = this.route(pos, 0.3, opts);
     if (!r) return;
+    // An enemy's steps pull the music back (−9 dB) so they stay readable.
+    if (pos && !friendly && r.dist < g.range * 0.8) this.focus(0.35);
     const t = this.now + r.delay;
     this.step(r.input, t, SURF[surface] ?? SURF.concrete, g.level, g.bright, g.gap);
     if (kind === 'sprint') {
@@ -224,7 +261,8 @@ export class Sfx {
   // ── Combat feedback ─────────────────────────────────────────────────────
 
   impact(surface: SurfaceTag | 'player', pos: Vec3): void {
-    const r = this.route(pos, 0.45, { maxDist: 45, reverb: 0.12, prio: 1, ref: 1.5 });
+    // The impact point lies on the surface it hit: probe from just in front of it.
+    const r = this.route(pos, 0.45, { maxDist: 45, reverb: 0.12, prio: 1, ref: 1.5, occY: 0, occPull: 0.3 });
     if (!r) return;
     const syn = this.synth;
     const s = SURF[surface] ?? SURF.concrete;
@@ -263,7 +301,12 @@ export class Sfx {
     // Dry, centred, never spatialized, never muffled.
     const d = this.core.buses.feedback;
     const syn = this.synth;
-    const t = this.now;
+    // Our own muzzle crack masks a tick that lands on it (measured −3 dB in
+    // the tick's band at 0 ms, +7 dB at +30 ms): confirmations arriving within
+    // 30 ms of the local shot are nudged just past the crack.
+    const now = this.now;
+    const ls = this.weapons.lastLocalShot;
+    const t = now - ls < 0.03 ? ls + 0.032 : now;
     // Rapid body hits: rotate pitch slightly so automatic fire stays crisp.
     const close = t - this.lastHit < 0.12;
     this.lastHit = t;
@@ -494,6 +537,12 @@ export class Sfx {
     syn.tone(d, at, { freq: 62, freqEnd: 42, gain: 0.34 * (0.45 + 0.55 * k), attack: 0.012, decay: 0.13, filter: { type: 'lowpass', freq: 180 } });
     syn.noise(d, at, { kind: 'brown', filter: 'lowpass', freq: 140, gain: 0.1 * k, attack: 0.01, decay: 0.08 });
     syn.tone(d, at + 0.21, { freq: 55, freqEnd: 40, gain: 0.24 * (0.45 + 0.55 * k), attack: 0.012, decay: 0.12, filter: { type: 'lowpass', freq: 160 } });
+    // Small-speaker body: phones and laptops reproduce nothing under ~150 Hz,
+    // so each beat also gets a soft muffled knock (≈ 200–450 Hz).
+    const kn = 0.45 + 0.55 * k;
+    syn.tone(d, at, { wave: 'triangle', freq: 104, freqEnd: 74, gain: 0.055 * kn, attack: 0.006, decay: 0.07, filter: { type: 'lowpass', freq: 520 } });
+    syn.noise(d, at, { kind: 'brown', filter: 'bandpass', freq: 260, q: 1.3, gain: 0.09 * kn, attack: 0.005, decay: 0.05 });
+    syn.tone(d, at + 0.21, { wave: 'triangle', freq: 92, freqEnd: 68, gain: 0.05 * kn, attack: 0.006, decay: 0.06, filter: { type: 'lowpass', freq: 480 } });
     // Sidechain: music dips on each beat.
     const sc = this.core.musicSidechain.gain;
     sc.setTargetAtTime(1 - 0.32 * k, at, 0.02);

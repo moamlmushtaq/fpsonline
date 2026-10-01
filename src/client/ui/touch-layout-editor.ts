@@ -12,7 +12,13 @@
 //   • checked: overlapping controls or controls over the HUD glow red, and
 //     ghost boxes show where the HUD lives.
 // Reset restores the default layout; Save writes settings.touchLayout (and
-// the opacity) — Cancel / Escape / gamepad B discard. Works in RTL (the
+// the opacity) — Cancel / Escape / gamepad B discard. Only controls the
+// player actually moved or resized are stored: the rest keep following the
+// thumb-anchored default on every screen size (and its RTL variant).
+// While open, the menus underneath are hidden + inert, so the blur shows the
+// live match (or the menu scene) and pad / keyboard focus can't reach them;
+// the editor reads the pad itself (D-pad focus, left stick moves, LT/RT
+// resize, A press, B cancel, Start save). Works in RTL (the
 // toolbar mirrors; control positions are spatial and never mirror) and is
 // safe-area aware (positions are stored normalised to the safe area).
 // ─────────────────────────────────────────────────────────────────────────────
@@ -88,7 +94,9 @@ html[lang='ar'] .hf-tle__eyebrow{letter-spacing:0;font-family:var(--f-arabic,'IB
 .hf-tle__chip .lbl{display:flex;flex-direction:column;align-items:center;padding:0 8px;min-width:4.5rem}
 .hf-tle__chip .lbl b{font:600 13px/1.1 var(--f-mono,'JetBrains Mono',monospace);color:var(--c-accent-hi,#f8cc80)}
 .hf-tle__chip .lbl i{font-style:normal;font-size:10px;color:rgba(243,236,224,.6);max-width:8rem;overflow:hidden;text-overflow:ellipsis}
-@media (max-height:430px){.hf-tle__hint{display:none}.hf-tle__bar{padding:5px 6px 5px 12px}.hf-tle__title{font-size:13px}}
+html.hf-tle-open #ui .layer [data-screen]:not([data-screen='match']){visibility:hidden}
+/* Phones (landscape): no room for the hint inside the bar, so it hangs below it as a pill — the overlap warning must stay visible. */
+@media (max-height:430px){.hf-tle__hint{position:absolute;top:calc(100% + 6px);left:50%;transform:translateX(-50%);width:max-content;max-width:calc(100vw - 32px);box-sizing:border-box;margin:0;padding:4px 12px;border-radius:999px;background:rgba(24,22,20,.8);border:1px solid rgba(243,236,224,.14);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}.hf-tle__hint.warn{border-color:rgba(255,90,95,.45)}.hf-tle__bar{padding:5px 6px 5px 12px}.hf-tle__title{font-size:13px}}
 @media (max-width:760px){.hf-tle__acts .btn--ghost .btn__label{display:none}.hf-tle__eyebrow{display:none}}
 `;
 
@@ -144,6 +152,14 @@ class TouchLayoutEditor {
   private hintTimer = 0;
   private readonly offLang: () => void;
   private closing = false;
+  /** Elements made inert while open (restored on close). */
+  private readonly inerted: HTMLElement[] = [];
+  private padRaf = 0;
+  private padPrev = new Set<number>();
+  private padDir = '';
+  private padRepeat = 0;
+  private padT = 0;
+  private padStarted = false;
 
   constructor(private readonly app: App, private readonly onClosed: () => void) {
     ensureTouchCss();
@@ -237,6 +253,15 @@ class TouchLayoutEditor {
     });
     // While open, the UI manager must not treat Escape / gamepad B as "back" for the screen underneath.
     captureState.active = true;
+    // Hide the menus underneath (the live match / menu scene shows through the blur) and
+    // make them inert, so manager focus navigation and gamepad A can't reach them.
+    document.documentElement.classList.add('hf-tle-open');
+    document.querySelectorAll<HTMLElement>('#ui .layer').forEach((l) => {
+      if (l.inert) return;
+      l.inert = true;
+      this.inerted.push(l);
+    });
+    this.padRaf = requestAnimationFrame(this.padLoop);
     requestAnimationFrame(() => this.root.classList.add('is-vis'));
     requestAnimationFrame(() => save.focus({ preventScroll: true }));
   }
@@ -315,11 +340,13 @@ class TouchLayoutEditor {
       { l: this.w - padR - 11 * em, t: s.t + 0.8 * em, r: this.w - padR, b: s.t + 5.6 * em }, // ammo
       { l: this.w / 2 - 8 * em, t: s.t + 0.6 * em, r: this.w / 2 + 8 * em, b: s.t + 4.4 * em }, // compass + score
     ];
+    // The HUD mirrors in RTL (vitals top-right, ammo top-left).
+    if (i18n.dir === 'rtl') for (const b of out) [b.l, b.r] = [this.w - b.r, this.w - b.l];
     return out;
   }
 
   private load(layout: Readonly<Record<string, { x: number; y: number; s: number }>>): void {
-    const placed = resolveLayout(layout, this.w, this.h, this.safe);
+    const placed = resolveLayout(layout, this.w, this.h, this.safe, i18n.dir === 'rtl');
     for (const it of this.items.values()) {
       const p = placed.get(it.id);
       if (!p) continue;
@@ -391,7 +418,8 @@ class TouchLayoutEditor {
   private setHint(warn = false, flashKey?: string): void {
     window.clearTimeout(this.hintTimer);
     const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
-    const key = flashKey ?? (warn ? 'controls.editor.overlap' : coarse ? 'controls.editor.hint' : 'controls.editor.hintDesktop');
+    const pad = this.app.input.device === 'gamepad';
+    const key = flashKey ?? (warn ? 'controls.editor.overlap' : pad ? 'controls.editor.hintPad' : coarse ? 'controls.editor.hint' : 'controls.editor.hintDesktop');
     setText(this.hint, key);
     this.hint.classList.toggle('warn', warn && !flashKey);
     if (flashKey) this.hintTimer = window.setTimeout(() => this.validate(), 1800);
@@ -623,10 +651,123 @@ class TouchLayoutEditor {
     this.placeChip();
   };
 
+  /**
+   * The layout to store: only controls that differ from the default here. An
+   * untouched control stays out of settings.touchLayout, so it keeps the
+   * thumb-anchored default on other screen sizes (browser bars, fullscreen,
+   * another device) and the RTL placement of PAUSE / SCOREBOARD.
+   */
   private snapshot(): Record<string, { x: number; y: number; s: number }> {
+    const def = resolveLayout({}, this.w, this.h, this.safe, i18n.dir === 'rtl');
     const out: Record<string, { x: number; y: number; s: number }> = {};
-    for (const it of this.items.values()) out[it.id] = toStored(it.x, it.y, it.s, this.w, this.h, this.safe);
+    for (const it of this.items.values()) {
+      const d = def.get(it.id);
+      if (d && Math.abs(d.x - it.x) < 1.5 && Math.abs(d.y - it.y) < 1.5 && Math.abs(it.s - 1) < 0.001) continue;
+      out[it.id] = toStored(it.x, it.y, it.s, this.w, this.h, this.safe);
+    }
     return out;
+  }
+
+  // ── Gamepad ──────────────────────────────────────────────────────────────
+
+  private readonly padLoop = (now: number): void => {
+    this.padRaf = requestAnimationFrame(this.padLoop);
+    const dt = this.padT > 0 ? Math.min(0.05, (now - this.padT) / 1000) : 1 / 60;
+    this.padT = now;
+    let pads: (Gamepad | null)[] = [];
+    try {
+      pads = typeof navigator.getGamepads === 'function' ? Array.from(navigator.getGamepads()) : [];
+    } catch {
+      return;
+    }
+    const down = new Set<number>();
+    let lx = 0;
+    let ly = 0;
+    let trig = 0;
+    for (const p of pads) {
+      if (!p || !p.connected) continue;
+      p.buttons.forEach((b, i) => {
+        if (b.pressed || b.value > 0.5) down.add(i);
+      });
+      if (Math.abs(p.axes[0] ?? 0) > Math.abs(lx)) lx = p.axes[0] ?? 0;
+      if (Math.abs(p.axes[1] ?? 0) > Math.abs(ly)) ly = p.axes[1] ?? 0;
+      trig += (p.buttons[7]?.value ?? 0) - (p.buttons[6]?.value ?? 0);
+    }
+    // Buttons already held when the editor opened (the A that pressed "Customize") are not presses.
+    if (!this.padStarted) {
+      this.padStarted = true;
+      this.padPrev = down;
+      return;
+    }
+    const prev = this.padPrev;
+    this.padPrev = down;
+    const edge = (i: number): boolean => down.has(i) && !prev.has(i);
+    // The pad just took over: show its hint (unless an overlap warning is up).
+    if (down.size && this.app.input.device === 'gamepad' && this.hint.dataset.i18n !== 'controls.editor.hintPad' && !this.hint.classList.contains('warn')) this.setHint();
+    if (edge(1)) return this.close(false);
+    if (edge(9)) return this.close(true);
+    if (edge(0)) {
+      const a = document.activeElement as HTMLElement | null;
+      if (a && this.root.contains(a) && (a.tagName === 'BUTTON' || a.tagName === 'INPUT')) a.click();
+    }
+    const it = this.selected;
+    // Left stick: move the selected control (quadratic response: fine near the centre).
+    const m = Math.hypot(lx, ly);
+    if (it && m > 0.22) {
+      const k = (((m - 0.22) / 0.78) ** 2 * 520 * dt) / m;
+      this.moveTo(it, it.x + lx * k, it.y + ly * k, false);
+    }
+    // Triggers: resize the selected control.
+    if (it && Math.abs(trig) > 0.25) this.setScale(it, it.s * (1 + trig * 0.9 * dt));
+    // D-pad: move focus between the toolbar and the controls (focusing a control selects it).
+    const dir = down.has(12) ? 'up' : down.has(13) ? 'down' : down.has(14) ? 'left' : down.has(15) ? 'right' : '';
+    if (!dir) this.padDir = '';
+    else if (dir !== this.padDir || now >= this.padRepeat) {
+      this.padRepeat = now + (dir !== this.padDir ? 380 : 120);
+      this.padDir = dir;
+      const a = document.activeElement as HTMLElement | null;
+      // The UI manager already nudges a focused slider with left/right.
+      if (!(a instanceof HTMLInputElement && a.type === 'range' && (dir === 'left' || dir === 'right'))) this.padFocus(dir);
+    }
+  };
+
+  /** Spatial focus move among the editor's buttons, slider and controls. */
+  private padFocus(dir: 'up' | 'down' | 'left' | 'right'): void {
+    const items = [...this.root.querySelectorAll<HTMLElement>('button, input, .hf-tle__stage [tabindex]')].filter((el) => {
+      const r = el.getBoundingClientRect();
+      return r.width > 2 && r.height > 2 && !el.closest('.hf-tle__chip:not(.on)');
+    });
+    const cur = document.activeElement as HTMLElement | null;
+    if (!cur || !this.root.contains(cur)) {
+      items[0]?.focus({ preventScroll: true });
+      return;
+    }
+    const a = cur.getBoundingClientRect();
+    const ax = a.left + a.width / 2;
+    const ay = a.top + a.height / 2;
+    let best: HTMLElement | null = null;
+    let bestScore = Infinity;
+    for (const el of items) {
+      if (el === cur) continue;
+      const r = el.getBoundingClientRect();
+      const dx = r.left + r.width / 2 - ax;
+      const dy = r.top + r.height / 2 - ay;
+      const primary = dir === 'right' ? dx : dir === 'left' ? -dx : dir === 'down' ? dy : -dy;
+      const ortho = dir === 'left' || dir === 'right' ? Math.abs(dy) : Math.abs(dx);
+      if (primary <= 1) continue;
+      const score = primary + ortho * 2;
+      if (score < bestScore) {
+        bestScore = score;
+        best = el;
+      }
+    }
+    if (!best) return;
+    best.focus({ preventScroll: true });
+    try {
+      this.app.audio.ui('hover');
+    } catch {
+      /* audio locked */
+    }
   }
 
   // ── Close ────────────────────────────────────────────────────────────────
@@ -638,7 +779,10 @@ class TouchLayoutEditor {
     if (save) this.app.settings.update({ touchLayout: this.snapshot(), touchOpacity: Math.round(this.opacity * 100) / 100 });
     window.removeEventListener('keydown', this.onKey, true);
     window.removeEventListener('resize', this.onResize);
+    cancelAnimationFrame(this.padRaf);
     this.offLang();
+    for (const l of this.inerted) l.inert = false;
+    document.documentElement.classList.remove('hf-tle-open');
     window.clearTimeout(this.hintTimer);
     // Release the UI manager's back handling on the next tick (the key that closed us must not also go "back").
     window.setTimeout(() => (captureState.active = false), 0);

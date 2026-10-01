@@ -18,6 +18,7 @@ import type { AudioSystem, AudioVolumes, MusicState, UiSound } from '../contract
 import type { MapDef } from '../../shared/maps/types';
 import type { Faction, SurfaceTag, Vec3, WeaponId } from '../../shared/types';
 import type { ChimeTone } from './announcer';
+import { SampleBank } from './bank';
 import { createCore, type AudioCore } from './core';
 import { Environment } from './environment';
 import { Music } from './music';
@@ -39,6 +40,7 @@ export class Audio implements AudioSystem {
   private music: Music | null = null;
   private env: Environment | null = null;
   private spatial: Spatializer | null = null;
+  private bank: SampleBank | null = null;
   private voiceDuck = 0;
   private volumes: AudioVolumes = { master: 0.85, music: 0.55, sfx: 0.9, voice: 0.85, ui: 0.6 };
   private pendingMusic: MusicState = 'off';
@@ -68,6 +70,19 @@ export class Audio implements AudioSystem {
     this.applyVolumes();
   }
 
+  /** Renders the sample bank in the background; live synthesis covers the gap. */
+  private buildBank(): void {
+    const core = this.core;
+    if (!core || this.bank) return;
+    const bank = new SampleBank(core);
+    this.bank = bank;
+    void bank.build(this.lite).then(() => {
+      if (!bank.ready) return;
+      if (this.sfx) this.sfx.weapons.bank = bank;
+      if (this.music) this.music.bank = bank;
+    });
+  }
+
   /** True once the context runs (after a user gesture). */
   get unlocked(): boolean {
     return this.core?.ctx.state === 'running';
@@ -81,6 +96,8 @@ export class Audio implements AudioSystem {
   unlock(): void {
     const ctx = this.actx;
     if (!ctx || this.hidden) return;
+    // First gesture: the quality preset (lite) is known by now.
+    this.buildBank();
     if (ctx.state !== 'running') {
       ctx.resume().then(
         () => {

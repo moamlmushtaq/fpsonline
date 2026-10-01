@@ -17,7 +17,8 @@
 // Emitters: the radio (radio.ts), wind chimes that ring with the gusts,
 // harbour machinery (diesel throb, clanks, hydraulic hiss), lapping water,
 // drips (rising "plip"), mains hum + neon buzz. Each emitter has a low-pass
-// that closes when geometry blocks it, and is culled when far away.
+// that closes when geometry blocks it, and is faded out and unplugged from the
+// graph when far away (so idle emitters cost no DSP).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { MapAudioDef, MapDef } from '../../shared/maps/types';
@@ -46,6 +47,10 @@ interface Emitter {
   occluded: boolean;
   radio: RadioStation | null;
   tubes: number[];
+  /** Panner wired into the ambience bus (only while audible: idle emitters cost nothing). */
+  connected: boolean;
+  /** When an emitter that went out of range may be unplugged (after its fade). */
+  offAt: number;
 }
 
 /** [delay s, feedback, tone Hz] */
@@ -392,7 +397,10 @@ export class Environment {
     lp.Q.value = 0.5;
     const gain = ctx.createGain();
     gain.gain.value = 0;
-    gain.connect(lp).connect(panner).connect(this.core.buses.ambience);
+    // The panner is plugged into the ambience bus only while the emitter is in
+    // range (see update): unplugged, the whole chain (loops, oscillators, HRTF
+    // convolution) is not pulled by the renderer and costs nothing.
+    gain.connect(lp).connect(panner);
     const em: Emitter = {
       kind,
       pos,
@@ -407,6 +415,8 @@ export class Environment {
       occluded: false,
       radio: null,
       tubes: [],
+      connected: false,
+      offAt: 0,
     };
     const n = this.core.noise;
     const loopInto = (buf: AudioBuffer, type: BiquadFilterType, f: number, level: number) => {
@@ -572,15 +582,31 @@ export class Environment {
       const audible = dist < em.radius * 2.4;
       if (audible !== em.audible) {
         em.audible = audible;
+        if (audible && !em.connected) {
+          em.panner.connect(this.core.buses.ambience);
+          em.connected = true;
+        }
         em.gain.gain.setTargetAtTime(audible ? 1 : 0, now, 0.25);
+        if (!audible) em.offAt = now + 2;
       }
       if (!audible) {
+        // Faded out (≈ −70 dB after 2 s): unplug it.
+        if (em.connected && now > em.offAt) {
+          em.panner.disconnect();
+          em.connected = false;
+        }
         if (em.next < now) em.next = now + 0.5;
         continue;
       }
       if (probeEmitters && this.spatial.hasProbe) {
+        // Emitter → ear, starting just off the emitter: machines and radios
+        // sit on or inside props, which must not count as blocking themselves.
         const L = this.spatial.listener;
-        const occ = this.spatial.blocked(L.x, L.y, L.z, em.pos.x, em.pos.y, em.pos.z);
+        const k = dist > 0.6 ? 0.3 / dist : 0;
+        const ox = em.pos.x + (L.x - em.pos.x) * k;
+        const oy = em.pos.y + (L.y - em.pos.y) * k;
+        const oz = em.pos.z + (L.z - em.pos.z) * k;
+        const occ = this.spatial.blocked(ox, oy, oz, L.x, L.y, L.z);
         if (occ !== em.occluded) {
           em.occluded = occ;
           em.lp.frequency.setTargetAtTime(occ ? 900 : 16000, now, 0.15);

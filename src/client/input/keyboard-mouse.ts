@@ -155,7 +155,11 @@ export class KeyboardMouse {
     if (!this.sink.isActive()) return;
     // Keep the page from scrolling / focus-hopping on bound keys (never Escape / F-keys).
     if (this.sink.isBound(e.code) && e.code !== 'Escape' && !/^F\d+$/.test(e.code)) e.preventDefault();
-    if (e.repeat || this.held.has(e.code)) return;
+    if (this.held.has(e.code)) return;
+    // A key already held when gameplay (re)starts (W through Esc → Resume, alt-tab back,
+    // the rotate prompt) only arrives as auto-repeat now: pick it up instead of making the
+    // player lift and re-press it. Never Escape (holding it must not re-open pause).
+    if (e.repeat && e.code === 'Escape') return;
     this.held.add(e.code);
     this.sink.code(e.code, true);
   };

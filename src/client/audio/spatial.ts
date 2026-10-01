@@ -13,7 +13,9 @@
 // ~10 ms and its slot reused (voice stealing); a sound whose priority is lower
 // than every live voice is dropped.
 // Occlusion: an optional probe (set by the match from the collision world)
-// tells whether the straight line listener → source is blocked.
+// tells whether the straight line source → listener is blocked (the probe
+// target is pulled off surfaces so bullet impacts on a visible wall are not
+// muffled by the wall they hit).
 //
 // This module re-exports the shared graph types and the Environment so older
 // imports (`./spatial`) keep working.
@@ -55,6 +57,18 @@ export interface RouteOpts {
   rolloff?: number;
   /** Skip the occlusion probe (e.g. bullet whizz). */
   noOcclusion?: boolean;
+  /**
+   * Height (m) above `pos` the occlusion probe aims at (default 0.9: `pos` at
+   * the feet → torso). Use 0 when `pos` already is the sound's height (eye,
+   * impact point).
+   */
+  occY?: number;
+  /**
+   * Pulls the probe target this far (m) toward the listener. Needed for points
+   * lying ON a surface (bullet impacts): otherwise the ray ends exactly on the
+   * wall and floating-point decides whether it counts as blocked.
+   */
+  occPull?: number;
   /** Destination bus (defaults to the world bus). */
   dest?: AudioNode;
 }
@@ -113,17 +127,19 @@ export class Spatializer {
     this.forward.y = fy;
     this.forward.z = fz;
     const l = this.core.ctx.listener;
-    const t = this.core.ctx.currentTime;
     if (l.positionX) {
-      l.positionX.setTargetAtTime(px, t, 0.012);
-      l.positionY.setTargetAtTime(py, t, 0.012);
-      l.positionZ.setTargetAtTime(pz, t, 0.012);
-      l.forwardX.setTargetAtTime(fx, t, 0.012);
-      l.forwardY.setTargetAtTime(fy, t, 0.012);
-      l.forwardZ.setTargetAtTime(fz, t, 0.012);
-      l.upX.setTargetAtTime(ux, t, 0.012);
-      l.upY.setTargetAtTime(uy, t, 0.012);
-      l.upZ.setTargetAtTime(uz, t, 0.012);
+      // Plain values, not automation: an automated listener forces every
+      // PannerNode onto Chrome's per-sample path (measured: ~3.6 ms of DSP
+      // per positional voice). The panners smooth their own gain changes.
+      l.positionX.value = px;
+      l.positionY.value = py;
+      l.positionZ.value = pz;
+      l.forwardX.value = fx;
+      l.forwardY.value = fy;
+      l.forwardZ.value = fz;
+      l.upX.value = ux;
+      l.upY.value = uy;
+      l.upZ.value = uz;
     } else {
       // Older Safari.
       (l as unknown as { setPosition(x: number, y: number, z: number): void }).setPosition(px, py, pz);
@@ -241,11 +257,28 @@ export class Spatializer {
     if (!this.admit(prio, now)) return null;
     const delay = Math.min(0.55, dist / SPEED_OF_SOUND);
     const near = Math.max(0, 1 - dist / 60);
-    // Occlusion: test from the ear to the source's torso height.
+    // Occlusion: the ray runs source → ear, so a source sitting inside or on
+    // a solid (a machine, the shooter's eye under a low ceiling) is not
+    // blocked by that solid itself; only geometry in between counts.
     let occluded = false;
     if (!opts.noOcclusion && this.probe && dist > 1.5) {
       const L = this.listener;
-      occluded = this.blocked(L.x, L.y, L.z, pos.x, pos.y + 0.9, pos.z);
+      let sx = pos.x;
+      let sy = pos.y + (opts.occY ?? 0.9);
+      let sz = pos.z;
+      const pull = opts.occPull ?? 0;
+      if (pull > 0) {
+        const ex = L.x - sx;
+        const ey = L.y - sy;
+        const ez = L.z - sz;
+        const el = Math.sqrt(ex * ex + ey * ey + ez * ez);
+        if (el > pull * 2) {
+          sx += (ex / el) * pull;
+          sy += (ey / el) * pull;
+          sz += (ez / el) * pull;
+        }
+      }
+      occluded = this.blocked(sx, sy, sz, L.x, L.y, L.z);
       if (occluded) this.stats.occluded++;
     }
     // Behind the listener: a touch darker (helps front/back on equal-power).
@@ -269,7 +302,8 @@ export class Spatializer {
     lp.frequency.value = cutoff;
     lp.Q.value = 0.5;
     const panner = ctx.createPanner();
-    panner.panningModel = core.hrtf && !core.lite && dist < 50 ? 'HRTF' : 'equalpower';
+    // HRTF costs a convolution per voice: near sources only, and only while the mix is light.
+    panner.panningModel = core.hrtf && !core.lite && dist < 50 && this.aliveCount < 24 ? 'HRTF' : 'equalpower';
     panner.distanceModel = 'inverse';
     panner.refDistance = opts.ref ?? 2;
     panner.rolloffFactor = opts.rolloff ?? 1;

@@ -1,9 +1,11 @@
 // Controls (English): touch layout editor, rotate-device prompt, weapon-slot radial, rebinding notes.
 export default {
+  'controls.cm360': '≈ {cm} cm per 360° turn at 800 DPI',
   'controls.editor.eyebrow': 'Touch controls',
   'controls.editor.title': 'Customize layout',
   'controls.editor.hint': 'Drag any control to move it. Pinch, or use − and +, to resize.',
   'controls.editor.hintDesktop': 'Drag any control to move it. Use − and + or the mouse wheel to resize.',
+  'controls.editor.hintPad': 'D-pad picks a control, left stick moves it, LT / RT resize. A confirms, B cancels.',
   'controls.editor.reset': 'Reset to default',
   'controls.editor.cancel': 'Cancel',
   'controls.editor.save': 'Save layout',

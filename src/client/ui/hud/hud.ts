@@ -612,9 +612,10 @@ export class GameHud implements Hud {
         { opacity: 0, transform: 'scale(0.92)' },
       ], { duration: head ? 380 : 240, easing: EASE });
     }
-    if (head) {
+    // Ring burst: gold for headshots, red for eliminations (both for a headshot kill).
+    if (head || kill) {
       const ring = hm.querySelector('circle');
-      if (ring) anim(ring, [{ opacity: 1, transform: 'scale(0.6)' }, { opacity: 0, transform: 'scale(1.5)' }], { duration: 420, easing: EASE });
+      if (ring) anim(ring, [{ opacity: 1, transform: 'scale(0.6)' }, { opacity: 0, transform: `scale(${kill ? 1.9 : 1.5})` }], { duration: kill ? 560 : 420, easing: EASE });
     }
   }
 

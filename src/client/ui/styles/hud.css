@@ -46,7 +46,11 @@ body.q-low .hud-panel {
   position: absolute;
   inset: 0;
   opacity: 0;
-  background: radial-gradient(ellipse at center, transparent 45%, rgba(170, 20, 30, 0.55) 100%);
+  /* Low health: warm-red edges that tighten as health drops (opacity driven by hud.ts). */
+  /* closest-side: the red reaches the screen edges themselves (farthest-corner left the
+     sides of a 16:9 screen at ~20% — barely visible over a bright sky at 20 HP). */
+  background:
+    radial-gradient(closest-side, transparent 55%, rgba(150, 18, 28, 0.36) 84%, rgba(120, 10, 22, 0.72) 100%);
   transition: opacity 400ms var(--ease);
 }
 
@@ -399,6 +403,12 @@ html[lang='ar'] .hs-phase {
   animation: hf-kf-out 400ms var(--ease-in) both;
 }
 
+.kf__name,
+.hud-elim__name,
+.hr-by b {
+  unicode-bidi: isolate;
+}
+
 .kf__name {
   max-width: 9em;
   overflow: hidden;
@@ -583,6 +593,16 @@ html[lang='ar'] .hs-phase {
   stroke-width: 3;
 }
 
+.hm.is-kill circle {
+  opacity: 1;
+  stroke: var(--c-danger);
+  stroke-width: 2;
+}
+
+.hm.is-kill.is-head circle {
+  stroke: var(--c-headshot);
+}
+
 .hud-elim {
   position: absolute;
   left: 0;
@@ -722,6 +742,24 @@ html[lang='ar'] .hs-phase {
 
 .obj.is-off .obj__dist {
   opacity: 0.75;
+}
+
+/* Teammates: a smaller chevron, no distance (only objectives carry distance). */
+.obj--friendly .obj__dist {
+  display: none;
+}
+
+.obj--friendly .obj__badge {
+  transform: scale(0.8);
+}
+
+/* Over the crosshair: step back so the marker never hides a target. */
+.obj {
+  transition: opacity 180ms var(--ease);
+}
+
+.obj.is-near {
+  opacity: 0.35;
 }
 
 .obj.is-pulse .obj__badge {
@@ -1314,7 +1352,8 @@ body.touch-ui .hud-ammo {
 }
 
 body.touch-ui .hud-feed {
-  top: calc(var(--safe-t) + 7.2em);
+  /* Below the relocated ammo panel (weapon, mag, low-ammo and throwable lines ≈ 7.8em). */
+  top: calc(var(--safe-t) + 8.8em);
 }
 
 body.touch-ui .hud-subs {

@@ -13,7 +13,7 @@ export default {
   'announcer.launch_ready': 'Launch sequence ready.',
   'announcer.double_elim': 'Double elimination.',
   'announcer.triple_elim': 'Triple elimination.',
-  'announcer.streak_5': 'Five in a row. Unstoppable.',
+  'announcer.streak_5': 'Five in a row.',
   'announcer.first_blood': 'First elimination.',
   'announcer.training_complete': 'Training complete. Well done, pilot.',
 } satisfies Record<string, string>;

@@ -6,10 +6,14 @@
 //
 // The GradingPass is the single custom full-screen shader. It also performs
 // the OutputPass duties (ACES filmic tone mapping with the renderer's exposure
-// + sRGB encoding) so grading happens in display space, where saturation,
-// shadow tint, vignette and grain behave perceptually — and phones save one
-// full-screen pass. On 'high' it adds a cheap painterly filter: a 9-tap,
-// 4-quadrant Kuwahara-style smoothing (edge preserving) plus a paper grain.
+// + sRGB encoding), so phones save one full-screen pass. Grading runs on the
+// tone-mapped LINEAR values: saturation, warm tint, a luminance-preserving
+// cool-violet split tone in the shadows (a hue shift, never a lift toward grey
+// — the old lift washed Medium/High out "milky") and the vignette; film grain
+// is added after sRGB encoding (even perceived strength, no noisy shadows).
+// Medium/High therefore keep Low's contrast and add color, not haze.
+// On 'high' it adds a cheap painterly filter: a 9-tap, 4-quadrant
+// Kuwahara-style smoothing (edge preserving) plus a paper grain.
 //
 // Everything linear/HDR lives in HalfFloat render targets (MSAA on high).
 // ─────────────────────────────────────────────────────────────────────────────
@@ -166,7 +170,7 @@ void main() {
   float sh = 1.0 - smoothstep(0.0, 0.2, l);
   // (nudged a little toward violet: the palette's steel-blue shadowCool alone
   // reads slightly cyan once multiplied into warm sandstone.)
-  vec3 shadowHue = uShadowTint * vec3(1.07, 0.95, 1.0);
+  vec3 shadowHue = uShadowTint * vec3(1.3, 0.86, 0.95);
   shadowHue /= max(luma(shadowHue), 1e-4);
   col = mix(col, col * shadowHue, sh * uShadowSplit);
   col += uShadowTint * uShadowFloor * (1.0 - smoothstep(0.0, 0.07, l));
@@ -211,8 +215,12 @@ class GradingPass extends Pass {
         uVignette: { value: 0.3 },
         uGrain: { value: 0.04 },
         uPaintRadius: { value: 1.6 },
-        uShadowSplit: { value: 0.34 },
-        uShadowFloor: { value: 0.45 },
+        uShadowSplit: { value: 0.5 },
+        // Toe floor only (deepest crevices → blue-violet, not black). At 0.45 it
+        // added sRGB ≈ (38,43,53) to every shadow and collapsed all shaded
+        // surfaces to one flat blue-grey — the remaining "milky" look. Shadow
+        // luminosity now comes from the sky fill (atmosphere SHADOW_FILL_RATIO).
+        uShadowFloor: { value: 0.12 },
       },
       defines: painterly ? { PAINTERLY: '' } : {},
       vertexShader: GRADING_VERT,
@@ -280,6 +288,8 @@ export class PostPipeline {
   private readonly emptyScene = new THREE.Scene();
   private readonly emptyCamera = new THREE.PerspectiveCamera();
   private time = 0;
+  private lastTint = '';
+  private lastShadowTint = '';
   private opts: PostOptions;
   private w = 1;
   private h = 1;
@@ -348,10 +358,18 @@ export class PostPipeline {
   setGrading(g: GradingSettings): void {
     const u = this.grading.material.uniforms;
     u.uSaturation.value = g.saturation;
-    hexToDisplayRGB(g.tint, u.uTint.value);
-    // Shadow tint is applied to linear values in the shader → linearize it.
-    const st = _c.setStyle(g.shadowTint);
-    (u.uShadowTint.value as THREE.Vector3).set(st.r, st.g, st.b);
+    // (Colors are re-parsed only when they change: the match calls setGrading
+    // every frame during the death desaturation fade.)
+    if (g.tint !== this.lastTint) {
+      this.lastTint = g.tint;
+      hexToDisplayRGB(g.tint, u.uTint.value);
+    }
+    if (g.shadowTint !== this.lastShadowTint) {
+      this.lastShadowTint = g.shadowTint;
+      // Shadow tint is applied to linear values in the shader → linearize it.
+      const st = _c.setStyle(g.shadowTint);
+      (u.uShadowTint.value as THREE.Vector3).set(st.r, st.g, st.b);
+    }
     u.uVignette.value = THREE.MathUtils.clamp(g.vignette, 0, 1);
     u.uGrain.value = THREE.MathUtils.clamp(g.grain, 0, 1);
     if (this.bloomPass) this.bloomPass.strength = THREE.MathUtils.clamp(g.bloomStrength, 0, 1.5) * 0.75;

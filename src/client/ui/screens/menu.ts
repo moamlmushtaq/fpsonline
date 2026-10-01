@@ -173,7 +173,9 @@ export class MenuScreen extends BaseScreen {
       h(
         'div',
         { class: 'badge__meta' },
-        info.needed > 0 ? h('span', { class: 'mono', text: `${i18n.num(info.into)} / ${i18n.num(info.needed)} XP` }) : h('span', { class: 'mono', t: 'common.maxLevel' }),
+        info.needed > 0
+          ? h('span', {}, h('span', { class: 'mono', text: `${i18n.num(info.into)} / ${i18n.num(info.needed)}` }), ' ', h('span', { t: 'common.xp' }))
+          : h('span', { t: 'common.maxLevel' }),
         h('span', { t: 'common.levelN', params: { n: info.level } }),
       ),
     );

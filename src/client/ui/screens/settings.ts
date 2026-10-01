@@ -14,6 +14,7 @@ import { i18n, refreshDom, setText } from '../i18n';
 import { BaseScreen } from './base';
 // Controls (input engineer): rebinding swaps on conflict instead of silently stealing.
 import { rebindWithSwap } from '../../input/rebind';
+import { cmPer360 } from '../../input/input';
 
 type Tab = 'gameplay' | 'controls' | 'graphics' | 'audio' | 'accessibility' | 'language';
 
@@ -130,9 +131,18 @@ export class SettingsScreen extends BaseScreen {
 
     switch (this.tab) {
       case 'gameplay': {
+        // Controls polish: cm/360° readout under mouse sensitivity (helper in input/input.ts).
+        const cmEl = h('div', { class: 'row__desc' });
+        const paintCm = (v: number) => setText(cmEl, 'controls.cm360', { cm: cmPer360(v).toFixed(1) });
+        paintCm(this.s.mouseSensitivity);
+        const mouseRow = settingRow(
+          'settings.mouseSensitivity',
+          slider({ min: 0.1, max: 5, step: 0.05, value: this.s.mouseSensitivity, format: x2, onChange: (v) => (this.set({ mouseSensitivity: v }), paintCm(v)), label: 'settings.mouseSensitivity' }).el,
+        );
+        mouseRow.firstElementChild?.append(cmEl);
         group(
           'settings.group.aim',
-          sl('mouseSensitivity', 'settings.mouseSensitivity', 0.1, 5, 0.05, x2),
+          mouseRow,
           sl('adsSensitivity', 'settings.adsSensitivity', 0.2, 2, 0.05, x2),
           sl('touchSensitivity', 'settings.touchSensitivity', 0.1, 5, 0.05, x2),
           sl('gamepadSensitivity', 'settings.gamepadSensitivity', 0.1, 5, 0.05, x2),

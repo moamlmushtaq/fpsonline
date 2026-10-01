@@ -13,7 +13,7 @@ export default {
   'announcer.launch_ready': 'تسلسل الإطلاق جاهز.',
   'announcer.double_elim': 'إقصاء مزدوج.',
   'announcer.triple_elim': 'إقصاء ثلاثي.',
-  'announcer.streak_5': 'خمسة على التوالي. لا يمكن إيقافك.',
+  'announcer.streak_5': 'خمسة على التوالي.',
   'announcer.first_blood': 'الإقصاء الأول.',
   'announcer.training_complete': 'اكتمل التدريب. أحسنت أيها الطيار.',
 } satisfies Record<string, string>;

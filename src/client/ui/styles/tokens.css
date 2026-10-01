@@ -90,8 +90,9 @@
 }
 
 html {
-  /* 16px at 1280×720; proportional up to 4K, never below 12px on phones. */
-  font-size: clamp(12px, min(1.25vw, 2.22vh), 40px);
+  /* 16px at 1280×720; proportional up to 4K, never below 12px on phones. 1.4vw lets
+     4:3 tablets (1024×768 → 14.3px) read a size larger than a strict 16:9 scale. */
+  font-size: clamp(12px, min(1.4vw, 2.22vh), 40px);
 }
 
 html[dir='rtl'] {

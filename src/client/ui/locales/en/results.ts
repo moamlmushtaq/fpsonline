@@ -8,6 +8,7 @@ export default {
   'results.ffaWinner': '{name} takes the match',
   'results.trainingDone': 'Range session complete',
   'results.teamWins': '{team} holds the launch towers',
+  'results.teamWins.tdm': '{team} wins the firefight',
   'results.mvp': 'MVP',
   'results.yourStats': 'Your performance',
   'results.stat.elims': 'Eliminations',

@@ -488,6 +488,7 @@ function interior(kit: DecorKit, signs: { board: SignBatch; lit: SignBatch }, rn
 
 /** Wire shopping cart; `roll` ≠ 0 lays it on its side (about its long axis). */
 export function cart(kit: DecorKit, x: number, y: number, z: number, ry: number, roll = 0): void {
+  kit.contact(x, y, z, roll ? 0.75 : 0.5, roll ? 0.7 : 0.65, ry, 0.8);
   const m = new THREE.Matrix4().makeRotationY(ry).multiply(new THREE.Matrix4().makeRotationZ(roll)).setPosition(x, y + (roll ? 0.33 : 0), z);
   const p = (a: number, b: number, c: number): THREE.Vector3 => new THREE.Vector3(a, b, c).applyMatrix4(m);
   const bars: [number, number, number, number, number, number][] = [
@@ -500,7 +501,20 @@ export function cart(kit: DecorKit, x: number, y: number, z: number, ry: number,
     [0.3, 0.1, 0.45, 0.3, 1.1, 0.6],
     [-0.3, 1.1, 0.6, 0.3, 1.1, 0.6],
   ];
-  for (const [a, b, c, d, e, f] of bars) kit.tube('chrome', p(a, b, c), p(d, e, f), 0.018, COL.chrome, 4);
+  for (const [a, b, c, d, e, f] of bars) kit.tube('chrome', p(a, b, c), p(d, e, f), 0.022, COL.chrome, 4);
+  // Wire-mesh basket: faint sheen panels (reads as a mesh, not as nothing),
+  // a solid bottom rack and the red-terracotta handle grip.
+  const R = new THREE.Matrix4().extractRotation(m);
+  const panel = (cx: number, cy: number, cz: number, sx: number, sy: number, sz: number): void => {
+    const mm = R.clone().setPosition(p(cx, cy, cz)).multiply(new THREE.Matrix4().makeScale(sx, sy, sz));
+    kit.geo('glass', kit.boxUnit(), mm, mix(COL.chrome, COL.dark, 0.2), { drift: 0 });
+  };
+  panel(-0.3, 0.7, 0, 0.01, 0.5, 0.9);
+  panel(0.3, 0.7, 0, 0.01, 0.5, 0.9);
+  panel(0, 0.7, -0.45, 0.6, 0.5, 0.01);
+  panel(0, 0.46, 0, 0.6, 0.01, 0.9);
+  kit.geo('chrome', kit.boxUnit(), new THREE.Matrix4().copy(R).setPosition(p(0, 0.2, 0.05)).multiply(new THREE.Matrix4().makeScale(0.5, 0.02, 0.75)), mix(COL.chrome, COL.dark, 0.3), { drift: 0 });
+  kit.tube('paint', p(-0.24, 1.1, 0.6), p(0.24, 1.1, 0.6), 0.032, COL.terraF, 6);
   for (const [a, c] of [
     [-0.25, -0.4],
     [0.25, -0.4],
@@ -650,6 +664,7 @@ function mannequin(kit: DecorKit, x: number, y: number, z: number, ry: number, t
   };
   const skin = mix(COL.bone, COL.pink, 0.15);
   const standing = Math.abs(tilt) < 0.3;
+  kit.contact(x, y, z, standing ? 0.4 : 0.5, standing ? 0.4 : 1.0, ry, 0.7);
   if (standing) {
     // Dress form: torso + cap, chrome pole, tripod feet.
     blob(0, 1.3, 0, 0.19, 0.27, 0.13, dress ?? mix(COL.boneShade, COL.terraF, 0.25));

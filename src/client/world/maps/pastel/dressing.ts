@@ -407,6 +407,7 @@ export function groundStory(d: Dress): PuddleSet {
 function planter(d: Dress, x: number, z: number, w: number, dd: number, ry: number, glow: boolean): void {
   const { kit, cards, rng } = d;
   kit.boxR('concrete', x, 0.2, z, w, 0.4, dd, ry, mix(K.bone, K.concrete, 0.4), 0.05, { base: 0, ao: 0.3 });
+  kit.contact(x, 0.03, z, w * 0.62, dd * 0.75, ry, 0.8);
   kit.boxR('grass', x, 0.39, z, w - 0.2, 0.02, dd - 0.2, ry, rgb('#8f8a6a'), 0, { base: -Infinity });
   const n = Math.max(1, Math.round(w / 1.1));
   for (let i = 0; i < n; i++) {
@@ -423,6 +424,7 @@ function planter(d: Dress, x: number, z: number, w: number, dd: number, ry: numb
 
 /** Lot lamp post with a dead (cracked, unlit) head. */
 function deadLamp(kit: DecorKit, x: number, z: number, ry: number, broken: boolean): void {
+  kit.contact(x, 0.03, z, 0.5, 0.5, 0, 0.7);
   kit.cyl('concrete', x, 0, z, 0.22, 0.28, 0.5, K.boneShade, 8);
   kit.cyl('chrome', x, 0.5, z, 0.08, 0.11, 6.6, mix(K.bone, K.rust, 0.25), 8);
   const ax = Math.cos(ry);
@@ -458,6 +460,7 @@ function busStop(d: Dress, x: number, z: number, face: number): void {
 }
 
 function bench(kit: DecorKit, x: number, z: number, ry: number): void {
+  kit.contact(x, 0.03, z, 1.1, 0.45, ry, 0.8);
   const c = Math.cos(ry);
   const s = Math.sin(ry);
   kit.boxR('wood', x, 0.44, z, 1.8, 0.06, 0.42, ry, K.wood, 0.02);
@@ -506,6 +509,221 @@ export function lotProps(d: Dress): void {
   }
 }
 
+/**
+ * The lot being reclaimed: grass seams along the expansion joints, islands of
+ * moss / creeper / weeds / shrubs breaking up through the asphalt, glowing
+ * ground cover in the cars' and pylon's shade, a phone + newspaper boxes by
+ * the mall. Everything ≤ ~0.7 m and non-colliding (cover stays the cars).
+ */
+export function lotReclaim(d: Dress): void {
+  const { kit, cards, decals, rng } = d;
+  const det = kit.detail;
+  const seamWeed = mix(mix(K.sage, K.sand, 0.25), K.olive, 0.3);
+  for (const sz of [1, -1]) {
+    const north = sz < 0;
+    const Z = (z: number): number => z * sz;
+    const clear = (x: number, z: number): boolean => {
+      const az = Math.abs(z);
+      if (Math.abs(x) < 1.5 && az > 17.8 && az < 25.2) return false; // pylon
+      if (x > -10.6 && x < -7.4 && az > 20.4 && az < 26.1) return false; // wagon
+      if (x > 5.4 && x < 11.1 && az > 26.4 && az < 29.6) return false; // sedan
+      return true;
+    };
+    // Grass seams: the drive-lane joint and a cross joint.
+    const seam = (x0: number, z0: number, x1: number, z1: number): void => {
+      const len = Math.hypot(x1 - x0, z1 - z0);
+      const n = Math.round(len / 0.9);
+      for (let i = 0; i < n; i++) {
+        if (rng() < 0.3) continue;
+        const t = (i + rng()) / n;
+        const x = x0 + (x1 - x0) * t;
+        const z = z0 + (z1 - z0) * t;
+        if (!clear(x, z)) continue;
+        decals.ground(DECAL.crackB, x, z, 0.03 + DY, 1.4, 0.35, Math.atan2(z1 - z0, x1 - x0) * -1 + (rng() - 0.5) * 0.2, tint(rng, 0.6, 0.85));
+        if (rng() < 0.55 + det * 0.3) decals.ground(DECAL.weeds, x, z, 0.03 + DY + 0.001, 0.7 + rng() * 0.5, 0.5 + rng() * 0.4, rng() * 6, [1, 1, 1, 0.95]);
+        if (rng() < 0.4 + det * 0.4) tuft(kit, x + (rng() - 0.5) * 0.3, z + (rng() - 0.5) * 0.3, 0.18 + rng() * 0.25, mix(seamWeed, K.olive, rng() * 0.4), rng, 0.03);
+      }
+    };
+    seam(-16.6, Z(25.3), 16.6, Z(25.3));
+    seam(-4.2, Z(16), -4.2, Z(39.6));
+    seam(11.6, Z(16), 11.6, Z(39.6));
+    // Reclaimed islands: [x, z, radius, glowing].
+    const islands: [number, number, number, boolean][] = [
+      [-14.6, 37.4, 2.4, north],
+      [14.7, 17.6, 2.1, true],
+      [3.6, 22.4, 1.5, true],
+      [-5.6, 33.2, 1.2, north],
+      [-14.8, 17.8, 1.5, false],
+    ];
+    for (const [ix, iz0, r, glow] of islands) {
+      const iz = Z(iz0);
+      decals.ground(DECAL.moss, ix, iz, 0.03 + DY + 0.0005, r * 2.4, r * 2.0, rng() * 6, [1, 1, 1, 0.92]);
+      decals.ground(DECAL.crackA, ix, iz, 0.03 + DY, r * 2.2, r * 2.2, rng() * 6, tint(rng, 0.6, 0.8));
+      const cush = Math.round((2 + r * 1.6) * (0.5 + det * 0.5));
+      for (let i = 0; i < cush; i++) {
+        const a = rng() * Math.PI * 2;
+        const rr = Math.sqrt(rng()) * r * 0.75;
+        cushion(cards, ix + Math.cos(a) * rr, 0.03, iz + Math.sin(a) * rr, 0.6 + rng() * 0.8, rng, mix(LEAF.sage, LEAF.olive, rng()));
+      }
+      const tufts = Math.round((5 + r * 5) * (0.4 + det * 0.6));
+      for (let i = 0; i < tufts; i++) {
+        const a = rng() * Math.PI * 2;
+        const rr = Math.sqrt(rng()) * r;
+        tuft(kit, ix + Math.cos(a) * rr, iz + Math.sin(a) * rr, 0.22 + rng() * 0.38, mix(mix(K.sage, K.sand, 0.3), K.olive, rng() * 0.5), rng, 0.03);
+      }
+      // A waist-high shrub pushing up through the tarmac on the bigger ones.
+      if (r > 1.4) bush(kit, cards, ix + (rng() - 0.5) * r * 0.5, 0.03, iz + (rng() - 0.5) * r * 0.5, 0.55 + rng() * 0.2, 0.42 + rng() * 0.12, 0.55 + rng() * 0.2, rng);
+      for (let i = 0; i < 2; i++) fern(cards, ix + (rng() - 0.5) * r, 0.03, iz + (rng() - 0.5) * r, 0.3 + rng() * 0.2, rng);
+      if (glow) glowPatch(kit, cards, ix + (rng() - 0.5) * 0.6, 0.035, iz + (rng() - 0.5) * 0.6, Math.min(1.2, r * 0.7), rng);
+    }
+    // Glowing ground cover in the cars' shade (sun from the south-west: the
+    // north-east sides stay cool) + creeper over the bumpers.
+    glowPatch(kit, cards, -7.3, 0.035, Z(23.25) - 1.0, 0.75, rng);
+    glowPatch(kit, cards, 9.5, 0.035, Z(28) - 1.6, 0.7, rng);
+    cushion(cards, -9.0, 0.035, Z(25.5) + sz * 0.55, 1.1, rng, LEAF.olive);
+    cushion(cards, 10.9, 0.035, Z(28.2), 1.0, rng, LEAF.olive);
+    // Mall frontage: wall payphone between the flutes, newspaper boxes by the
+    // bus-stop bench (against the screen wall).
+    const fz = 12.0 * sz;
+    const fn = sz;
+    kit.box('paint', -9.0 - 0.35, 1.0, Math.min(fz, fz + fn * 0.32), -9.0 + 0.35, 2.05, Math.max(fz, fz + fn * 0.32), mix(K.bone, K.terraF, 0.25), 0.03, { ao: 0.2, base: 0 });
+    kit.box('paint', -9.0 - 0.32, 2.05, Math.min(fz, fz + fn * 0.42), -9.0 + 0.32, 2.15, Math.max(fz, fz + fn * 0.42), K.terra, 0.02, { ao: 0 });
+    kit.box('chrome', -9.0 - 0.18, 1.25, Math.min(fz + fn * 0.32, fz + fn * 0.36), -9.0 + 0.18, 1.85, Math.max(fz + fn * 0.32, fz + fn * 0.36), K.chrome, 0, { ao: 0 });
+    kit.box('paint', -9.0 + 0.12, 1.3, Math.min(fz + fn * 0.36, fz + fn * 0.44), -9.0 + 0.22, 1.62, Math.max(fz + fn * 0.36, fz + fn * 0.44), K.dark, 0.02, { ao: 0 });
+    kit.tube('chrome', new THREE.Vector3(-8.8, 1.32, fz + fn * 0.4), new THREE.Vector3(-8.9, 0.75, fz + fn * 0.55), 0.012, K.dark, 3);
+    kit.boxE('paint', new THREE.Vector3(-8.9, 0.7, fz + fn * 0.56), new THREE.Euler(0.3, 0, 1.2), new THREE.Vector3(0.22, 0.06, 0.07), K.dark, 0.02);
+    const wz = 39.96 * sz;
+    for (const [x, col] of [
+      [8.9, K.blue],
+      [9.55, K.yellow],
+      [10.15, K.terraF],
+    ] as const) {
+      kit.box('paint', x - 0.27, 0.0, Math.min(wz, wz - sz * 0.42), x + 0.27, 0.95, Math.max(wz, wz - sz * 0.42), mix(col, K.boneShade, 0.25), 0.03, { base: 0.03 });
+      kit.box('window', x - 0.2, 0.55, Math.min(wz - sz * 0.42, wz - sz * 0.43), x + 0.2, 0.85, Math.max(wz - sz * 0.42, wz - sz * 0.43), mix(K.bone, K.dark, 0.35), 0, { ao: 0 });
+      kit.contact(x, 0.03, wz - sz * 0.2, 0.36, 0.3, 0, 0.8);
+    }
+    decals.ground(DECAL.paper, 9.6, wz - sz * 0.9, 0.03 + DY + 0.002, 1.3, 1.1, rng() * 6, [0.85, 0.82, 0.8, 0.9]);
+  }
+}
+
+/** Traffic cone (standing or knocked over, ≤ 0.6 m). */
+function cone(kit: DecorKit, x: number, y: number, z: number, ry: number, down: boolean): void {
+  const col = mix(K.terraF, K.terra, 0.35);
+  const base = mix(K.dark, K.concreteDark, 0.45);
+  if (!down) {
+    kit.box('paint', x - 0.17, y, z - 0.17, x + 0.17, y + 0.04, z + 0.17, base, 0);
+    kit.cyl('paint', x, y + 0.04, z, 0.04, 0.15, 0.52, col, 8);
+    kit.cyl('paint', x, y + 0.26, z, 0.098, 0.107, 0.08, K.bone, 8);
+    kit.contact(x, y, z, 0.3, 0.3, 0, 0.7);
+    return;
+  }
+  const m = new THREE.Matrix4().makeTranslation(x, y + 0.13, z).multiply(new THREE.Matrix4().makeRotationY(ry)).multiply(new THREE.Matrix4().makeRotationZ(Math.PI / 2 - 0.27));
+  kit.geo('paint', kit.cylGeo(0.04, 0.15, 8), m.clone().multiply(new THREE.Matrix4().makeScale(1, 0.52, 1)), col, { drift: 0.05 });
+  kit.boxR('paint', x - Math.cos(ry) * 0.3, y + 0.15, z + Math.sin(ry) * 0.3, 0.04, 0.32, 0.32, ry, base, 0);
+  kit.contact(x, y, z, 0.45, 0.25, ry, 0.6);
+}
+
+/** Wet, collapsing cardboard box (or a flattened sheet). */
+function carton(kit: DecorKit, x: number, y: number, z: number, ry: number, s: number, flat: boolean): void {
+  const col = mix(K.sand, K.woodDark, 0.35);
+  if (flat) {
+    kit.boxR('fabric', x, y + 0.012, z, 0.9 * s, 0.02, 0.7 * s, ry, col, 0, { ao: 0 });
+    return;
+  }
+  kit.boxE('fabric', new THREE.Vector3(x, y + 0.22 * s, z), new THREE.Euler(0.06, ry, -0.05), new THREE.Vector3(0.6 * s, 0.44 * s, 0.45 * s), col, 0.03);
+  // Sagging open flaps.
+  kit.boxE('fabric', new THREE.Vector3(x + Math.cos(ry) * 0.38 * s, y + 0.38 * s, z - Math.sin(ry) * 0.38 * s), new THREE.Euler(0, ry, -0.9), new THREE.Vector3(0.3 * s, 0.015, 0.44 * s), mix(col, K.dark, 0.1), 0);
+  kit.contact(x, y, z, 0.5 * s, 0.42 * s, ry, 0.8);
+}
+
+/** Sawhorse barricade (≈ 1 m, a "closed" board in faded stripes). */
+function sawhorse(kit: DecorKit, x: number, y: number, z: number, ry: number): void {
+  const m = new THREE.Matrix4().makeRotationY(ry).setPosition(x, y, z);
+  const P = (a: number, b: number, c: number): THREE.Vector3 => new THREE.Vector3(a, b, c).applyMatrix4(m);
+  for (const s of [-0.65, 0.65]) {
+    kit.tube('wood', P(s, 0, -0.3), P(s, 0.95, 0), 0.03, K.bone, 4);
+    kit.tube('wood', P(s, 0, 0.3), P(s, 0.95, 0), 0.03, K.bone, 4);
+  }
+  for (let i = 0; i < 5; i++) {
+    const a = -0.75 + i * 0.3;
+    kit.boxE('paint', P(a + 0.15, 0.86, 0.02), new THREE.Euler(0, ry, 0), new THREE.Vector3(0.3, 0.22, 0.03), i % 2 ? K.bone : K.terraF, 0);
+  }
+  kit.contact(x, y, z, 0.9, 0.45, ry, 0.6);
+}
+
+/**
+ * Lot clutter + the mall galleries' floors: cones, cartons and barricades
+ * by the flooded doors; litter, moss, damp and leaves on the upper galleries
+ * and bridge, a wet-floor sign, dead potted ficus and benches against the
+ * shop fronts (out of the walking line).
+ */
+export function lotClutter(d: Dress): void {
+  const { kit, cards, decals, rng } = d;
+  const G = 3.2;
+  for (const sz of [1, -1]) {
+    const Z = (z: number): number => z * sz;
+    // The mall management fenced off the flooded doors… years ago.
+    // (Dragged aside against the facade, clear of the door lanes x ±4..8.)
+    sawhorse(kit, -9.3, 0.037, Z(13.5), 0.25 * sz);
+    if (sz > 0) sawhorse(kit, 9.6, 0.037, Z(13.7), -0.35);
+    cone(kit, -3.6, 0.037, Z(14.6), 0, false);
+    cone(kit, 3.9, 0.037, Z(14.9), 0.4, true);
+    cone(kit, 8.7, 0.037, Z(14.2), 1.9 * sz, true);
+    cone(kit, -8.9, 0.03, Z(17.0), 0, false);
+    cone(kit, 13.2, 0.03, Z(24.6), 2.6, true);
+    carton(kit, -12.6, 0.037, Z(14.2), 0.3, 1, false);
+    carton(kit, -12.0, 0.037, Z(14.9), 1.1, 0.8, false);
+    carton(kit, -10.8, 0.037, Z(14.6), 0.2, 1, true);
+    carton(kit, 2.8, 0.03, Z(31.5), 2.2, 1, true);
+    carton(kit, -15.6, 0.03, Z(30.4), 0.9, 1.1, false);
+    // Extra reclaimed corners against the house walls (east / west curbs).
+    for (const [x, z] of [
+      [-16.1, 29.2],
+      [16.0, 25.0],
+    ] as const) {
+      decals.ground(DECAL.moss, x, Z(z), 0.03 + DY + 0.0005, 2.2, 3.2, rng() * 6, [1, 1, 1, 0.9]);
+      for (let i = 0; i < 5; i++) tuft(kit, x + (rng() - 0.5) * 1.2, Z(z) + (rng() - 0.5) * 2.4, 0.25 + rng() * 0.35, mix(K.sage, K.olive, rng() * 0.6), rng, 0.03);
+      fern(cards, x, 0.03, Z(z) + (rng() - 0.5), 0.35 + rng() * 0.2, rng);
+      if (sz < 0 || rng() < 0.5) glowPatch(kit, cards, x + 0.3 * Math.sign(-x), 0.035, Z(z), 0.7, rng);
+    }
+  }
+  // Upper galleries (x ±10..±15, y 3.2) + bridge: floor storytelling.
+  for (const s of [1, -1]) {
+    for (let i = 0; i < Math.round(16 * kit.detail); i++) {
+      const x = s * (10.5 + rng() * 4);
+      const z = -11 + rng() * 22;
+      const r = rng();
+      const y = G + 0.004;
+      if (r < 0.3) decals.ground(DECAL.leaves, x, z, y + 0.002, 1.2 + rng() * 1.2, 1.2 + rng() * 1.2, rng() * 6, [1, 1, 1, 0.95]);
+      else if (r < 0.55) decals.ground(DECAL.damp, x, z, y, 1.6 + rng() * 1.6, 1.2 + rng() * 1.4, rng() * 6, [1, 1, 1, 0.7]);
+      else if (r < 0.75) decals.ground(DECAL.moss, x, z, y + 0.001, 1.2 + rng() * 1.2, 1.2 + rng() * 1.2, rng() * 6, [1, 1, 1, 0.85]);
+      else if (r < 0.88) decals.ground(DECAL.paper, x, z, y + 0.003, 0.9, 0.9, rng() * 6, [0.85, 0.82, 0.8, 0.9]);
+      else decals.ground(DECAL.crackA, x, z, y + 0.001, 1.4, 1.4, rng() * 6, tint(rng, 0.6, 0.85));
+    }
+    // Rain streaks + damp where the vault leaks onto the gallery edge.
+    for (const z of [-8.5, -3.6, 4.2, 9.1]) decals.ground(DECAL.damp, s * 10.9, z, G + 0.004, 1.4, 2.6, Math.PI / 2, [1, 1, 1, 0.75]);
+    // Mall bench + dead ficus in a planter against the shop fronts.
+    const xb = s * 14.05;
+    for (const z of [-6.4, 8.8]) {
+      kit.boxR('wood', xb, G + 0.44, z, 0.42, 0.06, 1.7, 0, K.wood, 0.02);
+      for (const t of [-0.65, 0.65]) kit.boxR('chrome', xb, G + 0.22, z + t, 0.38, 0.44, 0.06, 0, K.dark, 0);
+      kit.contact(xb, G, z, 0.4, 1.05, 0, 0.7);
+      const zp = z + (z > 0 ? 1.35 : -1.35);
+      kit.cyl('concrete', xb, G, zp, 0.34, 0.28, 0.55, mix(K.bone, K.terraF, 0.3), 12);
+      kit.contact(xb, G, zp, 0.45, 0.45, 0, 0.8);
+      kit.tube('wood', new THREE.Vector3(xb, G + 0.5, zp), new THREE.Vector3(xb + 0.08, G + 1.6, zp + 0.05), 0.03, K.woodDark, 4);
+      crown(kit, cards, new THREE.Vector3(xb + 0.05, G + 1.75, zp), 0.45, 0.4, 0.45, rng, { tint: mix(LEAF.mustard, LEAF.sunBleached, 0.4), density: 6, sway: 0.08, bias: 0.3 });
+    }
+    // Wet-floor A-frame sign (pastel yellow), one tipped.
+    const wy = mix(K.yellow, K.bone, 0.15);
+    const wx = s * 11.2;
+    if (s > 0) {
+      for (const k of [-1, 1]) kit.boxE('paint', new THREE.Vector3(wx + k * 0.12, G + 0.33, -6.2), new THREE.Euler(0, 0, k * 0.32), new THREE.Vector3(0.02, 0.66, 0.32), wy, 0);
+      kit.contact(wx, G, -6.2, 0.3, 0.3, 0, 0.6);
+    } else kit.boxR('paint', wx, G + 0.03, 6.6, 0.32, 0.03, 0.66, 0.7, wy, 0);
+  }
+}
+
 function signsBusStopLitter(d: Dress, x: number, z: number): void {
   d.decals.ground(DECAL.paper, x + 0.6, z + 0.2, 0.03 + DY + 0.002, 1.2, 1.2, d.rng() * 6);
   d.decals.ground(DECAL.leaves, x - 0.8, z, 0.03 + DY + 0.001, 1.8, 1.4, d.rng() * 6);
@@ -550,6 +768,7 @@ function cartAt(kit: DecorKit, x: number, z: number, ry: number, tipped: boolean
 // ── Back yards ──────────────────────────────────────────────────────────────
 
 function lawnChair(kit: DecorKit, x: number, z: number, ry: number, col: RGB, folded = false): void {
+  kit.contact(x, 0.005, z, 0.4, 0.5, ry, 0.7);
   const m = new THREE.Matrix4().makeRotationY(ry).setPosition(x, 0, z);
   const P = (a: number, b: number, c: number): THREE.Vector3 => new THREE.Vector3(a, b, c).applyMatrix4(m);
   if (folded) {
@@ -568,6 +787,7 @@ function lawnChair(kit: DecorKit, x: number, z: number, ry: number, col: RGB, fo
 }
 
 function swingSet(kit: DecorKit, x: number, z: number, ry: number): void {
+  kit.contact(x, 0.005, z, 1.7, 0.9, ry, 0.5);
   const m = new THREE.Matrix4().makeRotationY(ry).setPosition(x, 0, z);
   const P = (a: number, b: number, c: number): THREE.Vector3 => new THREE.Vector3(a, b, c).applyMatrix4(m);
   const col = mix(K.terraF, K.rust, 0.3);
@@ -585,6 +805,7 @@ function swingSet(kit: DecorKit, x: number, z: number, ry: number): void {
 }
 
 function tricycle(kit: DecorKit, x: number, z: number, ry: number, col: RGB): void {
+  kit.contact(x, 0.005, z, 0.35, 0.45, ry, 0.7);
   const m = new THREE.Matrix4().makeRotationY(ry).setPosition(x, 0, z);
   const P = (a: number, b: number, c: number): THREE.Vector3 => new THREE.Vector3(a, b, c).applyMatrix4(m);
   const wheel = (a: number, c: number, r: number): void => {
@@ -661,6 +882,7 @@ export function yardProps(d: Dress): void {
 }
 
 function mailbox(kit: DecorKit, x: number, z: number, ry: number, col: RGB): void {
+  kit.contact(x, 0.03, z, 0.3, 0.3, 0, 0.6);
   kit.cyl('wood', x, 0, z, 0.05, 0.05, 1.0, K.woodDark, 6);
   kit.boxR('paint', x, 1.12, z, 0.26, 0.26, 0.5, ry, col, 0.1);
   kit.boxR('paint', x + Math.cos(ry) * 0.14, 1.2, z - Math.sin(ry) * 0.14, 0.03, 0.2, 0.04, ry, K.terra, 0);
@@ -686,12 +908,20 @@ function ivyRun(d: Dress, a: THREE.Vector3, b: THREE.Vector3, n: THREE.Vector3, 
   const seg = len / k;
   for (let i = 0; i < k; i++) {
     if (rng() > fill) continue;
-    // Cards stay inside the run (ivy never floats past a wall end / doorway).
-    const w = Math.min(seg * 0.95, 2.2 + rng() * 1.6);
-    const t = (i + 0.5) / k + ((rng() - 0.5) * 0.6 * Math.max(0, seg - w)) / len;
-    const p = a.clone().lerp(b, t);
-    const hh = h * (0.45 + rng() * 0.55);
+    // Cards overlap their neighbours (one continuous, ragged mat — never a
+    // row of topiary columns) but stay inside the run (no ivy floating past
+    // a wall end / doorway).
+    const w = Math.min(len, seg * (1.2 + rng() * 0.25), 4.2);
+    const tc = THREE.MathUtils.clamp((i + 0.5) / k + (rng() - 0.5) * 0.15 / k, w / 2 / len, 1 - w / 2 / len);
+    const p = a.clone().lerp(b, tc);
+    const hh = h * (0.4 + rng() * 0.6);
     ivy(cards, p, n, w, hh, rng, mix(LEAF.ivy, LEAF.sage, rng() * 0.3));
+    // A low skirt bridging to the next mound (ground-level spread).
+    if (i < k - 1 && rng() < fill) {
+      const ws = Math.min(seg * 0.9, len);
+      const ts = THREE.MathUtils.clamp((i + 1) / k, ws / 2 / len, 1 - ws / 2 / len);
+      ivy(cards, a.clone().lerp(b, ts).addScaledVector(n, -0.01), n, ws, Math.min(hh, 0.9 + rng() * 1.2), rng, mix(LEAF.ivy, LEAF.olive, rng() * 0.3));
+    }
     // Glowing ground cover at the root of shaded ivy.
     if (glow && rng() < 0.55 * (0.5 + kit.detail * 0.5)) {
       const g = p.clone().addScaledVector(n, 0.45);
@@ -772,6 +1002,25 @@ export function overgrowth(d: Dress): void {
     ] as const) {
       ivyRun(d, V(15.18, -0.05, z0), V(15.18, -0.05, z1), N.px, 7.4, 1, true);
       ivyRun(d, V(-15.18, -0.05, z0), V(-15.18, -0.05, z1), N.nx, 4.4, 0.6);
+    }
+  }
+  // ── Inside the mall (the shade): ivy creeping up the dead shop glass of the
+  // ground-floor arcade from the flood, glowing beds at its foot, and ivy over
+  // the escalator trusses.
+  const WY = -0.19;
+  for (const s of [1, -1]) {
+    const xi = 14.26 * s;
+    const ni = s > 0 ? N.nx : N.px;
+    for (const [z0, z1] of [
+      [5.4, 11.1],
+      [-11.1, -5.4],
+    ] as const) ivyRun(d, V(xi, WY, z0), V(xi, WY, z1), ni, 2.3, 0.75, true);
+    for (const sz of [1, -1]) {
+      for (const xt of [3.88, 8.12]) {
+        const outward = xt < 6 ? -1 : 1;
+        if (rng() > 0.4 + kit.detail * 0.6) continue;
+        ivy(cards, V(xt * s + 0.02 * outward * s, WY, 3.9 * sz), outward * s > 0 ? N.px : N.nx, 2.0, 1.2 + rng() * 0.4, rng);
+      }
     }
   }
   edgeRun(d, V(16.24, 8.7, -13.2), V(16.24, 8.7, -5.4), N.px, 2.8, 1);
@@ -922,6 +1171,7 @@ export function treeFloor(d: Dress, x: number, z: number, r: number): void {
 // ── Lawns & foundations ─────────────────────────────────────────────────────
 
 function trashCan(kit: DecorKit, x: number, z: number, tipped: number | null, col: RGB): void {
+  kit.contact(x, 0.03, z, tipped === null ? 0.45 : 0.8, 0.45, tipped ?? 0, 0.85);
   if (tipped === null) {
     kit.cyl('metal', x, 0, z, 0.27, 0.24, 0.85, col, 10, { ao: 0.3 });
     kit.cyl('metal', x, 0.85, z, 0.3, 0.3, 0.06, mix(col, K.dark, 0.2), 10);

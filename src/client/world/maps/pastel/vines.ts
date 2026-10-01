@@ -14,6 +14,7 @@
 import * as THREE from 'three';
 import type { MaterialLibrary } from '../../../contracts';
 import { ENV } from '../../../engine/palette';
+import { CARD, type CardBatch } from './cards';
 import { type DecorKit, type RGB, mix, rgb, swayMaterial } from './kit';
 
 const STEM = rgb('#6f7a55');
@@ -23,14 +24,47 @@ const LEAF_LIGHT = rgb(ENV.sage);
 const SUNLIT = rgb(ENV.pastelYellow);
 const GLOWS = [ENV.glowChartreuse, ENV.glowGold, ENV.glowSoftPink] as const;
 
+/**
+ * Bulb colour (linear, HDR). Chartreuse is pushed more saturated than the UI
+ * swatch so it survives ACES at bloom intensity (otherwise it reads white);
+ * pale gold / soft pink stay pale by design.
+ */
+const GLOW_LIN: RGB[] = [mix(rgb(GLOWS[0]), [0.36, 0.95, 0.03], 0.55), rgb(GLOWS[1]), mix(rgb(GLOWS[2]), [1, 0.36, 0.5], 0.3)];
 export function glowColor(rng: () => number, k = 1): RGB {
   const r = rng();
-  const hex = r < 0.55 ? GLOWS[0] : r < 0.85 ? GLOWS[1] : GLOWS[2];
-  return rgb(hex, (1.6 + rng() * 0.9) * k);
+  const c = GLOW_LIN[r < 0.55 ? 0 : r < 0.85 ? 1 : 2];
+  const g = (1.45 + rng() * 0.6) * k;
+  return [c[0] * g, c[1] * g, c[2] * g];
 }
+
+/** Halo tint for a bulb colour (normalised hue, so dim and bright bulbs halo alike). */
+export function haloColor(c: RGB): RGB {
+  const m = Math.max(c[0], c[1], c[2], 1e-3);
+  return [c[0] / m, c[1] / m, c[2] / m];
+}
+
+/** Leaf-card batch for the strands (set by pastel.ts; null = stems + leaves only). */
+let VCARDS: CardBatch | null = null;
+export function setVineCards(c: CardBatch | null): void {
+  VCARDS = c;
+}
+const G = 1.55;
+const FR_HI: RGB = mix(rgb(ENV.sage), rgb(ENV.sand), 0.25).map((v) => v * G) as RGB;
+const FR_LO: RGB = mix(rgb(ENV.olive), rgb(ENV.shadowCool), 0.25).map((v) => v * G * 0.85) as RGB;
 
 function leaf(kit: DecorKit, p: THREE.Vector3, size: number, rng: () => number, sway: number, tint = 0): void {
   const a = rng() * Math.PI * 2;
+  if (VCARDS) {
+    // A small painted leaf cluster (same atlas as the canopies) instead of a
+    // flat kite-shaped quad.
+    const s = size * (1.3 + rng() * 0.6);
+    const n = new THREE.Vector3(Math.sin(a), (rng() - 0.3) * 0.8, Math.cos(a)).normalize();
+    const right = new THREE.Vector3(n.z, 0, -n.x).normalize().multiplyScalar(s / 2);
+    const up = new THREE.Vector3().crossVectors(n, right).normalize().multiplyScalar(s / 2);
+    const c = mix(mix(LEAF, LEAF_LIGHT, rng()), rgb(ENV.glowChartreuse), tint * 0.5).map((v) => v * G) as RGB;
+    VCARDS.card(CARD.leaf, p.clone().addScaledVector(up, -0.6), right, up, { colors: c, sway: [sway, sway], flip: rng() < 0.5 });
+    return;
+  }
   const tilt = 0.4 + rng() * 0.6;
   const w = size * (0.6 + rng() * 0.5);
   const h = size * (1 + rng() * 0.6);
@@ -60,7 +94,20 @@ export function hangingVine(kit: DecorKit, anchor: THREE.Vector3, length: number
     kit.tube('stem', prev, p, 0.018 * (1.2 - t * 0.5), STEM, 4, { drift: 0.1, sway: (_x, y) => Math.max(0, (anchor.y - y) / length) ** 1.5 * amp });
     prev = p;
   }
-  const leaves = Math.round((kit.low ? 2 : 6) * Math.min(2, length / 1.5) * Math.max(0.5, kit.detail));
+  // Painted strand card (leafy tendrils + buds) hanging along the stem.
+  if (VCARDS) {
+    const a = rng() * Math.PI;
+    const n = new THREE.Vector3(Math.sin(a), 0, Math.cos(a));
+    const w = 0.2 + rng() * 0.14;
+    const u0 = rng() * 0.88;
+    VCARDS.hang(CARD.fringe, anchor.clone().add(new THREE.Vector3(0, 0.05, 0)), n, w, length * 1.02, {
+      colors: [FR_LO, FR_LO, FR_HI, FR_HI],
+      sway: [amp, 0],
+      sub: [u0, u0 + 0.11, 0, 1],
+      flip: rng() < 0.5,
+    });
+  }
+  const leaves = Math.round((kit.low ? 2 : 6) * (VCARDS ? 0.6 : 1) * Math.min(2, length / 1.5) * Math.max(0.5, kit.detail));
   for (let i = 0; i < leaves; i++) {
     const t = 0.1 + rng() * 0.9;
     const p = anchor.clone().add(new THREE.Vector3(bend.x * Math.sin(t * 2.4), -length * t, bend.z * Math.sin(t * 2.1)));
@@ -70,8 +117,11 @@ export function hangingVine(kit: DecorKit, anchor: THREE.Vector3, length: number
   for (let i = 0; i < bulbs; i++) {
     const t = 0.25 + rng() * 0.75;
     const p = anchor.clone().add(new THREE.Vector3(bend.x * Math.sin(t * 2.4) + (rng() - 0.5) * 0.08, -length * t, bend.z * Math.sin(t * 2.1) + (rng() - 0.5) * 0.08));
-    const r = 0.03 + rng() * 0.04;
-    kit.ball('glow', p.x, p.y, p.z, r, r * 1.3, r, glowColor(rng), 0, { drift: 0, sway: t ** 1.5 * Math.min(1, length / 3) });
+    const r = 0.025 + rng() * 0.03;
+    const c = glowColor(rng);
+    const sw = t ** 1.5 * Math.min(1, length / 3);
+    kit.ball('glow', p.x, p.y, p.z, r, r * 1.3, r, c, 0, { drift: 0, sway: sw });
+    if (i % 2 === 0) kit.halo(p.x, p.y, p.z, 0.16 + r * 2, haloColor(c), sw);
   }
 }
 
@@ -96,8 +146,10 @@ export function climbingVine(kit: DecorKit, base: THREE.Vector3, height: number,
   const bulbs = Math.round(glow * height * 1.6 * Math.max(0.5, kit.detail));
   for (let i = 0; i < bulbs; i++) {
     const p = base.clone().addScaledVector(normal, 0.12).addScaledVector(side, (rng() - 0.5) * 0.9).add(new THREE.Vector3(0, height * (0.2 + rng() * 0.8), 0));
-    const r = 0.035 + rng() * 0.04;
-    kit.ball('glow', p.x, p.y, p.z, r, r, r, glowColor(rng), 0, { drift: 0 });
+    const r = 0.03 + rng() * 0.035;
+    const c = glowColor(rng);
+    kit.ball('glow', p.x, p.y, p.z, r, r, r, c, 0, { drift: 0 });
+    if (i % 2 === 0) kit.halo(p.x, p.y, p.z, 0.18 + r * 2, haloColor(c));
   }
 }
 

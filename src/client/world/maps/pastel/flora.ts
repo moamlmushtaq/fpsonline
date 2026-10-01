@@ -16,7 +16,7 @@ import * as THREE from 'three';
 import { ENV } from '../../../engine/palette';
 import { CARD, type CardBatch } from './cards';
 import { type DecorKit, type RGB, mix, rgb } from './kit';
-import { glowColor } from './vines';
+import { glowColor, haloColor } from './vines';
 
 /** Card tint gain: the painted atlas is a light neutral green (≈ 0.5 linear). */
 const G = 1.55;
@@ -131,6 +131,9 @@ export function canopyTree(kit: DecorKit, cards: CardBatch, x: number, z: number
   const top = new THREE.Vector3(x + Math.cos(la) * lean, h * 0.5, z + Math.sin(la) * lean);
   const mid = new THREE.Vector3(x + Math.cos(la) * lean * 0.3 + (rng() - 0.5) * 0.15, h * 0.26, z + Math.sin(la) * lean * 0.3 + (rng() - 0.5) * 0.15);
   kit.cyl('wood', x, 0, z, 0.2, 0.34, 0.35, trunkCol, 8, { ao: 0.3 });
+  // Soft pool of shade under the crown + a dense contact at the trunk.
+  kit.contact(top.x, 0.03, top.z, r * 1.1, r * 1.0, la, 0.45);
+  kit.contact(x, 0.03, z, 0.75, 0.75, 0, 0.9);
   kit.tube('wood', new THREE.Vector3(x, 0.2, z), mid, 0.2, trunkCol, 7, { drift: 0.15 });
   kit.tube('wood', mid, top, 0.16, trunkCol, 7, { drift: 0.15 });
   const center = new THREE.Vector3(top.x, h * 0.7, top.z);
@@ -274,7 +277,9 @@ export function lanternPlant(kit: DecorKit, cards: CardBatch, x: number, y: numb
       prev = p;
     }
     const br = (0.05 + rng() * 0.04) * (0.7 + s * 0.4);
-    kit.ball('glow', prev.x, prev.y - br * 0.3, prev.z, br, br * 1.25, br, glowColor(rng, 1.0), kit.detail >= 1 ? 1 : 0, { drift: 0, sway: 0.5 });
+    const gc = glowColor(rng, 1.0);
+    kit.ball('glow', prev.x, prev.y - br * 0.3, prev.z, br, br * 1.25, br, gc, kit.low ? 1 : 0, { drift: 0, sway: 0.5 });
+    kit.halo(prev.x, prev.y - br * 0.3, prev.z, 0.22 + br * 2.5, haloColor(gc), 0.5);
   }
   fern(cards, x, y, z, s * 0.45, rng);
 }
@@ -285,6 +290,8 @@ export function lanternPlant(kit: DecorKit, cards: CardBatch, x: number, y: numb
  */
 export function glowPatch(kit: DecorKit, cards: CardBatch, x: number, y: number, z: number, s: number, rng: () => number): void {
   blossomBed(cards, x, y, z, s * 1.3, rng);
+  // The bed's buds light the ground around them (soft chartreuse / gold pool).
+  kit.halo(x, y + 0.15, z, 0.3 + s * 0.25, haloColor(glowColor(rng)).map((v) => v * 0.55) as RGB, 0);
   const n = Math.max(1, Math.round(s * (kit.low ? 0.9 : 1.6)));
   for (let i = 0; i < n; i++) {
     const px = x + (rng() - 0.5) * s;

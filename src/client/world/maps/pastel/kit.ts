@@ -17,6 +17,7 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import type { DecorContext, MaterialLibrary, QualitySettings } from '../../../contracts';
 import type { SurfaceTag } from '../../../../shared/types';
 import { TEX_TILE } from '../../../engine/textures';
+import { contactShadowMaterial } from '../../../engine/materials';
 
 export type Kind =
   | 'plaster'
@@ -200,6 +201,11 @@ export class DecorKit {
     return g;
   }
 
+  /** The cached unit box (non-indexed), for custom transforms via geo(). */
+  boxUnit(): THREE.BufferGeometry {
+    return this.prims.box;
+  }
+
   sphereGeo(detail: number): THREE.BufferGeometry {
     let g = this.prims.sphere.get(detail);
     if (!g) {
@@ -236,6 +242,12 @@ export class DecorKit {
     const drift = opts.drift ?? 0.1;
     const t = b.tile;
     const sway = b.hasSway ? opts.sway ?? 0 : undefined;
+    // Low has no bloom: HDR bulb colours would just clip to white — keep the
+    // hue (chartreuse / pale gold / soft pink) at a bright-but-legal level.
+    if (kind === 'glow' && this.low) {
+      const mx = Math.max(color[0], color[1], color[2]);
+      if (mx > 1.15) color = [(color[0] * 1.15) / mx, (color[1] * 1.15) / mx, (color[2] * 1.15) / mx];
+    }
     for (let i = 0; i < p.count; i++) {
       TMP_V.fromBufferAttribute(p, i).applyMatrix4(m);
       if (n) TMP_N.fromBufferAttribute(n, i).applyMatrix3(TMP_M3).normalize();
@@ -406,10 +418,114 @@ export class DecorKit {
     }
   }
 
+  /**
+   * Contact shadow (engine helper look): a soft cool-violet blob on the ground
+   * under a prop — grounds cars, carts, furniture and trunks on every preset
+   * (the only "shadow" moving props get on Low). All blobs share ONE draw.
+   */
+  contact(x: number, y: number, z: number, rx: number, rz: number, ry = 0, k = 1): void {
+    const c = Math.cos(ry);
+    const s = Math.sin(ry);
+    const yy = y + 0.012;
+    const P = (u: number, v: number): [number, number, number] => [x + c * u * rx + s * v * rz, yy, z - s * u * rx + c * v * rz];
+    const A = P(-1, 1);
+    const B = P(1, 1);
+    const C = P(1, -1);
+    const D = P(-1, -1);
+    this.contactPos.push(...A, ...B, ...C, ...A, ...C, ...D);
+    this.contactUv.push(0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1);
+    for (let i = 0; i < 6; i++) this.contactCol.push(1, 1, 1, k);
+  }
+
+  /**
+   * Soft additive glow halo around a bioluminescent bulb / bud cluster
+   * (radius m, linear colour, sway weight matching the bulb's). Every halo in
+   * the suburb is ONE point cloud: it carries the "glowing overgrowth" read on
+   * Low (no bloom) and softens the bloom on Medium/High.
+   */
+  halo(x: number, y: number, z: number, r: number, col: RGB, sway = 0): void {
+    this.haloPos.push(x, y, z);
+    this.haloCol.push(col[0], col[1], col[2]);
+    this.haloSize.push(r);
+    this.haloSway.push(sway);
+  }
+
+  private readonly haloPos: number[] = [];
+  private readonly haloCol: number[] = [];
+  private readonly haloSize: number[] = [];
+  private readonly haloSway: number[] = [];
+  private readonly contactPos: number[] = [];
+  private readonly contactUv: number[] = [];
+  private readonly contactCol: number[] = [];
+
   /** Merges every batch into meshes under the decor root. Returns draw calls added. */
   build(): number {
     const shadows = this.q.shadows !== 'off';
     let calls = 0;
+    if (this.haloPos.length) {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(this.haloPos, 3));
+      g.setAttribute('aCol', new THREE.Float32BufferAttribute(this.haloCol, 3));
+      g.setAttribute('aSize', new THREE.Float32BufferAttribute(this.haloSize, 1));
+      g.setAttribute('sway', new THREE.Float32BufferAttribute(this.haloSway, 1));
+      g.computeBoundingSphere();
+      this.ownedGeos.push(g);
+      const mat = this.own(
+        new THREE.ShaderMaterial({
+          uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uTime: { value: 0 }, uGain: { value: this.low ? 0.75 : 0.32 } }]),
+          vertexShader: HALO_VERT,
+          fragmentShader: HALO_FRAG,
+          transparent: true,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+          fog: true,
+        }),
+      );
+      mat.uniforms.uTime = this.time;
+      mat.name = 'pastel.halos';
+      mat.userData.noPaint = true;
+      const pts = new THREE.Points(g, mat);
+      pts.name = 'pastel.halos';
+      pts.userData.noPaint = true;
+      pts.userData.noShadow = true;
+      pts.renderOrder = 21;
+      pts.matrixAutoUpdate = false;
+      pts.updateMatrix();
+      this.root.add(pts);
+      this.extras.push(pts);
+      this.haloPos.length = 0;
+      this.haloCol.length = 0;
+      this.haloSize.length = 0;
+      this.haloSway.length = 0;
+      calls++;
+    }
+    if (this.contactPos.length) {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(this.contactPos, 3));
+      g.setAttribute('uv', new THREE.Float32BufferAttribute(this.contactUv, 2));
+      g.setAttribute('color', new THREE.Float32BufferAttribute(this.contactCol, 4));
+      g.computeBoundingSphere();
+      this.ownedGeos.push(g);
+      // Per-blob strength through vertex alpha: a kit-owned clone of the shared
+      // engine contact material (same texture / colour / offset).
+      const base = contactShadowMaterial();
+      const mat = this.own(base.clone());
+      mat.vertexColors = true;
+      mat.name = 'pastel.contact';
+      mat.userData.noPaint = true;
+      const mesh = new THREE.Mesh(g, mat);
+      mesh.name = 'pastel.contact';
+      mesh.userData.noPaint = true;
+      mesh.renderOrder = 1;
+      mesh.matrixAutoUpdate = false;
+      mesh.updateMatrix();
+      this.root.add(mesh);
+      this.extras.push(mesh);
+      this.contactPos.length = 0;
+      this.contactUv.length = 0;
+      this.contactCol.length = 0;
+      calls++;
+    }
     for (const [kind, b] of this.batches) {
       if (!b.pos.length) continue;
       const g = new THREE.BufferGeometry();
@@ -450,6 +566,49 @@ export class DecorKit {
     this.ownedMats.length = 0;
   }
 }
+
+// Glow halos: screen-facing soft discs, swaying exactly like the bulbs they
+// surround (same formula as swayMaterial), with a slow per-bulb breathing.
+const HALO_VERT = /* glsl */ `
+attribute float aSize;
+attribute float sway;
+attribute vec3 aCol;
+uniform float uTime;
+varying vec3 vCol;
+varying float vPulse;
+#include <fog_pars_vertex>
+void main() {
+  vec3 p = position;
+  float swPh = p.x * 0.37 + p.z * 0.29;
+  p.x += sway * (sin(uTime * 1.3 + swPh) * 0.12 + sin(uTime * 2.9 + swPh * 1.7) * 0.04);
+  p.z += sway * cos(uTime * 1.1 + swPh * 1.3) * 0.1;
+  vec4 mvPosition = modelViewMatrix * vec4(p, 1.0);
+  gl_Position = projectionMatrix * mvPosition;
+  gl_PointSize = clamp(1000.0 * aSize / -mvPosition.z, 1.5, 72.0);
+  vCol = aCol;
+  vPulse = 0.8 + 0.2 * sin(uTime * (0.7 + fract(swPh * 3.7) * 0.8) + swPh * 9.0);
+  #include <fog_vertex>
+}`;
+const HALO_FRAG = /* glsl */ `
+uniform float uGain;
+varying vec3 vCol;
+varying float vPulse;
+#include <fog_pars_fragment>
+void main() {
+  vec2 c = gl_PointCoord - 0.5;
+  float d = dot(c, c) * 4.0;
+  float a = exp(-d * 4.0) * (1.0 - smoothstep(0.7, 1.0, d));
+  gl_FragColor = vec4(vCol * a * uGain * vPulse, 1.0);
+  // Additive: fade out with the fog instead of adding fog colour.
+  #ifdef USE_FOG
+    #ifdef FOG_EXP2
+      float ff = 1.0 - exp(-fogDensity * fogDensity * vFogDepth * vFogDepth);
+    #else
+      float ff = smoothstep(fogNear, fogFar, vFogDepth);
+    #endif
+    gl_FragColor.rgb *= 1.0 - ff;
+  #endif
+}`;
 
 /** Adds a cheap wind sway to vertices carrying a `sway` weight (0 = anchored). */
 export function swayMaterial<T extends THREE.Material>(m: T, time: { value: number }): T {

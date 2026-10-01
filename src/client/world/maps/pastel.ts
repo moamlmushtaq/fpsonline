@@ -36,9 +36,9 @@ import { crown } from './pastel/flora';
 import { DecorKit, mix, rgb } from './pastel/kit';
 import { GAL, atriumMotes, buildMall, mallDressing } from './pastel/mall';
 import { buildProps, TREES } from './pastel/props';
-import { type Dress, groundStory, lawnLife, lotProps, overgrowth, treeFloor, yardProps } from './pastel/dressing';
+import { type Dress, groundStory, lawnLife, lotClutter, lotProps, lotReclaim, overgrowth, treeFloor, yardProps } from './pastel/dressing';
 import { SignBatch, signMaterials } from './pastel/signs';
-import { buildCurtains, climbingVine, hangingVine } from './pastel/vines';
+import { buildCurtains, climbingVine, hangingVine, setVineCards } from './pastel/vines';
 import { createWaterSurface } from './pastel/water';
 
 /** Default builder backdrop: grassy terrain skirt, no global water plane (the flood is local). */
@@ -53,6 +53,8 @@ const build: DecorBuilder = (ctx: DecorContext): MapDecor => {
   const signs = { board: new SignBatch(), lit: new SignBatch() };
   const cards = new CardBatch();
   const decals = new DecalBatch();
+  // Hanging strands also draw a painted tendril card into the foliage batch.
+  setVineCards(cards);
   // Every leafy mound in the older builders (planters, pergola crowns) uses
   // the painted leaf-card crowns too.
   kit.leafy = (x, y, z, rx, ry, rz, tint) => crown(kit, cards, new THREE.Vector3(x, y, z), rx, ry, rz, rng, { tint, density: 7.5, sway: 0.15, bias: 0.45 });
@@ -99,6 +101,8 @@ const build: DecorBuilder = (ctx: DecorContext): MapDecor => {
   const dress: Dress = { kit, cards, decals, signs, rng };
   const puddles = groundStory(dress);
   lotProps(dress);
+  lotReclaim(dress);
+  lotClutter(dress);
   yardProps(dress);
   overgrowth(dress);
   lawnLife(dress);
@@ -166,6 +170,7 @@ const build: DecorBuilder = (ctx: DecorContext): MapDecor => {
   }
 
   const back = buildBackdrop(kit, def, rng, cards);
+  setVineCards(null);
   const staticCalls = kit.build();
   cards.build(kit, ctx.materials);
   decals.build(kit, ctx.materials);

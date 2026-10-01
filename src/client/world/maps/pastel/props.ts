@@ -15,7 +15,7 @@ import { ENV } from '../../../engine/palette';
 import { type DecorKit, type RGB, mix, rgb } from './kit';
 import { REGION, type SignBatch } from './signs';
 import type { CardBatch } from './cards';
-import { LEAF, canopyTree, hedgeRow } from './flora';
+import { LEAF, canopyTree, cushion, hedgeRow } from './flora';
 import { climbingVine, drapedVine, glowColor, hangingVine } from './vines';
 
 const K = {
@@ -62,41 +62,129 @@ interface CarOpts {
  * A car filling the collision box: center (cx, cz), length along `ry`
  * direction, width, height (roof top).
  */
-function car(kit: DecorKit, cx: number, cz: number, len: number, wid: number, h: number, ry: number, o: CarOpts, rng: () => number): void {
+/** Side profile (local z = forward, y = up) extruded across the car's width. */
+function carProfile(kit: DecorKit, kind: 'paint' | 'window', m: THREE.Matrix4, pts: [number, number][], w: number, col: RGB): void {
+  const shape = new THREE.Shape(pts.map(([z, y]) => new THREE.Vector2(z, y)));
+  const g = new THREE.ExtrudeGeometry(shape, { depth: w, bevelEnabled: false });
+  // Shape x → local z, extrusion (+Z, 0..w) → local −x … re-centred on the axis.
+  const local = new THREE.Matrix4().makeRotationY(-Math.PI / 2).premultiply(new THREE.Matrix4().makeTranslation(w / 2, 0, 0));
+  kit.geo(kind, g, m.clone().multiply(local), col, { drift: 0.05, base: 0, ao: 0.25 });
+  g.dispose();
+}
+
+let ARCH: THREE.BufferGeometry | null = null;
+let DISC: THREE.BufferGeometry | null = null;
+
+function car(kit: DecorKit, cx: number, cz: number, len: number, wid: number, h: number, ry: number, o: CarOpts, rng: () => number, cards?: CardBatch): void {
   const m = new THREE.Matrix4().makeRotationY(ry).setPosition(cx, 0, cz);
   const place = (x: number, y: number, z: number): THREE.Vector3 => new THREE.Vector3(x, y, z).applyMatrix4(m);
   const box = (kind: Parameters<DecorKit['boxE']>[0], x: number, y: number, z: number, sx: number, sy: number, sz: number, col: RGB, r = 0): void =>
     kit.boxE(kind, place(x, y, z), new THREE.Euler(0, ry, 0), new THREE.Vector3(sx, sy, sz), col, r, { base: 0 });
   const sag = o.flat ?? 0;
-  const bodyH = o.kind === 'van' ? h - 0.35 : 0.95;
+  const van = o.kind === 'van';
+  // 1970s proportions: low belt line, tall glasshouse, long hood (+z = front).
+  const bodyH = van ? h - 0.75 : 0.84;
   const bodyY = 0.28 - sag;
-  // Lower body (length along local z).
+  const glass = mix(K.glass, K.dark, 0.15 + rng() * 0.35);
+  const roofCol = o.roof ?? o.body;
+  kit.contact(cx, 0.03, cz, wid * 0.78, len * 0.6, ry, 1);
+  // Lower body (length along local z) + a slimmer hood/trunk deck line.
   box('paint', 0, bodyY + (bodyH - bodyY) / 2 + 0.02, 0, wid, bodyH - bodyY, len, o.body, 0.14);
-  if (o.wood) {
-    for (const s of [-1, 1]) box('wood', s * (wid / 2 + 0.005), bodyY + 0.36, len * 0.08, 0.02, 0.34, len * 0.7, K.wood, 0);
-  }
-  // Cabin + glass band.
-  const cab = o.kind === 'sedan' ? { z: -0.05 * len, l: len * 0.46 } : o.kind === 'wagon' ? { z: 0.1 * len, l: len * 0.68 } : { z: 0.02 * len, l: len * 0.9 };
-  const cabH = h - bodyH;
-  box('paint', 0, bodyH + cabH / 2 - 0.01, cab.z, wid * 0.92, cabH, cab.l, o.roof ?? o.body, 0.12);
-  box('window', 0, bodyH + cabH * 0.48, cab.z, wid * 0.93, cabH * 0.62, cab.l * 0.94, mix(K.glass, K.dark, rng() * 0.4), 0.05);
-  // Bumpers, lights, wheels.
+  // Chrome belt trim + rocker shadow line along both flanks.
   for (const s of [-1, 1]) {
-    box('chrome', 0, bodyY + 0.12, s * (len / 2 + 0.03), wid * 1.02, 0.16, 0.1, K.chrome, 0.03);
-    for (const lx of [-0.34, 0.34]) box('paint', lx * wid, bodyY + 0.42, s * (len / 2 + 0.005), 0.26, 0.16, 0.02, s > 0 ? K.bone : K.terraF, 0);
+    box('chrome', s * (wid / 2 + 0.006), bodyH - 0.12, 0, 0.012, 0.035, len * 0.92, K.chrome, 0);
+    box('paint', s * (wid / 2 + 0.004), bodyY + 0.06, 0, 0.012, 0.07, len * 0.7, mix(o.body, K.dark, 0.55), 0);
+  }
+  if (o.wood) {
+    for (const s of [-1, 1]) box('wood', s * (wid / 2 + 0.005), bodyY + 0.3, -len * 0.04, 0.02, 0.28, len * 0.72, K.wood, 0);
+  }
+  // Glasshouse: extruded glass profile, roof slab and painted pillars.
+  const top = h - 0.06;
+  let prof: [number, number][];
+  if (van) {
+    prof = [
+      [-len / 2 + 0.05, bodyH],
+      [len / 2 - 0.25, bodyH],
+      [len / 2 - 0.55, top],
+      [-len / 2 + 0.08, top],
+    ];
+  } else if (o.kind === 'wagon') {
+    prof = [
+      [-len / 2 + 0.1, bodyH],
+      [len * 0.16, bodyH],
+      [len * 0.03, top],
+      [-len / 2 + 0.16, top],
+    ];
+  } else {
+    prof = [
+      [-len * 0.3, bodyH],
+      [len * 0.14, bodyH],
+      [len * 0.01, top],
+      [-len * 0.2, top],
+    ];
+  }
+  carProfile(kit, 'window', m, prof, wid * 0.86, glass);
+  const r0 = prof[3][0];
+  const r1 = prof[2][0];
+  box('paint', 0, top + 0.03, (r0 + r1) / 2, wid * 0.88, 0.07, r1 - r0 + 0.06, roofCol, 0.03);
+  for (const s of [-1, 1]) {
+    const x = s * wid * 0.43;
+    kit.tube('paint', place(x, bodyH, prof[1][0] - 0.03), place(x, top, prof[2][0] + 0.02), 0.045, roofCol, 4);
+    kit.tube('paint', place(x, bodyH, prof[0][0] + 0.03), place(x, top, prof[3][0] - 0.02), 0.06, roofCol, 4);
+    if (!van) box('paint', x, (bodyH + top) / 2, (prof[1][0] + prof[0][0]) / 2 - 0.05, 0.03, top - bodyH, 0.1, roofCol, 0);
+    // Side mirror.
+    box('chrome', s * (wid / 2 + 0.07), bodyH + 0.1, prof[1][0] - 0.05, 0.12, 0.08, 0.05, K.chrome, 0);
+  }
+  if (!van && o.kind === 'sedan') {
+    // Trunk lid seam + hood seam (dark hairlines).
+    box('paint', 0, bodyH + 0.006, prof[1][0] + 0.25, wid * 0.86, 0.008, 0.02, mix(o.body, K.dark, 0.5), 0);
+    box('paint', 0, bodyH + 0.006, prof[0][0] - 0.2, wid * 0.86, 0.008, 0.02, mix(o.body, K.dark, 0.5), 0);
+  }
+  // Front: grille + round headlamps; rear: tail lamps; plates; bumpers.
+  DISC ??= new THREE.CylinderGeometry(1, 1, 1, kit.low ? 8 : 12).rotateX(Math.PI / 2).toNonIndexed();
+  for (const s of [-1, 1]) {
+    box('chrome', 0, bodyY + 0.12, s * (len / 2 + 0.03), wid * 1.02, 0.15, 0.1, K.chrome, 0.03);
+    box('paint', 0, bodyY + 0.12, s * (len / 2 + 0.085), 0.3, 0.14, 0.012, mix(K.bone, K.yellow, 0.3), 0);
+    if (s > 0) {
+      box('paint', 0, bodyY + 0.36, len / 2 + 0.006, wid * 0.55, 0.2, 0.02, K.dark, 0);
+      for (let i = 0; i < 4; i++) box('chrome', 0, bodyY + 0.29 + i * 0.05, len / 2 + 0.018, wid * 0.53, 0.012, 0.012, K.chrome, 0);
+      for (const lx of [-0.37, 0.37]) {
+        const p = place(lx * wid, bodyY + 0.37, len / 2 + 0.012);
+        kit.geo('chrome', DISC, new THREE.Matrix4().makeRotationY(ry).setPosition(p).multiply(new THREE.Matrix4().makeScale(0.1, 0.1, 0.03)), K.chrome, { drift: 0 });
+        kit.geo('window', DISC, new THREE.Matrix4().makeRotationY(ry).setPosition(p.clone().add(new THREE.Vector3(Math.sin(ry), 0, Math.cos(ry)).multiplyScalar(0.01))).multiply(new THREE.Matrix4().makeScale(0.075, 0.075, 0.03)), mix(K.bone, K.yellow, 0.35), { drift: 0 });
+      }
+    } else {
+      for (const lx of [-0.36, 0.36]) box('paint', lx * wid, bodyY + 0.38, -len / 2 - 0.006, 0.3, 0.13, 0.02, K.terraF, 0);
+    }
+  }
+  // Wheels: tyre, hubcap, dark arch over each.
+  ARCH ??= new THREE.CircleGeometry(0.42, 8, 0, Math.PI).toNonIndexed();
+  for (const s of [-1, 1]) {
     for (const wz of [-0.32, 0.32]) {
-      const p = place(s * (wid / 2 - 0.08), 0.33 - sag * 0.5, wz * len);
-      const g = new THREE.CylinderGeometry(0.33, 0.33, 0.24, 12);
+      const wy = 0.33 - sag * 0.5;
+      const p = place(s * (wid / 2 - 0.08), wy, wz * len);
+      const g = new THREE.CylinderGeometry(0.33, 0.33, 0.24, kit.low ? 10 : 14);
       g.rotateZ(Math.PI / 2);
       kit.geo('paint', g, new THREE.Matrix4().makeRotationY(ry).setPosition(p), K.tire, { drift: 0.05 });
       g.dispose();
-      kit.boxE('chrome', place(s * (wid / 2 + 0.02), 0.33 - sag * 0.5, wz * len), new THREE.Euler(0, ry, 0), new THREE.Vector3(0.02, 0.26, 0.26), K.chrome, 0);
+      const hub = place(s * (wid / 2 + 0.045), wy, wz * len);
+      kit.geo('chrome', DISC, new THREE.Matrix4().makeRotationY(ry + Math.PI / 2).setPosition(hub).multiply(new THREE.Matrix4().makeScale(0.17, 0.17, 0.02)), K.chrome, { drift: 0 });
+      const arch = place(s * (wid / 2 + 0.008), bodyY + 0.02, wz * len);
+      kit.geo('paint', ARCH, new THREE.Matrix4().makeRotationY(ry + (s > 0 ? Math.PI / 2 : -Math.PI / 2)).setPosition(arch), mix(o.body, K.dark, 0.75), { drift: 0 });
     }
   }
   // Roof rack on wagons.
   if (o.kind === 'wagon') {
-    for (const s of [-1, 1]) box('chrome', s * wid * 0.36, h + 0.04, cab.z, 0.05, 0.05, cab.l * 0.8, K.chrome);
+    for (const s of [-1, 1]) box('chrome', s * wid * 0.36, h + 0.04, (r0 + r1) / 2, 0.05, 0.05, (r1 - r0) * 0.8, K.chrome);
   }
+  // Moss on the roof, leaf litter on the hood (painted cards).
+  if (cards) {
+    const rp = place((rng() - 0.5) * 0.4, h + 0.005, (r0 + r1) / 2);
+    cushion(cards, rp.x, rp.y, rp.z, 0.9 + rng() * 0.4, rng, mix(LEAF.olive, LEAF.sage, rng()));
+    const hp = place((rng() - 0.5) * 0.4, bodyH + 0.03, len * 0.36);
+    cushion(cards, hp.x, hp.y - 0.02, hp.z, 0.6 + rng() * 0.3, rng, LEAF.mustard);
+  }
+  const cab = { z: (r0 + r1) / 2, l: r1 - r0 };
   if (o.luggage) {
     const cols = [K.terraF, K.mustard, K.blue];
     for (let i = 0; i < 3; i++) box('fabric', (i - 1) * 0.12, h + 0.2 + i * 0.05, cab.z - cab.l * 0.25 + i * 0.55, 0.7 - i * 0.1, 0.28, 0.5, cols[i], 0.04);
@@ -109,7 +197,11 @@ function car(kit: DecorKit, cx: number, cz: number, len: number, wid: number, h:
   if (o.doorOpen) {
     // Driver's door swung open (hinged at the front of the cabin).
     const hinge = place(-wid / 2, 0.75, cab.z + cab.l * 0.42);
-    kit.boxE('paint', hinge.clone().add(new THREE.Vector3(-Math.cos(ry - 0.4) * 0.55, 0, Math.sin(ry - 0.4) * 0.55)), new THREE.Euler(0, ry - 0.4 + Math.PI / 2, 0), new THREE.Vector3(1.1, 0.75, 0.06), o.body, 0.03);
+    const dc = hinge.clone().add(new THREE.Vector3(-Math.cos(ry - 0.4) * 0.55, -0.12, Math.sin(ry - 0.4) * 0.55));
+    kit.boxE('paint', dc, new THREE.Euler(0, ry - 0.4 + Math.PI / 2, 0), new THREE.Vector3(1.1, 0.55, 0.07), o.body, 0.03);
+    // Door glass + slim frame above the panel.
+    kit.boxE('window', dc.clone().add(new THREE.Vector3(0, 0.46, 0)), new THREE.Euler(0, ry - 0.4 + Math.PI / 2, 0), new THREE.Vector3(0.95, 0.36, 0.03), glass, 0);
+    kit.boxE('paint', dc.clone().add(new THREE.Vector3(0, 0.66, 0)), new THREE.Euler(0, ry - 0.4 + Math.PI / 2, 0), new THREE.Vector3(1.0, 0.04, 0.05), roofCol, 0);
   }
   // Overgrowth: a vine across the roof + a few glowing buds, leaves on the hood.
   const a = place(-wid * 0.5, h - 0.05, cab.z - cab.l * 0.3);
@@ -245,6 +337,7 @@ function pool(kit: DecorKit, rng: () => number): void {
 }
 
 function lounger(kit: DecorKit, x: number, z: number, ry: number): void {
+  kit.contact(x, 0.035, z, 0.5, 1.15, ry, 0.75);
   kit.boxR('paint', x, 0.3, z, 0.7, 0.06, 1.9, ry, K.bone, 0.02);
   kit.boxE('fabric', new THREE.Vector3(x - Math.sin(ry) * 0.75, 0.55, z - Math.cos(ry) * 0.75), new THREE.Euler(-0.9, ry, 0), new THREE.Vector3(0.68, 0.05, 0.7), K.mint, 0.02);
   for (const s of [-1, 1]) kit.boxR('chrome', x + Math.cos(ry) * 0.3 * s, 0.15, z, 0.04, 0.3, 1.7, ry, K.chrome, 0);
@@ -283,6 +376,8 @@ function backyard(kit: DecorKit, signs: Signs, sz: number, rng: () => number, ri
   // boxes still laid out in the south yard; the north one is overgrown.
   const px = -35.5;
   const pz = Z(23.5);
+  kit.contact(px, 0.005, pz, 1.4, 1.0, 0, 0.75);
+  kit.contact(-43.2, 0.005, Z(28.8), 1.5, 1.5, 0, 0.45); // trampoline
   kit.box('wood', px - 1.1, 0.72, pz - 0.45, px + 1.1, 0.78, pz + 0.45, K.wood, 0.02);
   for (const s of [-1, 1]) {
     kit.box('wood', px - 1.1, 0.42, pz + s * 0.75 - 0.15, px + 1.1, 0.47, pz + s * 0.75 + 0.15, K.wood, 0.02);
@@ -344,6 +439,7 @@ function backyard(kit: DecorKit, signs: Signs, sz: number, rng: () => number, ri
 }
 
 function bike(kit: DecorKit, x: number, z: number, ry: number, col: RGB): void {
+  kit.contact(x, 0.005, z, 0.8, 0.4, ry, 0.5);
   // Lying on its side.
   const m = new THREE.Matrix4().makeRotationY(ry).setPosition(x, 0.06, z);
   for (const off of [-0.45, 0.45]) {
@@ -363,6 +459,7 @@ function bike(kit: DecorKit, x: number, z: number, ry: number, col: RGB): void {
 // ── Street furniture ────────────────────────────────────────────────────────
 
 function globeLamp(kit: DecorKit, x: number, z: number, h = 4.4): void {
+  kit.contact(x, 0.035, z, 0.4, 0.4, 0, 0.7);
   kit.cyl('concrete', x, 0, z, 0.14, 0.2, 0.5, K.boneShade, 8);
   kit.cyl('chrome', x, 0.5, z, 0.06, 0.08, h - 0.5, K.bone, 8);
   kit.ball('glow', x, h + 0.25, z, 0.32, 0.32, 0.32, rgb('#fff1d6', 0.55), 1, { drift: 0 });
@@ -370,6 +467,7 @@ function globeLamp(kit: DecorKit, x: number, z: number, h = 4.4): void {
 }
 
 function parkingLamp(kit: DecorKit, x: number, z: number): void {
+  kit.contact(x, 0.03, z, 0.55, 0.55, 0, 0.7);
   kit.cyl('concrete', x, 0, z, 0.25, 0.3, 0.6, K.boneShade, 8);
   kit.cyl('chrome', x, 0.6, z, 0.09, 0.12, 7.4, K.bone, 8);
   for (const s of [-1, 1]) {
@@ -393,6 +491,7 @@ function mailbox(kit: DecorKit, x: number, z: number, ry: number, col: RGB, stuf
 }
 
 function hydrant(kit: DecorKit, x: number, z: number): void {
+  kit.contact(x, 0.035, z, 0.35, 0.35, 0, 0.75);
   kit.cyl('paint', x, 0, z, 0.14, 0.17, 0.62, K.terra, 8);
   kit.ball('paint', x, 0.64, z, 0.15, 0.1, 0.15, K.terra, 1);
   kit.box('paint', x - 0.22, 0.35, z - 0.06, x + 0.22, 0.45, z + 0.06, K.terra, 0.02, { ao: 0 });
@@ -498,16 +597,16 @@ export function buildProps(kit: DecorKit, signs: Signs, cards: CardBatch, rng: (
   for (const sz of [1, -1]) {
     const Z = (z: number): number => z * sz;
     // Bungalow station wagons in the carports (x ∓52, z 28..33.5).
-    car(kit, -52, Z(30.75), 5.5, 2, 1.3, 0, { body: sz > 0 ? K.sand : K.mint, wood: true, kind: 'wagon', flat: 0.05 }, rng);
-    car(kit, 52, Z(30.75), 5.5, 2, 1.3, 0, { body: sz > 0 ? K.terraF : K.bone, wood: sz > 0, kind: 'wagon' }, rng);
+    car(kit, -52, Z(30.75), 5.5, 2, 1.3, 0, { body: sz > 0 ? K.sand : K.mint, wood: true, kind: 'wagon', flat: 0.05 }, rng, cards);
+    car(kit, 52, Z(30.75), 5.5, 2, 1.3, 0, { body: sz > 0 ? K.terraF : K.bone, wood: sz > 0, kind: 'wagon' }, rng, cards);
     // Parking lot: wagon (x −10..−8, z 21..25.5) + sedan (x 6..10.5, z 27..29).
     // (Slightly askew, abandoned mid-manoeuvre: the yaw stays inside the
     // collision box to within a few cm.)
-    car(kit, -9, Z(23.25), 4.35, 1.9, 1.3, sz > 0 ? 0.05 : -0.045, { body: sz > 0 ? K.yellow : K.blue, wood: true, kind: 'wagon', flat: 0.08, luggage: true }, rng);
-    car(kit, 8.25, Z(28), 4.35, 1.9, 1.3, Math.PI / 2 + (sz > 0 ? -0.05 : 0.055), { body: sz > 0 ? K.pink : K.sage, roof: K.bone, kind: 'sedan', doorOpen: true }, rng);
+    car(kit, -9, Z(23.25), 4.35, 1.9, 1.3, sz > 0 ? 0.05 : -0.045, { body: sz > 0 ? K.yellow : K.blue, wood: true, kind: 'wagon', flat: 0.08, luggage: true }, rng, cards);
+    car(kit, 8.25, Z(28), 4.35, 1.9, 1.3, Math.PI / 2 + (sz > 0 ? -0.05 : 0.055), { body: sz > 0 ? K.pink : K.sage, roof: K.bone, kind: 'sedan', doorOpen: true }, rng, cards);
     // Street: car at the east curb (x 41.5..43.5, z 19..23.5), camper at the west curb.
-    car(kit, 42.5, Z(21.25), 4.5, 2, 1.3, 0, { body: sz > 0 ? K.mint : K.terraF, roof: K.bone, kind: 'sedan', flat: 0.1 }, rng);
-    car(kit, 32.3, Z(10), 5, 2.2, 2.2, 0, { body: sz > 0 ? K.blue : K.yellow, roof: K.bone, kind: 'van' }, rng);
+    car(kit, 42.5, Z(21.25), 4.5, 2, 1.3, 0, { body: sz > 0 ? K.mint : K.terraF, roof: K.bone, kind: 'sedan', flat: 0.1 }, rng, cards);
+    car(kit, 32.3, Z(10), 5, 2.2, 2.2, 0, { body: sz > 0 ? K.blue : K.yellow, roof: K.bone, kind: 'van' }, rng, cards);
   }
   iceCreamVan(kit, signs, rng);
   pool(kit, rng);

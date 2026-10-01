@@ -15,6 +15,7 @@ import { BaseScreen } from './base';
 // Controls (input engineer): rebinding swaps on conflict instead of silently stealing.
 import { rebindWithSwap } from '../../input/rebind';
 import { cmPer360 } from '../../input/input';
+import { GAME_VERSION } from '../../../shared/constants';
 
 type Tab = 'gameplay' | 'controls' | 'graphics' | 'audio' | 'accessibility' | 'language';
 
@@ -94,7 +95,10 @@ export class SettingsScreen extends BaseScreen {
         }
       },
     });
-    const body = h('div', { class: 'settings-body panel ticks' }, t.el, this.pane, h('div', { class: 'scr-foot', style: 'padding:.5rem .9rem 0' }, reset));
+    // Build label (also the admin console's secret touch entry: 7 quick taps — see admin/admin.ts).
+    const build = h('span', { class: 'settings-build', t: 'common.version', params: { v: GAME_VERSION } });
+    this.app.admin.attachSecretTap(build);
+    const body = h('div', { class: 'settings-body panel ticks' }, t.el, this.pane, h('div', { class: 'scr-foot', style: 'padding:.5rem .9rem 0' }, reset, build));
     this.el.append(head, body);
     stagger([head, body]);
     this.renderPane(false);

@@ -9,6 +9,7 @@ import { sanitizeCmd } from '../../src/shared/sim/player';
 import type { ModeId } from '../../src/shared/types';
 import { LocalPlayer, type ActionName, type InputLike } from '../../src/client/game/local-player';
 import { Predictor } from '../../src/client/game/predictor';
+import { WEAPONS } from '../../src/shared/weapons';
 
 const TICK_MS = 1000 / SIM_HZ;
 
@@ -166,6 +167,73 @@ describe('Predictor ⇄ HostCore', () => {
     expect(liveFrames).toBeGreaterThan(200);
     // Bots may push nothing (players pass through each other); deaths snap, so only smooth corrections are checked.
     expect(Math.max(...sim.corrections)).toBe(0);
+  }, 60000);
+});
+
+describe('Predictor ⇄ HostCore with admin cheats', () => {
+  /**
+   * Cheats live in the snapshotted CombatState (cheatAmmo / cheatSpeed), so a replay
+   * reproduces the host bit-for-bit. Only the snapshot that first carries a toggle
+   * may correct (the host applied it between commands the client had predicted
+   * without it); every other reconciliation must be exact.
+   */
+  function run(mode: ModeId, toggles: [number, ClientMsg][], frames: number) {
+    const sim = new NetSim(50);
+    sim.clientSend({ type: 'admin', action: 'auth', password: '', trusted: true });
+    sim.queue(mode);
+    const lenAt: number[] = [];
+    const mags: { mag: number; full: number }[] = [];
+    let maxMoveSpeed = 0;
+    for (let f = 0; f < frames; f++) {
+      lenAt.push(sim.corrections.length);
+      for (const [at, m] of toggles) if (f === at) sim.clientSend(m);
+      script(sim, f);
+      sim.step();
+      const c = sim.predictor?.combat;
+      const mv = sim.predictor?.move;
+      if (c) {
+        const slot = c.slots[c.active]!;
+        mags.push({ mag: slot.mag, full: WEAPONS[slot.id].magSize });
+      }
+      if (mv && mv.onGround) maxMoveSpeed = Math.max(maxMoveSpeed, Math.hypot(mv.vel.x, mv.vel.z));
+    }
+    // Reconciliations within ~1/3 s of a toggle (one round trip + a snapshot) may correct once.
+    const windows = toggles.map(([at]) => [lenAt[at], lenAt[Math.min(frames - 1, at + 20)]] as const);
+    const inWindow = (i: number) => windows.some(([a, b]) => i >= a && i < b);
+    const outside = sim.corrections.filter((_, i) => !inWindow(i));
+    const windowed = windows.map(([a, b]) => sim.corrections.slice(a, b).filter((d) => d > 0).length);
+    return { sim, outside, windowed, mags, maxMoveSpeed };
+  }
+
+  it('ammo + speed: predicted state stays bit-identical to the host (range, 60 Hz replay)', () => {
+    const { sim, outside, windowed, maxMoveSpeed } = run(
+      'range',
+      [
+        [120, { type: 'admin', action: 'cheat', cheat: 'ammo', value: true }],
+        [130, { type: 'admin', action: 'cheat', cheat: 'speed', value: 2.5 }],
+        [900, { type: 'admin', action: 'cheat', cheat: 'speed', value: 1 }],
+      ],
+      1300,
+    );
+    expect(sim.corrections.length).toBeGreaterThan(300);
+    expect(outside.length).toBeGreaterThan(300);
+    expect(Math.max(...outside)).toBe(0);
+    for (const n of windowed) expect(n).toBeLessThanOrEqual(1);
+    expect(sim.shots).toBeGreaterThan(25);
+    // The cheats really were active in the predicted state.
+    expect(sim.predictor!.combat!.cheatAmmo).toBe(true);
+    expect(sim.predictor!.combat!.cheatSpeed).toBeUndefined();
+    expect(maxMoveSpeed).toBeGreaterThan(12);
+  }, 60000);
+
+  it('ammo: the predicted magazine never drops once the cheat is on (bot match, live fire)', () => {
+    const { sim, outside, mags } = run('tdm', [[30, { type: 'admin', action: 'cheat', cheat: 'ammo', value: true }], [40, { type: 'admin', action: 'cheat', cheat: 'god', value: true }]], 700);
+    expect(sim.phase).toBe('live');
+    expect(Math.max(...outside)).toBe(0);
+    const late = mags.slice(120);
+    expect(late.length).toBeGreaterThan(400);
+    for (const m of late) expect(m.mag).toBe(m.full); // always a full magazine
+    expect(sim.shots).toBeGreaterThan(5);
   }, 60000);
 });
 

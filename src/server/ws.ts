@@ -64,6 +64,7 @@ const CLIENT_TYPES: ReadonlySet<string> = new Set<ClientMsg['type']>([
   'ping',
   'range',
   'loaded',
+  'admin',
 ]);
 
 /** Events worth delivering late when the snapshot that carried them was skipped. */

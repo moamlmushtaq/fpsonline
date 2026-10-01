@@ -145,6 +145,24 @@ html[lang='ar'] .scr-head__title {
   flex-wrap: wrap;
 }
 
+/* Settings build label (quiet; 7 quick taps open the admin terminal on touch). */
+.settings-build {
+  margin-inline-start: auto;
+  padding: 0.7rem 0.4rem;
+  font: 500 0.66rem/1 var(--f-mono);
+  letter-spacing: 0.06em;
+  color: var(--c-text-faint);
+  unicode-bidi: isolate;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+}
+
+:lang(ar) .settings-build {
+  letter-spacing: 0;
+  font-family: var(--f-arabic);
+}
+
 .content-col {
   width: min(46rem, 58vw);
   max-width: 100%;

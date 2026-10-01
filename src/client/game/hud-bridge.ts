@@ -24,6 +24,8 @@ import type { Team, Vec3 } from '../../shared/types';
 import { WEAPONS } from '../../shared/weapons';
 import type { PickupDef, ZoneDef } from '../../shared/maps/types';
 import type { MatchContext } from './context';
+// Admin wallhack (client-only cheat; off unless the admin console authorized it).
+import { adminFlags } from '../admin/flags';
 
 const ZONE_MARK_H = 2.6;
 /** Seconds an enemy stays on the radar after firing (fades out). */
@@ -277,10 +279,11 @@ export class HudBridge {
           continue;
         }
         const t = this.shotAt.get(id);
-        if (t === undefined) continue;
-        const age = now - t;
-        if (age > RADAR_SHOT_SHOW) continue;
-        const alpha = age < 1 ? 1 : 1 - (age - 1) / (RADAR_SHOT_SHOW - 1);
+        const wall = adminFlags.wallhack;
+        if (t === undefined && !wall) continue;
+        const age = t === undefined ? Infinity : now - t;
+        if (age > RADAR_SHOT_SHOW && !wall) continue;
+        const alpha = age < 1 ? 1 : age > RADAR_SHOT_SHOW ? 0.85 : Math.max(wall ? 0.85 : 0, 1 - (age - 1) / (RADAR_SHOT_SHOW - 1));
         // FFA: everyone is hostile — use the hostile set (team 2); team modes: the enemy team's color.
         const team: Team = ctx.config.mode === 'ffa' ? 2 : e.ident.team;
         this.putBlip('enemy', e.pos.x, e.pos.z, teamColors(team).primary, alpha, '', 0, false);
@@ -343,6 +346,16 @@ export class HudBridge {
         let key = this.friendKeys.get(e.ident.id);
         if (!key) this.friendKeys.set(e.ident.id, (key = `p${e.ident.id}`));
         this.putObjective(e.pos.x, e.pos.y + HEAD_MARK_H - (e.s.c / 100) * 0.55, e.pos.z, key, '', teamColors(e.ident.team).light, 0, 'friendly', false);
+      }
+    }
+    // Admin wallhack: a small chevron over every on-screen enemy, visible through walls.
+    if (remotes && adminFlags.wallhack && ctx.config.mode !== 'range') {
+      for (const e of remotes.entries.values()) {
+        if (e.isLocal || !e.alive || !e.placed || !ctx.isEnemy(e.ident.id) || this.on >= 16) continue;
+        let key = this.friendKeys.get(-e.ident.id);
+        if (!key) this.friendKeys.set(-e.ident.id, (key = `e${e.ident.id}`));
+        const team: Team = ctx.config.mode === 'ffa' ? 2 : e.ident.team;
+        this.putObjective(e.pos.x, e.pos.y + HEAD_MARK_H - (e.s.c / 100) * 0.55, e.pos.z, key, '', teamColors(team).primary, 0, 'friendly', false);
       }
     }
     this.objectives.length = this.on;

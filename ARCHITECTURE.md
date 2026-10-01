@@ -145,6 +145,7 @@ src/client/
   ui/i18n.ts                          I18n implementation; dictionaries merged from ui/locales/*/*.ts
   ui/locales/en/<ns>.ts ui/locales/ar/<ns>.ts   one namespace file per subsystem (see §6)
   state/settings.ts state/profile.ts  persistence (localStorage), account sync
+  admin/admin.ts admin/admin-ui.ts admin/flags.ts   owner's admin console + cheat panel (secret; see README "Admin console")
 tests/                                vitest suites
 scripts/                              build-server.mjs, e2e.mjs
 ```
@@ -383,6 +384,12 @@ When the URL contains `debug=1`, `window.__HF` exposes:
 `--use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader`) to smoke-test
 menus, a bot match on each map, touch layout on a phone viewport, and Arabic RTL, and
 saves screenshots to `artifacts/`.
+
+**Admin console** (owner-only cheats, not a debug hook): Backquote/F8 terminal, `admin <code>`,
+cheat panel. Protocol: `{type:'admin'}` messages (protocol.ts). Online the server authorizes
+(`ADMIN_PASSWORD`, `src/server/admin.ts`); the local host trusts `trusted:true` only as kind
+'local'. Movement/combat cheats live in `CombatState.cheatAmmo/cheatSpeed` so prediction replays
+them exactly; god / bot freeze / teleport / end are host-only (GameSim `setCheats`, `admin*`).
 
 ## 10. Code conventions
 

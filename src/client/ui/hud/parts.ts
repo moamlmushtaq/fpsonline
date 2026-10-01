@@ -207,7 +207,7 @@ export class ObjectiveMarkers {
   }
 
   update(objs: HudObjective[], vw: number, vh: number): void {
-    while (this.slots.length < Math.min(objs.length, 12)) this.slot();
+    while (this.slots.length < Math.min(objs.length, 16)) this.slot(); // 16: room for admin wallhack markers
     for (let i = 0; i < this.slots.length; i++) {
       const s = this.slots[i];
       const o = objs[i];

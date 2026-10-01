@@ -34,6 +34,7 @@ import { NavGraph } from '../shared/sim/nav';
 import { worldForMap } from '../shared/sim/game';
 import { PVP_MAP_IDS } from '../shared/types';
 import { AccountStore } from './accounts';
+import { createAdminAuth } from './admin';
 import { handleApi, type ApiContext } from './api';
 import { RateLimiter, sendText, type LogFn, type ProxyTrust } from './http-util';
 import { HostLoop } from './loop';
@@ -66,6 +67,10 @@ export interface ServerOptions {
   prewarm?: boolean;
   /** Precompress static files in the background after listening (default true in production). */
   warmStatic?: boolean;
+  /** Admin console password. Default: $ADMIN_PASSWORD (unset/empty → admin disabled online). */
+  adminPassword?: string;
+  /** Account names allowed to use the admin console (comma-separated). Default: $ADMIN_ACCOUNTS. */
+  adminAccounts?: string;
 }
 
 export interface RunningServer {
@@ -147,9 +152,14 @@ export async function startServer(opts: ServerOptions = {}): Promise<RunningServ
   if (opts.prewarm !== false) prewarmMaps(log);
 
   const accounts = await AccountStore.open({ dataDir, log });
+  const admin = createAdminAuth({
+    password: opts.adminPassword ?? process.env.ADMIN_PASSWORD,
+    accounts: opts.adminAccounts ?? process.env.ADMIN_ACCOUNTS,
+  });
   const host = new HostCore({
     kind: 'online',
     accounts: accounts.hooks(),
+    admin: admin.enabled ? admin : undefined,
     log,
     maxRooms: opts.maxRooms ?? envInt('MAX_ROOMS') ?? 64,
     seed: randomBytes(4).readUInt32LE(0),
@@ -281,6 +291,7 @@ export async function startServer(opts: ServerOptions = {}): Promise<RunningServ
   log(`listening on http://${bindHost}:${actualPort}  ·  WebSocket ${WS_PATH}${dev ? `  ·  open http://localhost:${actualPort}` : ''}`);
   if (!dev) log(clientDir ? `client: ${clientDir}` : 'client: NOT BUILT (run `npm run build`) — serving API + WebSocket only');
   log(`accounts: ${accounts.file} (${accounts.size})${accounts.isPersistent ? '' : ' — IN MEMORY ONLY'}${trustProxy ? `  ·  client IPs from proxy headers (${proxy.hops ? `${proxy.hops} hop(s)` : 'platform mode'})` : ''}`);
+  log(`admin console: ${admin.enabled ? `enabled (ADMIN_PASSWORD set${admin.accountNames.length ? `; accounts: ${admin.accountNames.join(', ')}` : ''})` : 'disabled online (set ADMIN_PASSWORD to enable)'}`);
 
   if (statics && opts.warmStatic !== false) {
     statics

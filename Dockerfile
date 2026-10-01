@@ -13,6 +13,8 @@ ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
+# Offline admin code baked (hashed) into the client: docker build --build-arg VITE_ADMIN_CODE=...
+ARG VITE_ADMIN_CODE
 RUN npm run build && npm prune --omit=dev
 
 # ── Runtime ───────────────────────────────────────────────────────────────────

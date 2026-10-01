@@ -61,6 +61,15 @@ export interface SimPlayer {
   pendingLoadout: Loadout | null;
   bot: BotController | null;
   spawnTick: number;
+  /** Admin cheats (absent unless an authorized admin turned one on). Survive respawns. */
+  cheats?: PlayerCheats;
+}
+
+/** Per-player admin cheats. ammo/speed are mirrored into CombatState (predicted); god is host-only. */
+export interface PlayerCheats {
+  god: boolean;
+  ammo: boolean;
+  speed: number;
 }
 
 export interface Noise {

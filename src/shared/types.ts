@@ -200,6 +200,13 @@ export interface CombatState {
   throwCd: number;
   /** FIRE was held on the previous tick (semi-auto edge detection). */
   fireHeld: boolean;
+  /**
+   * Admin cheats (absent for everyone else). They live HERE — in the predicted,
+   * snapshotted combat state — so client prediction replays them exactly.
+   * cheatAmmo: magazines stay full (no reloads). cheatSpeed: movement multiplier 1..3.
+   */
+  cheatAmmo?: boolean;
+  cheatSpeed?: number;
 }
 
 export interface PlayerMatchStats {

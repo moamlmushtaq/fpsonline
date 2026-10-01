@@ -22,6 +22,9 @@ import { MODES, makeGameConfig } from '../modes';
 import { dedupeName, guestName, sanitizeName } from '../names';
 import { MAX_LEVEL } from '../progression';
 import type {
+  AdminMsg,
+  AdminReplyMsg,
+  AdminState,
   ClientMsg,
   CreateRoomMsg,
   ErrorCode,
@@ -31,7 +34,7 @@ import type {
   RoomSettingsMsg,
   ServerMsg,
 } from '../protocol';
-import { RANGE_ACTIONS } from '../protocol';
+import { ADMIN_CHEATS, RANGE_ACTIONS } from '../protocol';
 import type { BotDifficulty, CosmeticSelection, Lang, MapId, ModeId, Platform, Team } from '../types';
 import { MAP_IDS, MODE_IDS, PVP_MAP_IDS, TEAM_NONE } from '../types';
 import { Matchmaker, mapsCompatible, ratingBand, type QueueEntry } from './matchmaker';
@@ -48,9 +51,21 @@ export interface AccountHooks {
   recordMatch(token: string, rating: number): void;
 }
 
+/**
+ * Online admin authorization (the Node server implements it: ADMIN_PASSWORD with a
+ * constant-time compare, optional ADMIN_ACCOUNTS, per-connection lockout). Absent =
+ * admin disabled online. The local host never uses it (see onAdmin).
+ */
+export interface AdminHooks {
+  verify(req: { connId: string; password: string; account: string | null }): { ok: boolean; message?: string };
+  /** The connection closed: drop its attempt counters. */
+  forget?(connId: string): void;
+}
+
 export interface HostOptions {
   kind: 'online' | 'local';
   accounts?: AccountHooks;
+  admin?: AdminHooks;
   log?: (...a: unknown[]) => void;
   maxRooms?: number;
   /** Seed for room codes / map rotation / match seeds (e.g. the server's start time). */
@@ -76,6 +91,10 @@ interface ClientState extends RoomClient {
   lobby: Lobby | null;
   queued: boolean;
   lastQueueStatus: number;
+  /** Authorized for admin cheats (see onAdmin). */
+  admin: boolean;
+  /** Account name when signed in with a valid token (ADMIN_ACCOUNTS check). */
+  account: string | null;
 }
 
 interface LobbyMember {
@@ -100,6 +119,7 @@ interface Lobby {
 export class HostCore {
   readonly kind: 'online' | 'local';
   private readonly accounts?: AccountHooks;
+  private readonly admin?: AdminHooks;
   private readonly log: (...a: unknown[]) => void;
   private readonly maxRooms: number;
   private readonly rng: () => number;
@@ -116,6 +136,7 @@ export class HostCore {
   constructor(opts: HostOptions) {
     this.kind = opts.kind;
     this.accounts = opts.accounts;
+    this.admin = opts.admin;
     this.log = opts.log ?? (() => {});
     this.maxRooms = Math.max(1, opts.maxRooms ?? 200);
     this.rng = mulberry32(hash32(opts.seed ?? 0x48414c43, opts.kind === 'online' ? 1 : 2));
@@ -158,6 +179,8 @@ export class HostCore {
       lobby: null,
       queued: false,
       lastQueueStatus: 0,
+      admin: false,
+      account: null,
     });
   }
 
@@ -170,6 +193,7 @@ export class HostCore {
       this.log('disconnect error', err);
     }
     this.clients.delete(conn.id);
+    this.admin?.forget?.(conn.id);
   }
 
   receive(conn: HostConnection, msg: ClientMsg): void {
@@ -232,6 +256,9 @@ export class HostCore {
       case 'loaded':
         c.room?.markLoaded(c.conn.id);
         return;
+      case 'admin':
+        this.onAdmin(c, msg);
+        return;
       case 'range':
         // RANGE_ACTIONS: reset | difficulty | weapon | throwable (weapon/throwable added for the range rack).
         if (c.room && RANGE_ACTIONS.includes(msg.action)) {
@@ -277,11 +304,13 @@ export class HostCore {
         .then((acc) => {
           if (!this.clients.has(c.conn.id)) return;
           if (acc) {
+            c.account = typeof acc.name === 'string' ? acc.name : null;
             const r = Number(acc.rating);
             if (Number.isFinite(r)) c.rating = Math.max(0, Math.min(4000, r));
             this.welcome(c, sanitizeName(acc.name) ?? requested);
           } else {
             c.token = undefined;
+            c.account = null;
             this.welcome(c, requested);
           }
         })
@@ -318,6 +347,58 @@ export class HostCore {
     const backlog = c.backlog;
     c.backlog = [];
     for (const m of backlog) this.receive(c.conn, m);
+  }
+
+  // ── Admin console ────────────────────────────────────────────────────────
+
+  private adminStateFor(c: ClientState): AdminState {
+    if (c.room) return c.room.adminState(c.conn.id);
+    return { authorized: c.admin, god: false, ammo: false, speed: 1, freezeBots: false, inMatch: false };
+  }
+
+  /**
+   * Auth: online → the AdminHooks check the password (admin is disabled without them);
+   * local → the in-browser host trusts the client's own code check (`trusted`), which is
+   * all an offline game needs. Cheats are only honoured for authorized connections.
+   */
+  private onAdmin(c: ClientState, msg: AdminMsg): void {
+    const reply = (r: Omit<AdminReplyMsg, 'type'>) => c.conn.send({ type: 'admin', ...r });
+    const who = () => `${c.name || '?'} (${c.conn.id}${c.account ? `, account ${c.account}` : ''})`;
+    if (msg.action === 'auth') {
+      let ok = false;
+      let message = 'denied';
+      if (this.kind === 'local') ok = msg.trusted === true;
+      else if (!this.admin) message = 'disabled';
+      else {
+        const password = typeof msg.password === 'string' ? msg.password.slice(0, 256) : '';
+        const r = this.admin.verify({ connId: c.conn.id, password, account: c.account });
+        ok = r.ok === true;
+        if (!ok) message = r.message ?? 'denied';
+      }
+      c.admin = ok;
+      if (this.kind === 'online') this.log(`admin: auth ${ok ? 'GRANTED' : `refused (${message})`} for ${who()}`);
+      reply(ok ? { ok, message: 'ok', state: this.adminStateFor(c) } : { ok, message });
+      return;
+    }
+    if (msg.action !== 'cheat') return;
+    if (!c.admin) {
+      if (this.kind === 'online') this.log(`admin: refused cheat '${String(msg.cheat).slice(0, 16)}' from unauthorized ${who()}`);
+      reply({ ok: false, message: 'unauthorized' });
+      return;
+    }
+    if (!ADMIN_CHEATS.includes(msg.cheat)) {
+      reply({ ok: false, message: 'bad_cheat' });
+      return;
+    }
+    const raw = msg.value;
+    const value = typeof raw === 'boolean' || (typeof raw === 'number' && Number.isFinite(raw)) ? raw : typeof raw === 'string' ? raw.slice(0, 16) : undefined;
+    if (!c.room) {
+      reply({ ok: false, message: 'no_match', state: this.adminStateFor(c) });
+      return;
+    }
+    const r = c.room.adminCheat(c.conn.id, msg.cheat, value);
+    if (this.kind === 'online') this.log(`admin: ${who()} room ${c.room.id}: ${msg.cheat}${value !== undefined ? ` ${String(value)}` : ''} → ${r.ok ? 'ok' : r.message}`);
+    c.conn.send(r);
   }
 
   // ── Queue / matches ──────────────────────────────────────────────────────

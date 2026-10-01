@@ -12,9 +12,9 @@
 import { DEFAULT_RATING, SIM_HZ, SNAPSHOT_EVERY_TICKS } from '../constants';
 import type { MapDef } from '../maps/types';
 import { ratingDelta } from '../progression';
-import type { RangeAction, ScoreboardRow } from '../protocol';
+import type { AdminCheat, AdminReplyMsg, AdminState, RangeAction, ScoreboardRow } from '../protocol';
 import { GameSim } from '../sim/game';
-import type { BotDifficulty, CosmeticSelection, GameConfig, GameEvent, Loadout, MatchResults, Platform, PlayerIdentity, Team } from '../types';
+import type { BotDifficulty, CosmeticSelection, GameConfig, GameEvent, Loadout, MatchResults, Platform, PlayerIdentity, Team, ZoneId } from '../types';
 import type { HostConnection } from './host-core';
 
 /** Host-side view of a connected human that a Room needs. */
@@ -74,6 +74,8 @@ export class Room {
   closed = false;
   /** Set when the match reached its natural end (results were sent). */
   completed = false;
+  /** An admin cheat was used in this match: nobody's rating changes. */
+  unrated = false;
   private readonly recordMatch?: (token: string, rating: number) => void;
   private readonly log: (...a: unknown[]) => void;
   /** Ticks the countdown has been held for loading humans so far. */
@@ -225,6 +227,74 @@ export class Room {
     this.sim.rangeCommand(action, value, m.playerId);
   }
 
+  // ── Admin cheats (HostCore only calls these for authorized connections) ──
+
+  /** Cheat state of a member (player cheats + room flags). */
+  adminState(connId: string): AdminState {
+    const m = this.members.get(connId);
+    const ch = m ? this.sim.player(m.playerId)?.cheats : undefined;
+    return {
+      authorized: true,
+      god: !!ch?.god,
+      ammo: !!ch?.ammo,
+      speed: ch?.speed ?? 1,
+      freezeBots: this.sim.botsFrozen,
+      inMatch: !!m && !this.completed,
+    };
+  }
+
+  /** Applies one admin cheat for a member. */
+  adminCheat(connId: string, cheat: AdminCheat, value: unknown): AdminReplyMsg {
+    const m = this.members.get(connId);
+    if (!m || this.completed) return { type: 'admin', ok: false, message: 'no_match' };
+    const sim = this.sim;
+    const pid = m.playerId;
+    const cur = sim.player(pid)?.cheats ?? { god: false, ammo: false, speed: 1 };
+    const flag = (v: unknown, now: boolean): boolean => (typeof v === 'boolean' ? v : !now);
+    let ok = true;
+    let message: string = cheat;
+    switch (cheat) {
+      case 'god':
+        sim.setCheats(pid, { god: flag(value, cur.god) });
+        break;
+      case 'ammo':
+        sim.setCheats(pid, { ammo: flag(value, cur.ammo) });
+        break;
+      case 'speed': {
+        const k = Number(value);
+        if (!Number.isFinite(k) || k < 1 || k > 3) return { type: 'admin', ok: false, message: 'bad_value', state: this.adminState(connId) };
+        sim.setCheats(pid, { speed: k });
+        break;
+      }
+      case 'sunspear':
+        ok = sim.adminGiveSunspear(pid);
+        if (!ok) message = 'not_alive';
+        break;
+      case 'killbots':
+        message = `killbots:${sim.adminKillBots(pid)}`;
+        break;
+      case 'freezebots':
+        sim.botsFrozen = flag(value, sim.botsFrozen);
+        break;
+      case 'teleport': {
+        const where = String(value ?? '').trim();
+        const target = where.toLowerCase() === 'spawn' ? 'spawn' : (where.toUpperCase() as ZoneId);
+        if (target !== 'spawn' && target !== 'A' && target !== 'B' && target !== 'C') return { type: 'admin', ok: false, message: 'bad_value', state: this.adminState(connId) };
+        ok = sim.adminTeleport(pid, target);
+        if (!ok) message = 'not_here';
+        break;
+      }
+      case 'endmatch':
+        ok = sim.adminEndMatch(value === true || value === 'win' ? pid : null);
+        if (!ok) message = 'not_here';
+        break;
+      default:
+        return { type: 'admin', ok: false, message: 'bad_cheat' };
+    }
+    if (ok) this.unrated = true;
+    return { type: 'admin', ok, message, state: this.adminState(connId) };
+  }
+
   /** One simulation tick + networking. */
   step(): void {
     if (this.closed) return;
@@ -291,7 +361,7 @@ export class Room {
 
   /** Elo-style change for rated matches (quick play and private rooms). */
   ratingDeltaFor(m: RoomMember, results: MatchResults): number {
-    if (this.kind === 'bots' || this.kind === 'solo' || this.config.mode === 'range') return 0;
+    if (this.kind === 'bots' || this.kind === 'solo' || this.config.mode === 'range' || this.unrated) return 0;
     const me = results.players.find((p) => p.id === m.playerId);
     if (!me) return 0;
     const ratingOf = (id: number, isBot: boolean): number => {

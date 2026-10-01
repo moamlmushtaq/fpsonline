@@ -38,6 +38,8 @@ import { ClientMatch } from './game/match';
 import { openTouchLayoutEditor } from './ui/touch-layout-editor';
 import { installRotatePrompt } from './ui/rotate-prompt';
 import type { LoadingScreen } from './ui/screens/loading';
+// Admin console (owner's cheat menu): secret terminal + cheat panel, see admin/admin.ts.
+import { AdminConsole } from './admin/admin';
 import { PROTOCOL_VERSION, ROOM_CODE_LENGTH } from '../shared/constants';
 import { totalXpForLevel, unlocksBetween } from '../shared/progression';
 import { MODES } from '../shared/modes';
@@ -98,6 +100,10 @@ export class App {
   queueStatus: QueueStatusMsg | null = null;
   /** Installed by the touch-layout engineer; the Settings screen shows its button only when defined. */
   openTouchLayoutEditor?: () => void;
+  /** Admin console (secret; Backquote / F8, or 7 taps on the Settings build label). */
+  readonly admin: AdminConsole;
+  /** The admin terminal / cheat panel is up: gameplay input and pointer lock are released. */
+  private adminCapture = false;
 
   private match: ClientMatch | null = null;
   private session: Session | null = null;
@@ -143,6 +149,7 @@ export class App {
     // the rotate prompt suspends gameplay input on touch devices held in portrait.
     this.openTouchLayoutEditor = () => openTouchLayoutEditor(this);
     installRotatePrompt(this);
+    this.admin = new AdminConsole(this);
   }
 
   // ── Setup ─────────────────────────────────────────────────────────────────
@@ -185,11 +192,11 @@ export class App {
 
     // Losing pointer lock in gameplay (Esc on desktop) opens the pause menu.
     document.addEventListener('pointerlockchange', () => {
-      if (!document.pointerLockElement && this.match && !this.paused && this.ui.current === 'match' && this.input.device === 'kbm') this.pause();
+      if (!document.pointerLockElement && this.match && !this.paused && !this.adminCapture && this.ui.current === 'match' && this.input.device === 'kbm') this.pause();
     });
     // Clicking the game view re-captures the mouse.
     canvas.addEventListener('pointerdown', () => {
-      if (this.match && !this.paused && this.ui.current === 'match' && this.input.device !== 'touch' && !this.input.pointerLocked) this.input.lockPointer();
+      if (this.match && !this.paused && !this.adminCapture && this.ui.current === 'match' && this.input.device !== 'touch' && !this.input.pointerLocked) this.input.lockPointer();
     });
     window.addEventListener('pagehide', () => settings.flush());
   }
@@ -251,7 +258,7 @@ export class App {
       // Input sampling happens inside ClientMatch.update (fixed-step accumulator).
       if (this.match) {
         this.match.update(dt);
-        if (!this.paused && this.ui.current === 'match' && this.input.pressed('pause')) this.pause();
+        if (!this.paused && !this.adminCapture && this.ui.current === 'match' && this.input.pressed('pause')) this.pause();
       } else this.menuScene?.update(dt);
       this.ui.update(dt);
       this.audio.update(dt);
@@ -316,14 +323,14 @@ export class App {
     // Back at the main menu with a room still open (Menu from a private match's results):
     // leave the room so it does not hold a slot for a player who is gone.
     if (base === 'menu' && !this.match && this.session && this.session.purpose === 'room' && !this.launching) this.leaveRoomSilently();
-    const inGameplay = base === 'match' && top === 'match' && !this.paused;
+    const inGameplay = base === 'match' && top === 'match' && !this.paused && !this.adminCapture;
     this.input.setGameplayActive(inGameplay);
     this.audio.setDuck(base === 'match' && top !== 'match' ? 1 : 0);
     this.syncTouchControls();
   }
 
   private syncTouchControls(): void {
-    const show = !!this.match && !this.paused && this.ui.current === 'match' && this.input.device === 'touch';
+    const show = !!this.match && !this.paused && !this.adminCapture && this.ui.current === 'match' && this.input.device === 'touch';
     this.input.setTouchControlsVisible(show);
   }
 
@@ -333,6 +340,30 @@ export class App {
       this.pendingRoomCode = null;
       void this.joinRoom(code);
     }
+  }
+
+  // ── Admin console hooks ───────────────────────────────────────────────────
+
+  /** The admin terminal / panel opened or closed: release or restore gameplay input. */
+  setAdminCapture(on: boolean): void {
+    if (on === this.adminCapture) return;
+    this.adminCapture = on;
+    if (on && document.pointerLockElement) document.exitPointerLock?.();
+    this.onScreenChange(this.ui.baseScreen, this.ui.current);
+    if (!on && this.match && !this.paused && this.ui.current === 'match' && this.input.device === 'kbm') this.input.lockPointer();
+  }
+
+  /** Sends an admin message on the current session. False when there is none. */
+  adminSend(m: ClientMsg): boolean {
+    const s = this.session;
+    if (!s || s.closed) return false;
+    this.send(m);
+    return true;
+  }
+
+  /** Map of the running match (admin panel teleport targets). */
+  get currentMatchMap(): MapId | null {
+    return this.match ? this.match.config.map : null;
   }
 
   // ── Navigation API ────────────────────────────────────────────────────────
@@ -574,6 +605,7 @@ export class App {
     s.offs.push(transport.onMessage((m) => this.onServerMessage(s, m)));
     s.offs.push(transport.onClose(() => this.onTransportClosed(s)));
     transport.send(this.helloMsg());
+    this.admin.onSession(transport.kind);
     return s;
   }
 
@@ -592,6 +624,7 @@ export class App {
     if (!s) return;
     this.session = null;
     s.closed = true;
+    this.admin.onSessionEnd();
     for (const off of s.offs) off();
     try {
       s.transport.close();
@@ -622,6 +655,10 @@ export class App {
       case 'matchStart':
         s.purpose = 'match';
         void this.beginMatch(s, m);
+        this.admin.onMatchStart();
+        break;
+      case 'admin':
+        this.admin.onReply(m);
         break;
       case 'error':
         this.ui.toast(`errors.${m.code}`, 'error');
@@ -640,6 +677,7 @@ export class App {
     if (s !== this.session || s.closed) return;
     s.closed = true;
     this.session = null;
+    this.admin.onSessionEnd();
     for (const off of s.offs) off();
     this.ui.toast('errors.connectionLost', 'error');
     const m = this.match;

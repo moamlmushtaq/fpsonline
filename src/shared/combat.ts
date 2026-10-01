@@ -131,7 +131,16 @@ export function cloneCombatState(c: CombatState): CombatState {
     throwables: c.throwables,
     throwCd: c.throwCd,
     fireHeld: c.fireHeld,
+    // Admin cheats: copied only when present so ordinary states stay field-for-field identical.
+    ...(c.cheatAmmo ? { cheatAmmo: true } : {}),
+    ...(c.cheatSpeed !== undefined && c.cheatSpeed !== 1 ? { cheatSpeed: c.cheatSpeed } : {}),
   };
+}
+
+/** Admin speed cheat multiplier (1 when off; clamped to 1..3). */
+export function cheatSpeedMult(c: CombatState): number {
+  const k = c.cheatSpeed;
+  return k === undefined || !(k > 1) ? 1 : Math.min(3, k);
 }
 
 export function activeSlot(c: CombatState): WeaponSlotState {
@@ -174,7 +183,8 @@ export function reloadProgress(c: CombatState): number {
 /** Weapon move-speed multiplier × ADS slow. */
 export function speedMultiplier(c: CombatState): number {
   const w = WEAPONS[activeWeapon(c)];
-  return w.moveSpeedMult * lerp(1, ADS_SPEED_MULT, c.adsT);
+  const k = w.moveSpeedMult * lerp(1, ADS_SPEED_MULT, c.adsT);
+  return c.cheatSpeed === undefined ? k : k * cheatSpeedMult(c);
 }
 
 /** Current cone half-angle in radians (HUD crosshair and shot spread). */
@@ -312,6 +322,12 @@ export function stepCombat(c: CombatState, m: MoveState, cmd: InputCmd, playerId
   const firePressed = fireDown && !c.fireHeld;
   const mantling = m.mantleT > 0;
 
+  // ── Admin infinite ammo: every magazine is kept full, so no reload is ever needed ──
+  if (c.cheatAmmo) {
+    for (const s of c.slots) if (s) s.mag = WEAPONS[s.id].magSize;
+    if (c.reloadT > 0) c.reloadT = 0;
+  }
+
   // ── Timers ──
   if (c.throwCd > 0) c.throwCd = Math.max(0, c.throwCd - dt);
   c.fireCd = Math.max(-1, c.fireCd - dt);
@@ -446,7 +462,7 @@ function fire(
   // Carry the sub-tick remainder so the average rate matches rpm exactly.
   c.fireCd = Math.max(c.fireCd, -SIM_DT) + interval;
   if (w.fireMode === 'pump' || w.fireMode === 'bolt') c.cycleT = interval;
-  slot.mag--;
+  if (!c.cheatAmmo) slot.mag--; // admin infinite ammo: the magazine never drops
   const aim = aimAngles(cmd, c);
   const spread = currentSpread(c, m);
   const origin = eyePosition(m);

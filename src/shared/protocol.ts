@@ -147,6 +147,46 @@ export interface RangeCmdMsg {
   value?: number;
 }
 
+// ── Admin console (additive) ────────────────────────────────────────────────
+//
+// The game owner's cheat console. Online, the Node server checks the password
+// (env ADMIN_PASSWORD, optional ADMIN_ACCOUNTS); offline, the in-browser host
+// trusts `trusted: true` ONLY when it runs as kind 'local' (the client verified
+// the code against a build-time hash first). Cheat actions from connections
+// that are not authorized are refused. See README "Admin console".
+
+/** Host-side cheats (client-only ones — wallhack, unlockall, xp — never reach the host). */
+export type AdminCheat = 'god' | 'ammo' | 'speed' | 'sunspear' | 'killbots' | 'freezebots' | 'teleport' | 'endmatch';
+export const ADMIN_CHEATS: readonly AdminCheat[] = ['god', 'ammo', 'speed', 'sunspear', 'killbots', 'freezebots', 'teleport', 'endmatch'];
+
+/** Cheat state of the authorized connection (its player + its room). */
+export interface AdminState {
+  authorized: boolean;
+  god: boolean;
+  ammo: boolean;
+  /** Movement multiplier 1..3. */
+  speed: number;
+  freezeBots: boolean;
+  /** True while the connection is in a running match. */
+  inMatch: boolean;
+}
+
+export type AdminMsg =
+  | { type: 'admin'; action: 'auth'; password: string; /** Local host only: the client already verified the code. */ trusted?: boolean }
+  /**
+   * value: god / ammo / freezebots → boolean (omitted = toggle); speed → 1..3;
+   * teleport → 'A' | 'B' | 'C' | 'spawn'; endmatch → true = your team (or you) wins.
+   */
+  | { type: 'admin'; action: 'cheat'; cheat: AdminCheat; value?: number | string | boolean };
+
+export interface AdminReplyMsg {
+  type: 'admin';
+  ok: boolean;
+  /** Short machine-readable reason / confirmation (e.g. 'denied', 'locked', 'unauthorized', 'no_match', 'god'). */
+  message?: string;
+  state?: AdminState;
+}
+
 export type ClientMsg =
   | HelloMsg
   | QueueMsg
@@ -161,7 +201,8 @@ export type ClientMsg =
   | LoadoutMsg
   | PingMsg
   | RangeCmdMsg
-  | LoadedMsg;
+  | LoadedMsg
+  | AdminMsg;
 
 // ── Host → Client ───────────────────────────────────────────────────────────
 
@@ -293,7 +334,8 @@ export type ServerMsg =
   | ScoreboardMsg
   | MatchEndMsg
   | PongMsg
-  | ErrorMsg;
+  | ErrorMsg
+  | AdminReplyMsg;
 
 // ── Account REST API (Node server only; path prefix /api) ───────────────────
 //   POST /api/register  { name, password, profile? }  → AuthResponse

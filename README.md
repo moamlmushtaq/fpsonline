@@ -42,7 +42,22 @@ Useful URL parameters: `?room=CODE` (join a private room), `?lang=ar`, `?server=
 | Fly.io | `fly launch --no-deploy --copy-config && fly deploy` (see `fly.toml` for the optional volume) |
 | Static only | Upload `dist/client/` to any static host. You get full offline play against bots, but no online matches or accounts. |
 
-Server environment variables: `PORT`, `HOST`, `DATA_DIR` (accounts store, default `./data`), `TRUST_PROXY`, `PROXY_HOPS`, `MAX_ROOMS`, `MAX_CONNECTIONS`, `MAX_CONN_PER_IP`.
+Server environment variables: `PORT`, `HOST`, `DATA_DIR` (accounts store, default `./data`), `TRUST_PROXY`, `PROXY_HOPS`, `MAX_ROOMS`, `MAX_CONNECTIONS`, `MAX_CONN_PER_IP`, and for the [admin console](#admin-console) `ADMIN_PASSWORD` (unset = admin disabled online) and `ADMIN_ACCOUNTS` (optional, comma-separated account names).
+
+Build-time variable: `VITE_ADMIN_CODE` sets the offline admin code baked into the client (default `halcyon2090`; only a salted SHA-256 of it ships in the bundle). Set it when you build: `VITE_ADMIN_CODE='my-code' npm run build`, `docker build --build-arg VITE_ADMIN_CODE='my-code' …`, or as an environment variable on Render (Render applies env vars to the build). On Fly.io, pass `--build-arg VITE_ADMIN_CODE=…` to `fly deploy` and set the server password with `fly secrets set ADMIN_PASSWORD=…`.
+
+## Admin console
+
+A hidden cheat console for the game's owner. There is no visible button.
+
+- **Open it**: press <kbd>`</kbd> (Backquote) or <kbd>F8</kbd>, in menus or in a match. On a phone or tablet, open **Settings** (from the menu or the pause menu) and tap the **Build** label at the bottom 7 times quickly. <kbd>Esc</kbd> closes it.
+- **Sign in**: type `admin <code>`. Until you do, every command answers "unknown command". Access is remembered for the browser tab (sessionStorage).
+  - Offline (bot matches, training): the code is checked against `VITE_ADMIN_CODE` (default `halcyon2090`).
+  - Online: the server checks the password against `ADMIN_PASSWORD` (constant-time compare). After 5 wrong attempts a connection is locked out for 60 s. If `ADMIN_ACCOUNTS` is set, you must also be signed in to one of those accounts. Grants, refusals and every cheat are written to the server log. With `ADMIN_PASSWORD` unset, admin is disabled online.
+- **Commands** (type `help`): `god`, `ammo`, `speed <1..3>`, `sunspear`, `killbots`, `freezebots`, `teleport <A|B|C|spawn>`, `endmatch [win]`, `wallhack`, `unlockall`, `xp <amount>`, `status`, `clear`, `logout`. Toggles take an optional `on`/`off`.
+- **Cheat panel**: `menu` or <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>A</kbd> opens a panel with the same toggles and buttons. On touch, tap the red **ADMIN** tag on the HUD (it appears once you're authorized in a match), or tap the build label 7 times again.
+- God, ammo, speed, bot freeze, teleport, kills and match end run on the host, so they also work online. Wallhack is client-side and only turns on offline or when the server has authorized you. `unlockall` and `xp` change your profile; for signed-in accounts they sync like normal progress. God, ammo, speed and wallhack stay on for later matches in the same tab.
+- While a cheat is on, a red **ADMIN** tag lists it on the HUD, so screenshots and streams show it. Online matches where a cheat was used are unrated.
 
 ## Test
 
@@ -70,3 +85,4 @@ Dev tools: `preview.html` (map, character, weapon, viewmodel and effects preview
 - On a static host the browser logs one harmless 404 when the client checks for a game server.
 - The announcer uses the device's built-in speech voices, so voice quality varies by platform. Subtitles always work.
 - On Render's free plan the filesystem is ephemeral, so accounts reset on redeploy unless you attach a disk.
+- Admin console: <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>A</kbd> is also Chrome's "search tabs" shortcut, so Chrome may take it first; `menu` always works. The offline code is checked in the browser, so anyone who reads the bundle can try to brute-force its hash. It only affects that player's own offline game. The online lockout is per connection, so a client that reconnects gets a fresh 5 attempts; use a long `ADMIN_PASSWORD`.

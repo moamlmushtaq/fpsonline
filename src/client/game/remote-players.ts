@@ -19,6 +19,8 @@ import type { PlayerIdentity, PlayerSnap, SurfaceTag, Team } from '../../shared/
 import { PF_ADS, PF_AIR, PF_ALIVE, PF_CHARGING, PF_MANTLE, PF_PROTECTED, PF_RELOAD, PF_SLIDE, PF_SPRINT, WEAPON_IDS } from '../../shared/types';
 import type { MatchContext } from './context';
 import { EntityBuffer, emptySample, type EntitySample } from './interpolator';
+// Admin wallhack: enemies get a soft rim glow (client-only cheat).
+import { adminFlags } from '../admin/flags';
 
 /** Remote movement sounds are only simulated within this distance of the listener (m). */
 const SOUND_RANGE = 48;
@@ -195,7 +197,7 @@ export class RemotePlayers {
       if (show) {
         e.view.update(dt, a);
         // Spawn shield: a soft pulsing glow tells you shots won't land yet.
-        const glow = (s.f & PF_PROTECTED) !== 0 ? 0.3 + 0.3 * Math.sin(this.time * 9) : 0;
+        const glow = (s.f & PF_PROTECTED) !== 0 ? 0.3 + 0.3 * Math.sin(this.time * 9) : adminFlags.wallhack && !e.isLocal && this.ctx.isEnemy(e.ident.id) ? 0.45 : 0;
         if (glow !== e.glow) {
           e.glow = glow;
           e.view.setHighlight(glow);

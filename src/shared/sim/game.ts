@@ -36,6 +36,7 @@ import {
 import {
   activeWeapon,
   aimAngles,
+  giveSunspear,
   cloneCombatState,
   createCombatState,
   eyePosition,
@@ -50,6 +51,7 @@ import { ARMOR_TINTS, NAMECARDS, VISOR_STYLES, defaultCosmetics } from '../cosme
 import type { MapDef, PickupDef } from '../maps/types';
 import { clamp, forwardFromAngles, hash32, lerp, mulberry32, pick, q2, randInt } from '../math';
 import { cloneMoveState, createMoveState, eyeHeight, playerHeight } from '../movement';
+import type { PlayerCheats } from './player';
 import { botName } from '../names';
 import { CollisionWorld } from '../physics';
 import type { RangeAction, ScoreboardRow, SnapshotMsg } from '../protocol';
@@ -67,6 +69,7 @@ import type {
   ShotImpact,
   Team,
   Vec3,
+  ZoneId,
 } from '../types';
 import {
   BTN_FIRE,
@@ -104,7 +107,7 @@ import { ZoneSystem, type ZoneOccupant, type ZoneState } from './zones';
 /** Sight test through smoke clouds: true if the segment a→b is blocked by any cloud. */
 export { smokeBlocksImpl as smokeBlocks };
 
-export type { DamageEntry, Noise, RoutedEvent, SimPlayer } from './player';
+export type { DamageEntry, Noise, PlayerCheats, RoutedEvent, SimPlayer } from './player';
 export { sanitizeCmd, worldForMap } from './player';
 
 type SharedSnapshot = Omit<SnapshotMsg, 'type' | 'events' | 'self'>;
@@ -143,6 +146,8 @@ export class GameSim {
    * the pre-match countdown then waits (bounded by the Room) so nobody misses the start.
    */
   holdCountdown = false;
+  /** Admin cheat (room-level): bots stand still and hold fire. */
+  botsFrozen = false;
   private liveTicks = 0;
   private events: RoutedEvent[] = [];
   private nextId = 1;
@@ -346,7 +351,10 @@ export class GameSim {
     if (!p.pendingLoadout) return;
     p.ident.loadout = p.pendingLoadout;
     p.pendingLoadout = null;
-    if (reequip) p.combat = createCombatState(p.ident.loadout);
+    if (reequip) {
+      p.combat = createCombatState(p.ident.loadout);
+      this.syncCheats(p);
+    }
   }
 
   /** Queues input commands for a human; ignores seq ≤ last received. */
@@ -424,7 +432,11 @@ export class GameSim {
     // Commands.
     for (const p of this.players) {
       if (p.bot) {
-        this.processCmd(p, p.bot.think(), live, true);
+        if (this.botsFrozen) {
+          // Admin freeze: physics keeps running (gravity), but no movement, aim changes or fire.
+          const c = p.lastCmd;
+          this.processCmd(p, { seq: c.seq + 1, mx: 0, mz: 0, yaw: c.yaw, pitch: c.pitch, buttons: 0, slot: c.slot, viewTick: this.tick - 1 }, live, true);
+        } else this.processCmd(p, p.bot.think(), live, true);
         continue;
       }
       const n = Math.min(p.queue.length, MAX_CMDS_PER_TICK);
@@ -560,6 +572,7 @@ export class GameSim {
   /** Applies damage; returns true if it killed. */
   applyDamage(victim: SimPlayer, attacker: SimPlayer | null, amount: number, cause: KillCause, head: boolean, from: Vec3): boolean {
     if (!victim.alive || amount <= 0) return false;
+    if (victim.cheats?.god) return false; // admin god mode
     if (this.phase !== 'live') return false;
     if (victim.protectedT > 0) return false;
     if (this.config.mode === 'range') return false;
@@ -713,7 +726,8 @@ export class GameSim {
   private stepFalls(): void {
     for (const p of this.players) {
       if (!p.alive || p.move.pos.y >= this.map.killY) continue;
-      if (this.config.mode === 'range' || this.phase !== 'live') {
+      if (this.config.mode === 'range' || this.phase !== 'live' || p.cheats?.god) {
+        // (Admin god mode: falling off the map just puts you back at a spawn.)
         this.spawnPlayer(p);
         continue;
       }
@@ -804,6 +818,7 @@ export class GameSim {
     this.applyPendingLoadout(p, false);
     p.move = createMoveState(sp.pos);
     p.combat = createCombatState(p.ident.loadout);
+    this.syncCheats(p);
     p.health = MAX_HEALTH;
     p.alive = true;
     p.respawnT = 0;
@@ -840,10 +855,10 @@ export class GameSim {
     if (timeUp || scoreReached) this.endMatch();
   }
 
-  /** Ends the match now (also used by hosts for forced ends). */
-  endMatch(): void {
+  /** Ends the match now (also used by hosts for forced ends). `forced` overrides the winner (admin). */
+  endMatch(forced?: { winner: Team; winnerPlayer: number; draw: boolean }): void {
     if (this.phase === 'ended') return;
-    this.endResult = this.computeWinner();
+    this.endResult = forced ?? this.computeWinner();
     this.setPhase('ended');
     const r = this.endResult;
     for (const p of this.players) {
@@ -868,6 +883,98 @@ export class GameSim {
     const s1 = Math.floor(this.teamScores[1]);
     if (s0 === s1) return { winner: TEAM_NONE, winnerPlayer: -1, draw: true };
     return { winner: s0 > s1 ? 0 : 1, winnerPlayer: -1, draw: false };
+  }
+
+  // ── Admin cheats (the host checks authorization; see protocol AdminMsg) ──
+
+  /** Mirrors a player's ammo/speed cheats into the predicted combat state (after every re-equip). */
+  private syncCheats(p: SimPlayer): void {
+    const ch = p.cheats;
+    if (ch?.ammo) p.combat.cheatAmmo = true;
+    else delete p.combat.cheatAmmo;
+    if (ch && ch.speed > 1) p.combat.cheatSpeed = ch.speed;
+    else delete p.combat.cheatSpeed;
+  }
+
+  /** Updates a player's cheats; returns the new set (null if no such player). */
+  setCheats(id: number, patch: Partial<PlayerCheats>): PlayerCheats | null {
+    const p = this.player(id);
+    if (!p) return null;
+    const cur: PlayerCheats = p.cheats ?? { god: false, ammo: false, speed: 1 };
+    const next: PlayerCheats = {
+      god: patch.god ?? cur.god,
+      ammo: patch.ammo ?? cur.ammo,
+      speed: patch.speed !== undefined && Number.isFinite(patch.speed) ? clamp(Math.round(patch.speed * 100) / 100, 1, 3) : cur.speed,
+    };
+    if (next.god || next.ammo || next.speed > 1) p.cheats = next;
+    else delete p.cheats;
+    this.syncCheats(p);
+    return next;
+  }
+
+  /** Puts a fresh Sunspear in the player's pickup slot (alive only). */
+  adminGiveSunspear(id: number): boolean {
+    const p = this.player(id);
+    if (!p || !p.alive) return false;
+    giveSunspear(p.combat);
+    return true;
+  }
+
+  /** Eliminates every living enemy bot of `forId` (cause 'world': nobody is credited). Returns the count. */
+  adminKillBots(forId: number): number {
+    const me = this.player(forId);
+    if (!me) return 0;
+    let n = 0;
+    for (const p of this.players) {
+      if (!p.alive || !p.ident.isBot || !this.isEnemy(me, p)) continue;
+      p.damageLog.length = 0; // no assists either
+      p.lastAttacker = -1;
+      this.kill(p, null, 'world', false);
+      n++;
+    }
+    return n;
+  }
+
+  /** Moves a living player to a zone centre or one of their team's spawns. */
+  adminTeleport(id: number, where: ZoneId | 'spawn'): boolean {
+    const p = this.player(id);
+    if (!p || !p.alive) return false;
+    let pos: Vec3;
+    if (where === 'spawn') {
+      const sp = pickSpawn(
+        { map: this.map, world: this.world, living: this.spawnActors(p), recentDeaths: this.recentDeaths, tick: this.tick, tickRate: SIM_HZ, rng: this.rng },
+        p.ident.team,
+        this.ffa,
+        p.ident.id,
+      );
+      pos = { x: sp.pos.x, y: sp.pos.y, z: sp.pos.z };
+    } else {
+      const z = this.map.zones.find((zz) => zz.id === where);
+      if (!z) return false;
+      const g = this.world.groundAt(z.center.x, z.center.z, z.center.y + 2, 6);
+      pos = { x: z.center.x, y: (g ? g.y : z.center.y) + 0.02, z: z.center.z };
+    }
+    p.move = createMoveState(pos);
+    return true;
+  }
+
+  /** Ends the match now; with `favor` that player's team (FFA: that player) wins. */
+  adminEndMatch(favor: number | null): boolean {
+    if (this.phase === 'ended' || this.config.mode === 'range') return false;
+    const p = favor !== null ? this.player(favor) : undefined;
+    if (!p) {
+      this.endMatch();
+      return true;
+    }
+    if (this.config.mode === 'ffa') {
+      this.endMatch({ winner: TEAM_NONE, winnerPlayer: p.ident.id, draw: false });
+      return true;
+    }
+    const t = p.ident.team === 1 ? 1 : 0;
+    // Keep the scoreboard consistent with the declared winner.
+    this.teamScores[t] = Math.max(Math.floor(this.teamScores[t]), Math.floor(this.teamScores[1 - t]) + 1);
+    this.endMatch({ winner: t, winnerPlayer: -1, draw: false });
+    return true;
   }
 
   // ── Views ─────────────────────────────────────────────────────────────────

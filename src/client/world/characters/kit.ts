@@ -5,7 +5,8 @@
 // tapered tubes, bands, leaves, surface-conforming patches/decals for visors)
 // and an assembler that bakes everything into ONE skinned BufferGeometry:
 //  • position / normal / uv (box-projected per part, for the detail texture)
-//  • color  — albedo × painterly AO-by-colour (downward faces and feet darker)
+//  • color  — rgb: albedo × painterly AO-by-colour (downward faces and feet
+//             darker); a: far value lift (PartOpts.farLift)
 //  • fx     — x: team-glow weight, y: secondary-glow weight,
 //             z: team paint (+1 primary, −1 secondary), w: gloss 0..1
 //  • skinIndex / skinWeight — rigid parts or 2-bone blends near joints.
@@ -48,15 +49,34 @@ export interface PartOpts {
    */
   glowY?: { from: number; to: number };
   /**
-   * Visor line: flagged in the fx attribute (w > 1.25, y = bind-space eye-line
-   * height) so the vertex shader can thicken it with distance — a 4 cm line is
+   * Visor line: the vertex shader thickens it with distance around its own
+   * centre line (fxg.w < 0: y ×(1 + |w|·s), x ×(1 + 0.3·s)) — a 4 cm line is
    * sub-pixel at 60 m and would otherwise vanish entirely.
    */
   visor?: boolean;
+  /**
+   * Far-readability accent (team lights, pod tips, bulbs): the part scales up
+   * isotropically around its own centre with distance, ×(1 + farGrow) at
+   * ≥ 80 m, so the team colour still covers pixels (and blooms) at range.
+   */
+  farGrow?: number;
+  /**
+   * Pivot (bone-local) for farGrow instead of the part's own centre: silhouette
+   * markers (Halcyon pods / pauldrons, Bloom fronds) are exaggerated at range
+   * by growing from where they attach, so they stay connected to the body.
+   */
+  growAt?: V3;
+  /**
+   * Far value lift (colour alpha, 0..1): beyond ~20 m the shader pulls this
+   * part's albedo toward the faction's dominant value, so a white Halcyon
+   * reads as ONE white mass (its dark undersuit no longer breaks it into a
+   * grey speckle that melts into dusty backgrounds).
+   */
+  farLift?: number;
 }
 
-/** fx.w value marking visor vertices (gloss reads clamp(w, 0, 1) = 1). */
-export const VISOR_FLAG = 1.5;
+/** fxg.w for visor parts (anisotropic far thickening, see PartOpts.visor). */
+export const VISOR_GROW = -2.6;
 
 interface Part {
   bone: BoneName;
@@ -176,9 +196,10 @@ export function cyl(r0: number, r1: number, h: number, radial: number): THREE.Bu
 
 /**
  * Double-sided lanceolate leaf along +Y with a centre crease and a backward
- * curl (+Z). Width profile peaks around 35 % of the length.
+ * curl (+Z). Width profile peaks around 35 % of the length (`full` widens it
+ * toward a paddle).
  */
-export function leaf(len: number, width: number, segs: number, curl: number, crease = 0.25): THREE.BufferGeometry {
+export function leaf(len: number, width: number, segs: number, curl: number, crease = 0.25, full = 0): THREE.BufferGeometry {
   const pts: number[] = [];
   const idx: number[] = [];
   const rows = segs + 1;
@@ -186,7 +207,8 @@ export function leaf(len: number, width: number, segs: number, curl: number, cre
     const off = side === 0 ? 0.0015 : -0.0015;
     for (let i = 0; i < rows; i++) {
       const t = i / segs;
-      const w = width * Math.pow(Math.sin(Math.PI * Math.pow(t, 0.72)), 0.9) * (1 - t * 0.15);
+      // full → 1: a broad paddle (widest past mid-length, blunt rounded tip).
+      const w = width * Math.pow(Math.sin(Math.PI * Math.pow(t, 0.72 - full * 0.22)), 0.9 - full * 0.45) * (1 - t * 0.15);
       const y = t * len;
       const z = curl * t * t * len;
       const zc = z - w * crease;
@@ -199,6 +221,60 @@ export function leaf(len: number, width: number, segs: number, curl: number, cre
         const b = a + 1;
         const c = a + 3;
         const d = a + 4;
+        if (side === 0) idx.push(a, c, b, b, c, d);
+        else idx.push(a, b, c, b, d, c);
+      }
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+}
+
+/**
+ * Anatomical limb segment along −Y (y = 0 … −len): an open lathe through a
+ * radius profile [radius, t] (t = 0 at the joint above, 1 at the joint below).
+ * Muscle bulges and tapers instead of a straight pill. Optional `flat` squashes
+ * the cross-section front-to-back (z) — limbs are not round.
+ */
+export function limb(profile: [number, number][], len: number, radial: number, flat = 1): THREE.BufferGeometry {
+  const pts = profile.map(([r, t]) => new THREE.Vector2(r, -t * len)).reverse();
+  const g = new THREE.LatheGeometry(pts, radial);
+  if (flat !== 1) g.scale(1, 1, flat);
+  return weldNormals(g);
+}
+
+/**
+ * Double-sided cloth sheet hanging along −Y from y = 0 (capes, tabards):
+ * `w` wide at the hem (`top` × w at the top edge), `h` long, with a ragged
+ * hem (every other hem vertex pulled up by `ragged`·h) and a backward billow
+ * (+Z) growing toward the hem. Use bend() to wrap it round a body.
+ */
+export function cloth(w: number, h: number, cols: number, rows: number, ragged: number, billow = 0, top = 1): THREE.BufferGeometry {
+  const pts: number[] = [];
+  const idx: number[] = [];
+  const per = (cols + 1) * (rows + 1);
+  for (let side = 0; side < 2; side++) {
+    const off = side === 0 ? 0.002 : -0.002;
+    for (let j = 0; j <= rows; j++) {
+      const t = j / rows;
+      const half = (w * (top + (1 - top) * t)) / 2;
+      for (let i = 0; i <= cols; i++) {
+        const u = i / cols;
+        let y = -t * h;
+        if (j === rows) y += (i % 2 ? ragged : ragged * 0.25 * ((i * 7) % 3)) * h;
+        pts.push((u * 2 - 1) * half, y, billow * t * t + off);
+      }
+    }
+    const base = side * per;
+    for (let j = 0; j < rows; j++) {
+      for (let i = 0; i < cols; i++) {
+        const a = base + j * (cols + 1) + i;
+        const b = a + 1;
+        const c = a + cols + 1;
+        const d = c + 1;
         if (side === 0) idx.push(a, c, b, b, c, d);
         else idx.push(a, b, c, b, d, c);
       }
@@ -329,7 +405,7 @@ export class Kit {
     const seed = this.seed;
 
     // Shape-local colour gradient + lumps (before the part transform).
-    const colors = new Float32Array(count * 3);
+    const colors = new Float32Array(count * 4);
     const base = part.color;
     const gradCol = o.grad ? (typeof o.grad.color === 'string' ? new THREE.Color(o.grad.color) : o.grad.color) : null;
     // Per-part value jitter (±3 %) so panels read as separate pieces.
@@ -344,9 +420,10 @@ export class Kit {
         _c.lerp(gradCol, x * x * (3 - 2 * x));
       }
       _c.multiplyScalar(jitter);
-      colors[i * 3] = _c.r;
-      colors[i * 3 + 1] = _c.g;
-      colors[i * 3 + 2] = _c.b;
+      colors[i * 4] = _c.r;
+      colors[i * 4 + 1] = _c.g;
+      colors[i * 4 + 2] = _c.b;
+      colors[i * 4 + 3] = o.farLift ?? 0;
       if (o.lumps) {
         const k = hash3(pos.getX(i) * 31 + seed, pos.getY(i) * 29, pos.getZ(i) * 37) * o.lumps;
         pos.setXYZ(i, pos.getX(i) + nrm.getX(i) * k, pos.getY(i) + nrm.getY(i) * k, pos.getZ(i) + nrm.getZ(i) * k);
@@ -413,24 +490,27 @@ export class Kit {
       fx[i * 4 + 2] = paint;
       fx[i * 4 + 3] = gloss;
     }
+    const fxg = new Float32Array(count * 4);
     g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
     g.setAttribute('fx', new THREE.BufferAttribute(fx, 4));
+    g.setAttribute('fxg', new THREE.BufferAttribute(fxg, 4));
     g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinIndex, 4));
     g.setAttribute('skinWeight', new THREE.BufferAttribute(skinWeight, 4));
 
     // Into model space through the rest pose.
     g.applyMatrix4(restWorld[part.bone]);
-    if (o.visor) {
-      const p = g.attributes.position as THREE.BufferAttribute;
-      let lo = Infinity, hi = -Infinity;
+    if (o.visor || o.farGrow) {
+      // Far-grow centre = the part's bind-space bounding-box centre.
+      g.computeBoundingBox();
+      const bb = g.boundingBox as THREE.Box3;
+      const w = o.visor ? VISOR_GROW : (o.farGrow as number);
+      if (o.growAt && !o.visor) _p.set(o.growAt[0], o.growAt[1], o.growAt[2]).applyMatrix4(restWorld[part.bone]);
+      else bb.getCenter(_p);
       for (let i = 0; i < count; i++) {
-        lo = Math.min(lo, p.getY(i));
-        hi = Math.max(hi, p.getY(i));
-      }
-      const eyeY = (lo + hi) / 2;
-      for (let i = 0; i < count; i++) {
-        fx[i * 4 + 1] = eyeY;
-        fx[i * 4 + 3] = VISOR_FLAG;
+        fxg[i * 4] = _p.x;
+        fxg[i * 4 + 1] = _p.y;
+        fxg[i * 4 + 2] = _p.z;
+        fxg[i * 4 + 3] = w;
       }
     }
 
@@ -444,12 +524,12 @@ export class Kit {
       const up = _n.y * 0.5 + 0.5;
       const h = THREE.MathUtils.smoothstep(p2.getY(i), 0.0, 1.35);
       const k = 1 - ao * (0.22 * (1 - up) + 0.14 * (1 - h));
-      _c2.setRGB(colors[i * 3] * k, colors[i * 3 + 1] * k, colors[i * 3 + 2] * k);
-      colors[i * 3] = _c2.r;
-      colors[i * 3 + 1] = _c2.g;
-      colors[i * 3 + 2] = _c2.b;
+      _c2.setRGB(colors[i * 4] * k, colors[i * 4 + 1] * k, colors[i * 4 + 2] * k);
+      colors[i * 4] = _c2.r;
+      colors[i * 4 + 1] = _c2.g;
+      colors[i * 4 + 2] = _c2.b;
     }
-    g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    g.setAttribute('color', new THREE.BufferAttribute(colors, 4));
     return g;
   }
 }

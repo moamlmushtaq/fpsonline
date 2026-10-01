@@ -12,6 +12,13 @@
 //     strip  — onion skin: n=<count> copies of faction's character doing `anim`,
 //              each step=<s> seconds further into the cycle (one-shot sequence)
 //     perf   — 5v5 running around; measures draw calls / triangles / CPU ms
+//     far    — far-readability test: both factions at `d` metres (default 60)
+//              in five poses each (front, side, back, run, crouch) from a
+//              gameplay camera (60° vfov); combine with sil=1 and map=…
+//     inmap  — the REAL map (map=…) seen from zone from=A|B|C|spawn toward
+//              zone to=… (yaw=<offset rad>): Halcyon / Bloom pairs at 12–80 m along the
+//              view, snapped to the ground — in-match lighting, haze, clutter
+//   sil=1   silhouette render: characters flat black on white (shape-only test)
 //   faction=0|1  weapon=<WeaponId>  armor=<id>  visor=<id>
 //   anim=idle|walk|run|sprint|strafe|back|crouch|crouchwalk|slide|air|mantle|
 //        reload|ads|adswalk|fire|charge|aimup|aimdown|turn|flinch|spawn
@@ -30,7 +37,7 @@ import { getMap } from '../../shared/maps/index';
 import { createAtmosphere } from '../engine/atmosphere';
 import { boxProjectUVs } from '../engine/materials';
 import { Characters, type CharacterInstance } from '../world/characters';
-import { makeCamera, parseCam, type PreviewContext, type PreviewView } from './views';
+import { loadMap, makeCamera, parseCam, runtimeState, type PreviewContext, type PreviewView } from './views';
 
 declare global {
   interface Window {
@@ -48,6 +55,8 @@ interface Actor {
   lastFire: number;
   lastEvent: number;
 }
+
+const SIL_BG = new THREE.Color(0xffffff);
 
 const SPEEDS: Record<string, number> = {
   walk: 3.3, adswalk: 3.3, run: 5.4, strafe: 5.4, back: 4.6, sprint: 7.8, crouchwalk: 2.9, slide: 9.5, air: 5.4, mantle: 2,
@@ -86,6 +95,7 @@ function applyAnim(a: CharacterAnim, anim: string, yaw: number): void {
 export async function charactersView(ctx: PreviewContext): Promise<PreviewView> {
   const P = ctx.params;
   const layout = P.get('layout') ?? 'lineup';
+  if (layout === 'inmap') return inMapView(ctx);
   const anim = P.get('anim') ?? 'idle';
   const scene = new THREE.Scene();
   const def = getMap((P.get('map') ?? (layout === 'hero' ? 'gantry' : 'pastel')) as MapId);
@@ -192,6 +202,20 @@ export async function charactersView(ctx: PreviewContext): Promise<PreviewView> 
       aim([0, 1.5, -4.4], [0, 1.4, 0.6], 26);
       break;
     }
+    case 'far': {
+      // Halcyon row on the left, Bloom on the right, same five poses each.
+      const d = Number(P.get('d') ?? 60);
+      const sp = Math.max(1.1, d * 0.045);
+      const poses: [string, number][] = [['idle', Math.PI], ['idle', -Math.PI / 2], ['idle', 0], ['run', Math.PI / 2], ['crouch', Math.PI + 0.6]];
+      for (const f of [0, 1] as Faction[]) {
+        poses.forEach(([an, yaw], i) => {
+          const x = (f === 0 ? -5.6 : 0.6) * sp + i * sp;
+          add(f, f as Team, { pos: [x, 0, -d], yaw, anim: an, weapon: f === 0 ? 'meridian' : 'swift' });
+        });
+      }
+      aim([0, 1.62, 0], [0, 1.1, -d], 60);
+      break;
+    }
     case 'perf': {
       for (let i = 0; i < 10; i++) {
         const f = (i % 2) as Faction;
@@ -222,6 +246,13 @@ export async function charactersView(ctx: PreviewContext): Promise<PreviewView> 
     camera.lookAt(explicit.target);
   }
 
+  // Silhouette test: only the characters, flat black on white.
+  const sil = P.get('sil') === '1';
+  if (sil) {
+    const roots = new Set<THREE.Object3D>(actors.map((x) => x.v.root));
+    for (const o of scene.children) if (!roots.has(o)) o.visible = false;
+    scene.overrideMaterial = new THREE.MeshBasicMaterial({ color: 0x000000, fog: false });
+  }
   const move = P.get('move') === '1' || (layout === 'anim' && P.get('move') !== '0');
   // (strip keeps the copies in place so their phases stay comparable)
   const info = { perChar: actors.map((x) => x.v.stats()), heads: [] as unknown[], skate: {} as unknown, sceneCalls: 0, baselineCalls: 0, charCalls: 0, triangles: 0, cpuMs: 0, preset: q.preset };
@@ -323,6 +354,10 @@ export async function charactersView(ctx: PreviewContext): Promise<PreviewView> 
         cpuN = 0;
       }
       atmo.update(dt, camera, 0);
+      if (sil) {
+        scene.background = SIL_BG;
+        scene.fog = null;
+      }
       if (window.__previewReady && frame % 10 === 0) {
         info.perChar = actors.map((x) => x.v.stats());
         // Head centre relative to the feet (hitbox check: head sphere at y≈1.69, r 0.23, centred on x/z).
@@ -345,6 +380,74 @@ export async function charactersView(ctx: PreviewContext): Promise<PreviewView> 
           `per char: draws ${pc[0]?.drawCalls ?? 0} (weapon ${pc[0]?.weaponDrawCalls ?? 0})  body tris ${Math.min(...tri)}–${Math.max(...tri)}  weapon tris ${Math.min(...wtri)}–${Math.max(...wtri)}\n` +
           (layout === 'perf' ? `10 chars: +${info.charCalls} calls (incl. shadows)  cpu ${info.cpuMs.toFixed(2)} ms/frame` : `cpu ${info.cpuMs.toFixed(2)} ms/frame`);
       }
+    },
+  };
+}
+
+/** layout=inmap: factions at 12–80 m inside a real map, from a team-0 spawn. */
+async function inMapView(ctx: PreviewContext): Promise<PreviewView> {
+  const P = ctx.params;
+  const { def, mv } = await loadMap(ctx, P.get('map') ?? 'gantry');
+  const scene = mv.scene;
+  scene.updateMatrixWorld(true);
+  const camera = makeCamera(ctx, 60);
+  // Viewpoint: Launch Control zone `from` (default A — open ground) looking
+  // toward zone `to` (default B), or a team-0 spawn (from=spawn).
+  const zone = (id: string) => def.zones.find((z) => z.id === id);
+  const fromId = P.get('from') ?? 'A';
+  const own = def.spawns.filter((s) => s.team === 0);
+  const sp = own[Number(P.get('spawn') ?? 0) % Math.max(1, own.length)] ?? def.spawns[0];
+  const zf = fromId === 'spawn' ? null : zone(fromId);
+  const zt = zone(P.get('to') ?? 'B');
+  const s0 = { pos: zf ? zf.center : sp.pos };
+  camera.position.set(s0.pos.x, s0.pos.y + 1.62, s0.pos.z);
+  const fx = zt ? zt.center.x : 0, fz = zt ? zt.center.z : 0;
+  const ang = Math.atan2(fx - s0.pos.x, fz - s0.pos.z) + Number(P.get('yaw') ?? 0);
+  const dx = Math.sin(ang), dz = Math.cos(ang);
+  const ray = new THREE.Raycaster();
+  ray.camera = camera; // sprites need it
+  const down = new THREE.Vector3(0, -1, 0);
+  const o = new THREE.Vector3();
+  const groundAt = (x: number, z: number): number | null => {
+    o.set(x, s0.pos.y + 2.5, z);
+    ray.set(o, down);
+    ray.far = 12;
+    for (const h of ray.intersectObject(scene, true)) {
+      const m = h.object as THREE.Mesh;
+      if (!m.isMesh || !m.visible || !h.face || h.face.normal.y < 0.3) continue;
+      return h.point.y;
+    }
+    return null;
+  };
+  const chars = new Characters(ctx.materials, ctx.weapons);
+  const actors: { v: CharacterInstance; a: CharacterAnim }[] = [];
+  const yawToCam = ang + Math.PI;
+  [12, 25, 40, 60, 80].forEach((d, i) => {
+    const off = Math.max(1.1, d * 0.05);
+    for (const f of [0, 1] as Faction[]) {
+      const side = f === 0 ? -1 : 1;
+      const x = s0.pos.x + dx * d + dz * side * off;
+      const z = s0.pos.z + dz * d - dx * side * off;
+      const y = groundAt(x, z);
+      if (y === null) continue;
+      const cos = defaultCosmetics();
+      const v = chars.create({ faction: f, team: f as Team, cosmetics: cos, friendly: false, quality: ctx.engine.quality });
+      v.root.position.set(x, y, z);
+      scene.add(v.root);
+      const a = baseAnim(f === 0 ? 'meridian' : 'swift');
+      // Odd rows run across the view (on a treadmill: the root stays put).
+      applyAnim(a, i % 2 ? 'run' : 'idle', yawToCam + (i % 2 ? side * 1.4 : 0));
+      actors.push({ v, a });
+    }
+  });
+  camera.lookAt(camera.position.x + dx * 30, camera.position.y - 0.9, camera.position.z + dz * 30);
+  window.__charInfo = { perChar: actors.map((x) => x.v.stats()), count: actors.length };
+  return {
+    scene,
+    camera,
+    update(dt, t) {
+      for (const x of actors) x.v.update(dt, x.a);
+      mv.update(dt, runtimeState(def, camera, t, null));
     },
   };
 }

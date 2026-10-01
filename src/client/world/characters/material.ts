@@ -9,7 +9,8 @@
 //
 // Shading extras (all cheap, no extra passes):
 //  • detail texture: R = ceramic scuffs & scratches, G = fabric weave,
-//    B = roughness breakup (one sample, interpreted by gloss);
+//    B = roughness breakup, A = ceramic panel seams (one sample, interpreted
+//    by gloss); worn bevel highlights from screen-space curvature;
 //  • team-colour fresnel rim (stronger on paint & visors) so players pop
 //    against warm dusty backdrops; enemies get a stronger rim than friendlies;
 //  • fake sky reflection from the scene's hemisphere light on glossy ceramic
@@ -137,6 +138,54 @@ function detailTexture(): THREE.Texture {
     wear.fill();
   }
   const wd = wear.getImageData(0, 0, S, S).data;
+  // A: ceramic panel layout — recursive rectangle split; each panel gets a
+  // slight value shift (128 ± 10), seams are dark 2-px grooves on the panel's
+  // top/left edges (tiles seamlessly: the split covers the whole square) with a
+  // 1-px light lip below/right of the groove.
+  const [, pan] = layer();
+  pan.fillStyle = 'rgb(128,128,128)';
+  pan.fillRect(0, 0, S, S);
+  const rects: [number, number, number, number][] = [];
+  const split = (x: number, y: number, w: number, h: number, depth: number): void => {
+    if (depth >= 4 || (w < 46 && h < 46) || (depth >= 2 && r() < 0.25)) {
+      rects.push([x, y, w, h]);
+      return;
+    }
+    const f = 0.3 + r() * 0.4;
+    if (w >= h) {
+      const a = Math.round(w * f);
+      split(x, y, a, h, depth + 1);
+      split(x + a, y, w - a, h, depth + 1);
+    } else {
+      const a = Math.round(h * f);
+      split(x, y, w, a, depth + 1);
+      split(x, y + a, w, h - a, depth + 1);
+    }
+  };
+  split(0, 0, S, S, 0);
+  for (const [x, y, w, h] of rects) {
+    const v = Math.round(128 + (r() - 0.5) * 20);
+    pan.fillStyle = `rgb(${v},${v},${v})`;
+    pan.fillRect(x, y, w, h);
+  }
+  for (const [x, y, w, h] of rects) {
+    pan.fillStyle = 'rgb(14,14,14)';
+    pan.fillRect(x, y, w, 2);
+    pan.fillRect(x, y, 2, h);
+    pan.fillStyle = 'rgb(205,205,205)';
+    pan.fillRect(x + 2, y + 2, w - 2, 1);
+    pan.fillRect(x + 2, y + 2, 1, h - 2);
+    // A few panels carry a small fastener pair.
+    if (w > 30 && h > 30 && r() < 0.45) {
+      pan.fillStyle = 'rgb(60,60,60)';
+      for (const fx of [x + 6, x + w - 7]) {
+        pan.beginPath();
+        pan.arc(fx, y + h - 7, 1.4, 0, Math.PI * 2);
+        pan.fill();
+      }
+    }
+  }
+  const pd = pan.getImageData(0, 0, S, S).data;
   // G: fabric weave; B: low-frequency roughness breakup.
   const out = new Uint8Array(S * S * 4);
   const n2 = (x: number, y: number): number =>
@@ -151,7 +200,7 @@ function detailTexture(): THREE.Texture {
       out[i] = wd[i];
       out[i + 1] = Math.max(0, Math.min(255, g));
       out[i + 2] = Math.max(0, Math.min(255, b));
-      out[i + 3] = 255;
+      out[i + 3] = pd[i];
     }
   }
   const t = new THREE.DataTexture(out, S, S, THREE.RGBAFormat);
@@ -171,6 +220,7 @@ function detailTexture(): THREE.Texture {
 
 const VERT_PARS = /* glsl */ `
 attribute vec4 fx;
+attribute vec4 fxg;
 varying vec4 vFx;
 varying vec3 vRest;
 varying float vHand;
@@ -179,15 +229,17 @@ varying float vHand;
 const VERT_MAIN = /* glsl */ `
 vFx = fx;
 vRest = position;
-// Visor lines (fx.w flag, fx.y = bind-space eye-line height) thicken with
-// distance around their own centre line: ×1 up close, ×3.6 tall at 80 m, so
-// the team-coloured line still covers a pixel row (and blooms) at range.
-if ( fx.w > 1.25 ) {
-  vFx.y = 0.0;
-  vec4 hfEye = modelViewMatrix * vec4( 0.0, fx.y, 0.0, 1.0 );
-  float hfS = smoothstep( 20.0, 80.0, length( hfEye.xyz ) );
-  transformed.y = fx.y + ( transformed.y - fx.y ) * ( 1.0 + hfS * 2.6 );
-  transformed.x *= 1.0 + hfS * 0.3;
+// Far readability (fxg = bind-space part centre + grow): team-coloured parts
+// scale up around their own centre with distance so they still cover pixels
+// (and bloom) at 60–80 m. Visors (w < 0) thicken vertically: ×1 up close,
+// ×3.6 tall at 80 m; accents (w > 0) grow isotropically by ×(1 + w).
+if ( fxg.w != 0.0 ) {
+  vec4 hfC = modelViewMatrix * vec4( fxg.xyz, 1.0 );
+  float hfS = smoothstep( 20.0, 80.0, length( hfC.xyz ) );
+  vec3 hfD = transformed - fxg.xyz;
+  if ( fxg.w < 0.0 ) hfD *= vec3( 1.0 + hfS * 0.3, 1.0 - hfS * fxg.w, 1.0 );
+  else hfD *= 1.0 + hfS * fxg.w;
+  transformed = fxg.xyz + hfD;
 }
 vHand = 0.0;
 #ifdef USE_SKINNING
@@ -217,7 +269,7 @@ if ( uSpawn < 1.0 ) {
   float hfEdge = uSpawn * 2.3 - 0.15;
   if ( vRest.y > hfEdge ) discard;
 }
-diffuseColor.rgb *= vColor;
+diffuseColor.rgb *= vColor.rgb;
 float hfPaintA = clamp( vFx.z, 0.0, 1.0 );
 float hfPaintB = clamp( -vFx.z, 0.0, 1.0 );
 diffuseColor.rgb = mix( diffuseColor.rgb, uPaintA, hfPaintA );
@@ -225,9 +277,27 @@ diffuseColor.rgb = mix( diffuseColor.rgb, uPaintB, hfPaintB );
 float hfGloss = clamp( vFx.w, 0.0, 1.0 );
 float hfGlowMask = clamp( vFx.x + vFx.y, 0.0, 1.0 );
 diffuseColor.rgb *= 1.0 - hfGlowMask * 0.85;
+// Far value lift (colour alpha): flagged parts drift to a light ceramic
+// value at range so the figure reads as one coherent mass.
+diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 0.66, 0.63, 0.58 ), vColor.a * smoothstep( 22.0, 70.0, length( vViewPosition ) ) * 0.6 );
 // Scuffs on hard shells, weave on fabric.
 diffuseColor.rgb *= mix( 1.0, hfDetail.r, uWear * smoothstep( 0.3, 0.8, hfGloss ) );
 diffuseColor.rgb *= mix( 1.0, 0.8 + 0.34 * hfDetail.g, 1.0 - smoothstep( 0.15, 0.45, hfGloss ) );
+// Ceramic panel breakup (detail alpha): recessed seams, a light bevel lip
+// and a slight per-panel value shift — only on hard glossy armour.
+float hfHard = smoothstep( 0.62, 0.8, hfGloss ) * ( 1.0 - hfGlowMask );
+float hfNear = 1.0 - smoothstep( 9.0, 24.0, length( vViewPosition ) );
+diffuseColor.rgb *= 1.0 + hfHard * ( hfDetail.a - 0.5 ) * 0.62 * ( 0.35 + 0.65 * hfNear );
+#ifndef FLAT_SHADED
+{
+  // Worn bevels: high surface curvature (plate rims, panel corners) shows a
+  // brighter chipped edge — painted paint wear toward bare ceramic.
+  vec3 hfN = normalize( vNormal );
+  float hfCurv = length( fwidth( hfN ) ) / max( length( fwidth( vViewPosition ) ), 1e-4 );
+  float hfEdge = smoothstep( 24.0, 70.0, hfCurv ) * hfHard * hfNear;
+  diffuseColor.rgb = mix( diffuseColor.rgb, max( diffuseColor.rgb * 1.22, vec3( 0.86, 0.83, 0.77 ) ), hfEdge * 0.55 );
+}
+#endif
 `;
 
 const FRAG_ROUGH = /* glsl */ `
@@ -241,10 +311,13 @@ const FRAG_EMISSIVE = /* glsl */ `
 // backlit sky. Hue never changes — friendly vs enemy only scales uRim.
 float hfFar = smoothstep( 18.0, 72.0, length( vViewPosition ) );
 totalEmissiveRadiance += ( uGlowA * vFx.x + uGlowB * vFx.y ) * uGlowK * ( 1.0 + hfFar * 1.7 );
+// Team paint (Halcyon orange stripes / pods bands, Bloom violet edges) picks up
+// a faint self-glow at range so the accent colour survives haze and backlight.
+totalEmissiveRadiance += ( uPaintA * hfPaintA + uPaintB * hfPaintB ) * hfFar * 0.95;
 {
   vec3 hfV = normalize( vViewPosition );
-  float hfFres = pow( 1.0 - clamp( dot( normal, hfV ), 0.0, 1.0 ), mix( 3.0, 1.8, hfFar ) );
-  totalEmissiveRadiance += uRim * hfFres * ( 0.3 + hfPaintA * 1.4 + vFx.x * 1.5 + hfFar * 1.6 );
+  float hfFres = pow( 1.0 - clamp( dot( normal, hfV ), 0.0, 1.0 ), mix( 3.0, 1.5, hfFar ) );
+  totalEmissiveRadiance += uRim * hfFres * ( 0.3 + hfPaintA * 1.4 + vFx.x * 1.5 + hfFar * 2.6 );
 }
 // Distance fill: albedo self-lift at range keeps the faction VALUE read
 // (white ceramic Halcyon vs dark bark Bloom) even when backlit by the sun.
@@ -319,7 +392,7 @@ function createMaterial(tier: MatTier, team: Team, friendly: boolean): CharMater
       .replace('#include <emissivemap_fragment>', FRAG_EMISSIVE)
       .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>\n${tier === 'standard' ? FRAG_SHEEN : ''}`);
   };
-  mat.customProgramCacheKey = () => `hf-character-v5-${tier}`;
+  mat.customProgramCacheKey = () => `hf-character-v6-${tier}`;
   return mat as unknown as CharMaterial;
 }
 

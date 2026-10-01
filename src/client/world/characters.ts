@@ -1,13 +1,15 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // HALCYON FRONT — procedural stylized soldiers (CharacterFactory).
 //
-// Silhouettes readable at 80 m by shape alone (art bible §5):
-//  • HALCYON — tall, clean, symmetric ceramic-white armour, broad rounded
-//    pauldrons, horizontal emissive visor line, backpack + antenna, orange
-//    accent stripes; calm upright posture.
-//  • THE BLOOM — hunched & asymmetric bark/chitin plates, a leafy overgrown
-//    left shoulder with glowing teal/violet bulbs, hood + swept crest, teal
-//    visor, fabric wraps, trailing scarf and loincloth.
+// Silhouettes readable at 80 m by SHAPE alone (art bible §5, brief §2):
+//  • HALCYON — "castle" outline: tall upright figure, broad SQUARE pauldrons,
+//    a crested helmet flanked by two rocket-pack pods rising above the
+//    shoulders (team-coloured tip lights), V torso, segmented tapered
+//    ceramic plates over an anatomical undersuit, orange accent stripes.
+//  • THE BLOOM — organic and asymmetric: a big frond fan erupting from the
+//    LEFT shoulder past the head, a bud-shaped hood with a swept point, a
+//    hunched spine, a ragged cloak (A-line), pangolin chitin scales, vines,
+//    one wrapped and one armoured arm, teal / violet bioluminescence.
 //
 // Implementation lives in ./characters/:
 //   rig.ts       bones + per-faction rest pose
@@ -19,13 +21,18 @@
 //   instance.ts  CharacterView: procedural animation
 //
 // Budgets (measured with preview.html?view=characters&layout=perf):
-//   body = 1 draw call (+ the weapon model's draws, + a blob shadow on low);
-//   body triangles ≈3.7–3.9k (medium/high, < 26 m), ≈1.56–1.6k beyond 26 m
-//   (distance LOD) and on low, ≈15–17k (menu); animation ≈0.05 ms CPU per
+//   body = 1 draw call (+ the weapon model's draw, + a blob shadow on low);
+//   body triangles ≈3.85–3.93k (medium/high, < 26 m), ≈1.5–1.6k beyond 26 m
+//   (distance LOD) and on low, ≈16–17k (menu); animation ≈0.05 ms CPU per
 //   character per frame, allocation-free.
 // Readability: team emissives are pre-saturated for the ACES grade (visor =
-// team hue, not cream); beyond ~20 m the shader thickens visor lines and
-// boosts glow / team rim / albedo fill so factions read at 60–80 m.
+// team hue, not cream). Beyond ~20 m the vertex shader exaggerates the
+// silhouette markers (pods / pauldrons / frond fan grow from their roots,
+// visor + team lights grow — kit PartOpts.farGrow / growAt / visor), the
+// fragment shader boosts glow, team rim and painted accents, and the
+// Halcyon undersuit drifts toward ceramic (PartOpts.farLift) so each
+// faction reads as one coherent shape + team colour at 60–80 m. Silhouette
+// test: preview.html?view=characters&layout=far&d=60&sil=1 (and map=…).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { CharacterFactory, CharacterOptions, MaterialLibrary, WeaponModelFactory } from '../contracts';
